@@ -55,6 +55,24 @@ export interface VigilListResult {
   vigils: VigilListItem[];
 }
 
+export interface WaitInput {
+  timeoutMs?: number;
+  initialDelayMs?: number;
+  maxDelayMs?: number;
+}
+
+export interface VigilWaitPolicy {
+  timeoutMs: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+}
+
+export type VigilWaitResult =
+  | { outcome: "settled"; waitedMs: number; settled: VigilSnapshot[] }
+  | { outcome: "timeout"; waitedMs: number; pending: VigilListItem[] }
+  | { outcome: "empty"; waitedMs: 0 }
+  | { outcome: "cancelled"; waitedMs: number; pending: VigilListItem[] };
+
 export interface LaunchInput {
   name: string;
   message: string;
@@ -81,9 +99,10 @@ export interface VigilError {
 
 export type VigilResult = VigilSnapshot | VigilError;
 export type VigilListOrError = VigilListResult | VigilError;
+export type VigilWaitOrError = VigilWaitResult | VigilError;
 
-export function isVigilError(result: VigilResult | VigilListOrError): result is VigilError {
-  return "error" in result;
+export function isVigilError(result: unknown): result is VigilError {
+  return typeof result === "object" && result !== null && "error" in result;
 }
 
 export function createVigilId(): string {
@@ -108,6 +127,15 @@ export function formatSnapshotText(snapshot: VigilSnapshot): string {
     lines.push(`completedAt: ${snapshot.completedAt}`);
   }
   return lines.join("\n");
+}
+
+export function formatWaitText(result: VigilWaitResult): string {
+  if (result.outcome === "empty") {
+    return "outcome: empty\nwaitedMs: 0";
+  }
+
+  const items = result.outcome === "settled" ? result.settled : result.pending;
+  return [`outcome: ${result.outcome}`, `waitedMs: ${result.waitedMs}`, `count: ${items.length}`].join("\n");
 }
 
 export function formatListText(result: VigilListResult): string {

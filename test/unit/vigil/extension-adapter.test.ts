@@ -2,7 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { resetVigilRuntimeOverrides, setVigilRuntimeOverrides } from "../../../src/vigil/runtime-overrides";
-import type { ChildSessionNamer, ChildSessionReader, ProcessRunner } from "../../../src/vigil/ports";
+import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, WaitScheduler } from "../../../src/vigil/ports";
 import { readLatestAssistantTextFromFile, readChildSessionStateFromFile } from "../../../src/vigil/node-runtime";
 import type { VigilLaunchRecord, VigilListResult, VigilSnapshot } from "../../../src/vigil/types";
 import { createVigilTestHarness } from "../../helpers/vigil-test-harness";
@@ -274,6 +274,119 @@ describe("vigil extension adapter", () => {
       message: "Too late",
     });
     expect((sendResult as { isError?: boolean }).isError).toBe(true);
+  });
+
+  it("wait needs no id or message, uses its default delay, and returns structured settled details", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+    let time = 0;
+    const sleeps: number[] = [];
+    const scheduler: WaitScheduler = {
+      now: () => time,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        time += ms;
+        return "elapsed";
+      },
+    };
+
+    setVigilRuntimeOverrides({
+      waitScheduler: scheduler,
+      processRunner: {
+        spawnDetached: async () => ({ pid: 9200 }),
+        isAlive: () => true,
+        terminateAndWait: async () => undefined,
+      },
+      childSessionReader: {
+        readChildSessionState: async () => ({
+          latestResponse: sleeps.length > 0 ? "Waited response." : null,
+          turnComplete: sleeps.length > 0,
+          lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+        }),
+      },
+    });
+
+    const launch = await harness.execute({ action: "launch", name: "Wait adapter", message: "Work" });
+    const launched = launch.details as VigilSnapshot;
+    const result = await harness.execute({ action: "wait" });
+
+    expect((result as { isError?: boolean }).isError).toBeFalsy();
+    expect(result.details).toEqual({
+      outcome: "settled",
+      waitedMs: 500,
+      settled: [expect.objectContaining({ id: launched.id, latestResponse: "Waited response." })],
+    });
+    expect(result.content[0]).toEqual({ type: "text", text: expect.stringContaining("outcome: settled") });
+    expect(sleeps).toEqual([500]);
+  });
+
+  it("returns normal timeout and cancelled wait results through the adapter", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+    let time = 0;
+    const controller = new AbortController();
+    const scheduler: WaitScheduler = {
+      now: () => time,
+      sleep: async (ms, signal) => {
+        time += ms;
+        if (ms === 100) {
+          controller.abort();
+        }
+        return signal?.aborted ? "cancelled" : "elapsed";
+      },
+    };
+    setVigilRuntimeOverrides({
+      waitScheduler: scheduler,
+      processRunner: {
+        spawnDetached: async () => ({ pid: 9300 }),
+        isAlive: () => true,
+        terminateAndWait: async () => undefined,
+      },
+      childSessionReader: {
+        readChildSessionState: async () => ({
+          latestResponse: null,
+          turnComplete: false,
+          lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+        }),
+      },
+    });
+    const launch = await harness.execute({ action: "launch", name: "Wait outcomes", message: "Work" });
+    const launched = launch.details as VigilSnapshot;
+
+    const cancelled = await harness.execute(
+      { action: "wait", timeoutMs: 1_000, initialDelayMs: 100, maxDelayMs: 100 },
+      controller.signal,
+    );
+    expect((cancelled as { isError?: boolean }).isError).toBeFalsy();
+    expect(cancelled.details).toEqual({
+      outcome: "cancelled",
+      waitedMs: 100,
+      pending: [expect.objectContaining({ id: launched.id, state: "running" })],
+    });
+
+    time = 0;
+    const timeout = await harness.execute({
+      action: "wait",
+      timeoutMs: 50,
+      initialDelayMs: 50,
+      maxDelayMs: 50,
+    });
+    expect((timeout as { isError?: boolean }).isError).toBeFalsy();
+    expect(timeout.details).toEqual({
+      outcome: "timeout",
+      waitedMs: 50,
+      pending: [expect.objectContaining({ id: launched.id, state: "running" })],
+    });
+  });
+
+  it("returns concise errors for invalid wait timing", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+
+    const result = await harness.execute({ action: "wait", initialDelayMs: 500, maxDelayMs: 100 });
+
+    expect((result as { isError?: boolean }).isError).toBe(true);
+    expect(result.content[0]).toEqual({
+      type: "text",
+      text: "maxDelayMs must be greater than or equal to initialDelayMs",
+    });
   });
 
   it("poll returns an error for an unknown vigil id", async () => {

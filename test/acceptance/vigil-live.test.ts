@@ -10,9 +10,9 @@ import type {
   VigilListResult,
   VigilSnapshot,
   VigilTurnRecord,
+  VigilWaitResult,
 } from "../../src/vigil/types";
 import {
-  getAcceptancePollIntervalMs,
   getAcceptanceTimeoutMs,
   getVigilTestModel,
   requireLiveAcceptanceEnv,
@@ -61,7 +61,7 @@ describe("live vigil acceptance", () => {
     }
   });
 
-  it("launches a named child, lists it, completes with retained session and renamed display name", async () => {
+  it("launches a named child, waits through resumed turns, then retains its completed session", async () => {
     const { createVigilTestHarness } = await import("../helpers/vigil-test-harness");
 
     const firstMarker = `VIGIL_READY_${crypto.randomUUID()}`;
@@ -90,25 +90,16 @@ describe("live vigil acceptance", () => {
     expect(launchRecord.name).toBe(launchName);
     launchedChildPids.push(launchRecord.pid);
 
-    const deadline = Date.now() + getAcceptanceTimeoutMs();
-    let firstWaiting: VigilSnapshot | undefined;
-
-    while (Date.now() < deadline) {
-      const pollResult = await harness.execute({
-        action: "poll",
-        id: launched.id,
-      });
-
-      expect((pollResult as { isError?: boolean }).isError).toBeFalsy();
-      firstWaiting = pollResult.details as VigilSnapshot;
-
-      if (firstWaiting.state === "waiting") {
-        break;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, getAcceptancePollIntervalMs()));
-    }
-
+    const firstWaitResult = await harness.execute({
+      action: "wait",
+      timeoutMs: getAcceptanceTimeoutMs(),
+      initialDelayMs: 250,
+      maxDelayMs: 5_000,
+    });
+    expect((firstWaitResult as { isError?: boolean }).isError).toBeFalsy();
+    const firstWait = firstWaitResult.details as VigilWaitResult;
+    expect(firstWait.outcome).toBe("settled");
+    const firstWaiting = firstWait.outcome === "settled" ? firstWait.settled.find((snapshot) => snapshot.id === launched.id) : undefined;
     expect(firstWaiting?.state).toBe("waiting");
     expect(firstWaiting?.latestResponse).toContain(firstMarker);
 
@@ -139,23 +130,16 @@ describe("live vigil acceptance", () => {
       launchedChildPids.push(turnRecord.pid);
     }
 
-    let finalSnapshot: VigilSnapshot | undefined;
-    const secondDeadline = Date.now() + getAcceptanceTimeoutMs();
-    while (Date.now() < secondDeadline) {
-      const pollResult = await harness.execute({
-        action: "poll",
-        id: launched.id,
-      });
-
-      expect((pollResult as { isError?: boolean }).isError).toBeFalsy();
-      finalSnapshot = pollResult.details as VigilSnapshot;
-
-      if (finalSnapshot.state === "waiting") {
-        break;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, getAcceptancePollIntervalMs()));
-    }
+    const secondWaitResult = await harness.execute({
+      action: "wait",
+      timeoutMs: getAcceptanceTimeoutMs(),
+      initialDelayMs: 250,
+      maxDelayMs: 5_000,
+    });
+    expect((secondWaitResult as { isError?: boolean }).isError).toBeFalsy();
+    const secondWait = secondWaitResult.details as VigilWaitResult;
+    expect(secondWait.outcome).toBe("settled");
+    const finalSnapshot = secondWait.outcome === "settled" ? secondWait.settled.find((snapshot) => snapshot.id === launched.id) : undefined;
 
     expect(finalSnapshot?.state).toBe("waiting");
     expect(finalSnapshot?.latestResponse).toContain(firstMarker);

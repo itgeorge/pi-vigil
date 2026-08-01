@@ -81,23 +81,23 @@ The exact DTO spelling can evolve, but `outcome`, elapsed time, and settled/pend
 
 ## Todos
 
-- [ ] Read all completed Slice 1–3 plans, current service/ports/adapter, README, and the dogfood lessons before changing code. Preserve accepted lifecycle and retention semantics.
-- [ ] Add failing service/adapter tests for the action schema and validation:
+- [x] Read all completed Slice 1–3 plans, current service/ports/adapter, README, and the dogfood lessons before changing code. Preserve accepted lifecycle and retention semantics.
+- [x] Add failing service/adapter tests for the action schema and validation:
   - `wait` is accepted by the `StringEnum` schema and requires no ID/message/name;
   - omitted timing values use documented defaults;
   - timing parameters must be finite safe integer milliseconds and within documented positive bounds;
   - invalid timeout/delay combinations (including `maxDelayMs < initialDelayMs`) produce concise tool errors.
-- [ ] Add failing outcome-based service tests for initial-state behavior:
+- [x] Add failing outcome-based service tests for initial-state behavior:
   - no active child => `{ outcome: "empty", waitedMs: 0 }`;
   - one already-waiting child => immediate `settled` with its full snapshot/latest response;
   - several already-settled children => one immediate result containing all of them;
   - completed children do not cause a default wait to return `settled` when no active child exists.
-- [ ] Add failing tests for delayed behavior:
+- [x] Add failing tests for delayed behavior:
   - wait returns once any initially-running child later becomes `waiting` and includes its persisted latest response;
   - a terminal `completed` result observed for a watched ID is treated as settled;
   - no child settling by the deadline returns a non-error `timeout` with concise pending list items;
   - cancellation returns a non-error `cancelled` result with pending list items and no later state mutation.
-- [ ] Add a test proving wait is observational: it creates no parent custom entries, starts no child, reaps no PID, and does not rename/complete sessions.
+- [x] Add a test proving wait is observational: it creates no parent custom entries, starts no child, reaps no PID, and does not rename/complete sessions.
 
 ## Agent notes / assumptions
 
@@ -110,8 +110,8 @@ The exact DTO spelling can evolve, but `outcome`, elapsed time, and settled/pend
 
 ## Todos
 
-- [ ] Add the stable domain types for wait input/result and tool-text formatting. Keep list timeout/cancellation payloads concise; only settled snapshots contain `latestResponse`.
-- [ ] Introduce a small injected timing port, for example:
+- [x] Add the stable domain types for wait input/result and tool-text formatting. Keep list timeout/cancellation payloads concise; only settled snapshots contain `latestResponse`.
+- [x] Introduce a small injected timing port, for example:
 
   ```ts
   interface WaitScheduler {
@@ -121,14 +121,14 @@ The exact DTO spelling can evolve, but `outcome`, elapsed time, and settled/pend
   ```
 
   A structurally equivalent small abstraction is acceptable. Its production implementation must use `Date.now()` plus an abortable timer; fake implementations must enable deterministic tests.
-- [ ] Implement pure wait-policy validation/defaulting:
+- [x] Implement pure wait-policy validation/defaulting:
   - immediate first scan;
   - defaults: 60 s timeout, 500 ms initial delay, 5 s cap;
   - exponential factor of 2, capped at `maxDelayMs`;
   - clamp final sleep to remaining timeout;
   - enforce explicit input bounds and coherent initial/max relationship.
-- [ ] Add exactly one focused policy test asserting the observable virtual sleep sequence reaches the cap and never exceeds either `maxDelayMs` or remaining total timeout. Keep other tests outcome-focused.
-- [ ] Document the cancellation convention chosen for normal results and ensure aborted timers are cleaned up/listeners removed.
+- [x] Add exactly one focused policy test asserting the observable virtual sleep sequence reaches the cap and never exceeds either `maxDelayMs` or remaining total timeout. Keep other tests outcome-focused.
+- [x] Document the cancellation convention chosen for normal results and ensure aborted timers are cleaned up/listeners removed.
 
 ## Agent notes / assumptions
 
@@ -141,8 +141,8 @@ The exact DTO spelling can evolve, but `outcome`, elapsed time, and settled/pend
 
 ## Todos
 
-- [ ] Extend the parent-ledger/service boundary only as needed to obtain a stable active cohort at wait start. Reuse lifecycle reconstruction; do not build a second registry.
-- [ ] Implement `VigilService.wait(...)` in this order:
+- [x] Extend the parent-ledger/service boundary only as needed to obtain a stable active cohort at wait start. Reuse lifecycle reconstruction; do not build a second registry.
+- [x] Implement `VigilService.wait(...)` in this order:
   1. validate/default policy and capture start time;
   2. snapshot default active lifecycle records from the current parent session;
   3. derive snapshots for that fixed cohort concurrently/read-only;
@@ -151,10 +151,10 @@ The exact DTO spelling can evolve, but `outcome`, elapsed time, and settled/pend
   6. re-poll only the fixed cohort concurrently;
   7. return all non-running snapshots from that scan, otherwise repeat until timeout/cancellation;
   8. on timeout/cancellation, derive concise pending items from the final known/rerun state.
-- [ ] Treat a stale/malformed watched record that no longer resolves as a clear service error rather than silently claiming successful settlement. Normal parent-ledger state should not produce this condition.
-- [ ] Preserve ordering deterministically (the cohort’s existing most-recent-first ordering) in `settled` and `pending` output.
-- [ ] Ensure all service wait code is read-only: it must not call process reaping, spawning, child naming, or ledger append methods.
-- [ ] Add service tests for a child transition after several virtual sleeps, simultaneous settlements, timeout boundary settlement (settlement wins if observed at the deadline scan), cancellation during sleep, and no leaked follow-on work after return.
+- [x] Treat a stale/malformed watched record that no longer resolves as a clear service error rather than silently claiming successful settlement. Normal parent-ledger state should not produce this condition.
+- [x] Preserve ordering deterministically (the cohort’s existing most-recent-first ordering) in `settled` and `pending` output.
+- [x] Ensure all service wait code is read-only: it must not call process reaping, spawning, child naming, or ledger append methods.
+- [x] Add service tests for a child transition after several virtual sleeps, simultaneous settlements, timeout boundary settlement (settlement wins if observed at the deadline scan), cancellation during sleep, and no leaked follow-on work after return.
 
 ## Agent notes / assumptions
 
@@ -167,17 +167,17 @@ The exact DTO spelling can evolve, but `outcome`, elapsed time, and settled/pend
 
 ## Todos
 
-- [ ] Add `wait` to the tool action enum and optional timing parameters to the Pi-compatible schema.
-- [ ] Pass the extension’s tool-call `AbortSignal` to the service wait operation; do not ignore it as other immediate actions may do.
-- [ ] Return concise machine-readable tool text plus structured `VigilWaitResult` details. Timeouts/cancellations must not be marked tool errors.
-- [ ] Update adapter tests to invoke the registered tool, exercise validation/default behavior, and inspect settled/timeout/cancelled result details rather than private service calls.
-- [ ] Update README:
+- [x] Add `wait` to the tool action enum and optional timing parameters to the Pi-compatible schema.
+- [x] Pass the extension’s tool-call `AbortSignal` to the service wait operation; do not ignore it as other immediate actions may do.
+- [x] Return concise machine-readable tool text plus structured `VigilWaitResult` details. Timeouts/cancellations must not be marked tool errors.
+- [x] Update adapter tests to invoke the registered tool, exercise validation/default behavior, and inspect settled/timeout/cancelled result details rather than private service calls.
+- [x] Update README:
   - document `wait` semantics and all timing defaults/bounds;
   - distinguish settled `waiting` from explicit `complete` retirement;
   - document the recommended orchestration loop: `list` → `wait` → inspect `poll`/settled response → `send` or `complete` → repeat;
   - state explicitly that wait has no background watcher behavior and timeout/cancellation leave children untouched.
-- [ ] Add a concise dogfooding/runbook note, in README or a focused project document, recommending atomic task-file input for automated TUI drivers and an ID/role worklog. Do not implement tmux or controller automation.
-- [ ] Run deterministic tests and typecheck before live acceptance work.
+- [x] Add a concise dogfooding/runbook note, in README or a focused project document, recommending atomic task-file input for automated TUI drivers and an ID/role worklog. Do not implement tmux or controller automation.
+- [x] Run deterministic tests and typecheck before live acceptance work.
 
 ## Agent notes / assumptions
 
@@ -190,16 +190,16 @@ The exact DTO spelling can evolve, but `outcome`, elapsed time, and settled/pend
 
 ## Todos
 
-- [ ] Extend the existing single opt-in acceptance test through the registered adapter:
+- [x] Extend the existing single opt-in acceptance test through the registered adapter:
   1. launch the existing uniquely named real child;
   2. call `wait` (using the existing acceptance timeout and a short bounded initial delay) instead of a tight manual poll loop;
   3. assert a `settled` outcome containing the child snapshot and first marker;
   4. send the existing follow-up turn, then call `wait` again and assert the second settled response contains both markers;
   5. retain the Slice 3 list/rename/complete/session-retention assertions;
   6. confirm final process cleanup remains conditional on PID liveness as before.
-- [ ] Keep the default opt-in/auth prerequisite behavior and clean temporary session directory only in test teardown.
-- [ ] Add a deterministic, credential-free test for timeout/cancellation rather than deliberately causing a live child to hang.
-- [ ] Run and record:
+- [x] Keep the default opt-in/auth prerequisite behavior and clean temporary session directory only in test teardown.
+- [x] Add a deterministic, credential-free test for timeout/cancellation rather than deliberately causing a live child to hang.
+- [x] Run and record:
   - `npm test`;
   - `npm run typecheck`;
   - `npm run test:acceptance` without opt-in to confirm helpful failure;
@@ -216,12 +216,12 @@ The exact DTO spelling can evolve, but `outcome`, elapsed time, and settled/pend
 
 ## Todos
 
-- [ ] Confirm default tests remain deterministic, fast, and credential-free; no real timer waits belong in them.
-- [ ] Confirm `wait` has a finite default timeout, capped delays, cancellation cleanup, and no background task left after return.
-- [ ] Confirm `wait` performs no spawn/send/reap/rename/complete/ledger append/session deletion and only observes the fixed initial active cohort.
-- [ ] Confirm no Slice 5 full-conversation `search`, streaming, external registry, retry service, or background watcher was added.
-- [ ] Update this plan’s checkboxes, assumptions, deviations, progress notes, and test notes; commit plan updates with code/tests.
-- [ ] Provide the reviewer: commit SHA, timing defaults/bounds, structured wait outcomes, test results, live acceptance status, cancellation behavior, and deviations.
+- [x] Confirm default tests remain deterministic, fast, and credential-free; no real timer waits belong in them.
+- [x] Confirm `wait` has a finite default timeout, capped delays, cancellation cleanup, and no background task left after return.
+- [x] Confirm `wait` performs no spawn/send/reap/rename/complete/ledger append/session deletion and only observes the fixed initial active cohort.
+- [x] Confirm no Slice 5 full-conversation `search`, streaming, external registry, retry service, or background watcher was added.
+- [x] Update this plan’s checkboxes, assumptions, deviations, progress notes, and test notes; commit plan updates with code/tests.
+- [x] Provide the reviewer: commit SHA, timing defaults/bounds, structured wait outcomes, test results, live acceptance status, cancellation behavior, and deviations.
 
 ## Future slice (not implementation work for this handoff)
 
@@ -230,3 +230,17 @@ The exact DTO spelling can evolve, but `outcome`, elapsed time, and settled/pend
 ## Progress notes
 
 - 2026-08-02: Plan created after accepted Slice 3 and review of the terminal-Snake dogfood lessons. User approved a dedicated wait slice before search. No Slice 4 implementation has started.
+- 2026-08-02: Slice 4 implemented TDD-first. Added deterministic `WaitScheduler` injection, policy validation, fixed-cohort foreground polling, structured wait outcomes, adapter AbortSignal forwarding, README/runbook documentation, and live acceptance coverage through two real waits.
+
+## Assumptions / deviations
+
+- Chosen documented bounds are 1..300,000 ms for `timeoutMs` and 1..30,000 ms for each delay; `maxDelayMs` must be at least `initialDelayMs`.
+- Cancellation returns the last read-only scan as concise `pending` items rather than issuing another scan after abort; this returns promptly and leaves no timer/listener or loop alive. This is within the plan's final-known/rerun allowance.
+- No product-scope deviations: no search, streaming, retry/supervision, external registry, process groups, or background watcher were added.
+
+## Test notes
+
+- `npm test`: 77 deterministic credential-free tests passed.
+- `npm run typecheck`: passed.
+- `npm run test:acceptance` without `PI_VIGIL_LIVE=1`: failed fast with the expected opt-in instructions.
+- `PI_VIGIL_LIVE=1 npm run test:acceptance`: 1/1 passed (~11 s total); the real child was observed through `wait` before and after `send`.

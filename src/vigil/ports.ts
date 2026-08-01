@@ -38,6 +38,11 @@ export interface ChildSessionReader {
   }): Promise<ChildSessionState>;
 }
 
+export interface WaitScheduler {
+  now(): number;
+  sleep(ms: number, signal?: AbortSignal): Promise<"elapsed" | "cancelled">;
+}
+
 export interface ChildSessionNamer {
   markCompleted(input: {
     sessionId: string;
@@ -62,4 +67,5 @@ export interface VigilServiceDeps {
   createId?: () => string;
   sessionDir?: string;
   reapTimeoutMs?: number;
+  waitScheduler?: WaitScheduler;
 }

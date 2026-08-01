@@ -11,6 +11,7 @@ import { getVigilRuntimeOverrides } from "./vigil/runtime-overrides";
 import {
   formatListText,
   formatSnapshotText,
+  formatWaitText,
   isVigilError,
   type VigilListResult,
   type VigilSnapshot,
@@ -30,6 +31,7 @@ function createService(ctx: ExtensionContext) {
     processRunner: overrides.processRunner,
     childSessionReader: overrides.childSessionReader,
     childSessionNamer: overrides.childSessionNamer,
+    waitScheduler: overrides.waitScheduler,
   });
 }
 
@@ -37,11 +39,11 @@ export const vigilTool = defineTool({
   name: "vigil",
   label: "Vigil",
   description:
-    "Launch, poll, continue, list, and complete detached Pi child sessions. Use launch to start a named child turn, poll to read running/waiting/completed status plus the latest complete assistant response, send to resume a waiting child, list to inspect the parent working set, and complete to retire a waiting child without deleting its session.",
+    "Launch, poll, continue, list, complete, or foreground-wait on detached Pi child sessions. Wait observes the current active cohort with bounded polling and never changes child state.",
   parameters: Type.Object({
-    action: StringEnum(["launch", "poll", "send", "list", "complete"], {
+    action: StringEnum(["launch", "poll", "send", "list", "complete", "wait"], {
       description:
-        "launch starts a detached child session; poll reads status; send continues a waiting child; list returns the parent working set; complete retires a waiting child",
+        "launch starts a detached child session; poll reads status; send continues a waiting child; list returns the parent working set; complete retires a waiting child; wait boundedly observes the initial active cohort",
     }),
     name: Type.Optional(
       Type.String({
@@ -73,9 +75,12 @@ export const vigilTool = defineTool({
         description: "When listing, include completed children (default false)",
       }),
     ),
+    timeoutMs: Type.Optional(Type.Number({ description: "Wait timeout in milliseconds (default 60000, maximum 300000)" })),
+    initialDelayMs: Type.Optional(Type.Number({ description: "Initial wait polling delay in milliseconds (default 500, maximum 30000)" })),
+    maxDelayMs: Type.Optional(Type.Number({ description: "Maximum wait polling delay in milliseconds (default 5000, maximum 30000)" })),
   }),
 
-  async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+  async execute(_toolCallId, params, signal, _onUpdate, ctx) {
     const service = createService(ctx);
 
     if (params.action === "launch") {
@@ -112,6 +117,28 @@ export const vigilTool = defineTool({
       }
 
       return snapshotResult(result);
+    }
+
+    if (params.action === "wait") {
+      const result = await service.wait(
+        {
+          timeoutMs: params.timeoutMs,
+          initialDelayMs: params.initialDelayMs,
+          maxDelayMs: params.maxDelayMs,
+        },
+        signal,
+      );
+      if (isVigilError(result)) {
+        return {
+          content: [{ type: "text" as const, text: result.error }],
+          details: result,
+          isError: true,
+        };
+      }
+      return {
+        content: [{ type: "text" as const, text: formatWaitText(result) }],
+        details: result,
+      };
     }
 
     if (params.action === "list") {

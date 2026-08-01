@@ -19,6 +19,7 @@ export interface VigilTestHarness {
   ctx: ExtensionContext;
   execute: (
     params: Record<string, unknown>,
+    signal?: AbortSignal,
   ) => ReturnType<ToolDefinition["execute"]>;
 }
 
@@ -56,8 +57,8 @@ export async function createVigilTestHarness(options?: {
     sessionManager,
     capturedEntries,
     ctx,
-    execute: (params) =>
-      registeredTool!.execute("test-call-id", params, undefined, undefined, ctx),
+    execute: (params, signal) =>
+      registeredTool!.execute("test-call-id", params, signal, undefined, ctx),
   };
 }
 

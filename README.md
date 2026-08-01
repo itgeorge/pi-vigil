@@ -14,6 +14,7 @@ vigil({ action: "poll", id })
 vigil({ action: "send", id, message, model? })
 vigil({ action: "list", includeCompleted? })
 vigil({ action: "complete", id })
+vigil({ action: "wait", timeoutMs?, initialDelayMs?, maxDelayMs? })
 ```
 
 `launch` requires a nonblank human-readable `name`, starts a detached Pi child (`pi --mode json -p --session-id <id> --name <name>`), appends a parent `vigil-launch` custom entry, and returns a `running` snapshot.
@@ -29,6 +30,12 @@ vigil({ action: "complete", id })
 `poll` does not terminate child processes; reaping a settled-but-alive Pi process happens during `send` and `complete`.
 
 `list` reconstructs Vigil children from append-only entries in the current parent session file. By default it returns active (`running` / `waiting`) items only, sorted most recently updated first. Pass `includeCompleted: true` to include completed children. List items are concise (`id`, `sessionId`, `name`, `cwd`, `state`, optional `completedAt`) and omit large `latestResponse` text; use `poll` for response bodies.
+
+`wait` is a foreground, bounded convenience loop over the fixed active (`running` / `waiting`) child cohort from the current parent session. It scans immediately, then polls with capped exponential backoff until any watched child is `waiting` or is observed `completed`. It returns structured details with one normal outcome: `settled` (full snapshots, including `latestResponse`), `timeout` (concise pending list items), `empty`, or `cancelled` (concise pending list items). It never calls `send`, `complete`, reaping, spawning, renaming, or ledger append operations.
+
+Timing defaults are `timeoutMs: 60000`, `initialDelayMs: 500`, and `maxDelayMs: 5000`. All values must be positive safe integer milliseconds; `timeoutMs` is capped at `300000`, each delay is capped at `30000`, and `maxDelayMs >= initialDelayMs`. Final sleeps are clamped to the remaining timeout. Tool cancellation is passed to an abortable sleep: cancellation promptly returns the normal `cancelled` result, clears its timer/listener, and leaves children untouched. `wait` has no background watcher behavior after it returns, and children launched after the initial scan are not added to its cohort.
+
+A typical orchestration loop is `list` → `wait` → inspect the settled snapshot or `poll` → `send` or `complete` → repeat. A `waiting` child is settled for orchestration but is not retired; only explicit `complete` retires it.
 
 `complete` retires a waiting Vigil child without deleting its child session JSONL. It reaps a still-live settled tracked PID if needed, prefixes the child session's current Pi-native display name with `[completed]`, appends one parent `vigil-complete` record, and returns a `completed` snapshot. Repeating `complete` is idempotent. After completion, `send` rejects the id.
 
@@ -53,7 +60,7 @@ npm run typecheck
 
 ## Live acceptance tests
 
-Opt-in end-to-end tests spawn a real Pi child, resume it with `send`, list/complete it, and require authenticated Pi access:
+Opt-in end-to-end tests spawn a real Pi child, observe each turn with `wait`, resume it with `send`, list/complete it, and require authenticated Pi access:
 
 ```bash
 export PI_VIGIL_LIVE=1
@@ -71,6 +78,10 @@ Without `PI_VIGIL_LIVE=1`, `npm run test:acceptance` fails immediately with setu
 Preflight uses Pi JSON print mode with `--no-session` (ephemeral) and treats `agent_settled` plus the expected marker as success; it does not wait for the Pi CLI process to exit (print-mode Pi often stays alive until signalled).
 
 Test-only child session isolation uses `PI_VIGIL_SESSION_DIR` (read at tool execution time, passed as `--session-dir`). Production launches omit it and use Pi's default session storage.
+
+## Runbook note
+
+For automated TUI drivers, put each task in an atomic task file rather than relying on incremental terminal typing, and keep a small ID/role worklog alongside it. This makes resumed child-session orchestration auditable without adding controller or tmux automation.
 
 ## v1 limitations
 

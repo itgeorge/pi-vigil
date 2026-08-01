@@ -21,6 +21,7 @@ import type {
   SpawnChildInput,
   TerminateAndWaitOptions,
   VigilServiceDeps,
+  WaitScheduler,
 } from "./ports";
 import { extractLatestAssistantState, deriveVigilState, getTurnStartedAt } from "./session-text";
 import {
@@ -37,9 +38,18 @@ import {
   type VigilRuntimeRecord,
   type VigilSnapshot,
   type VigilTurnRecord,
+  type VigilWaitOrError,
+  type VigilWaitPolicy,
+  type VigilWaitResult,
+  type WaitInput,
 } from "./types";
 
 const DEFAULT_REAP_TIMEOUT_MS = 5000;
+export const DEFAULT_WAIT_TIMEOUT_MS = 60_000;
+export const DEFAULT_WAIT_INITIAL_DELAY_MS = 500;
+export const DEFAULT_WAIT_MAX_DELAY_MS = 5_000;
+export const MAX_WAIT_TIMEOUT_MS = 300_000;
+export const MAX_WAIT_DELAY_MS = 30_000;
 const REAP_POLL_INTERVAL_MS = 50;
 
 export class VigilService {
@@ -189,6 +199,61 @@ export class VigilService {
     return { vigils: items };
   }
 
+  async wait(input: WaitInput, signal?: AbortSignal): Promise<VigilWaitOrError> {
+    const policy = resolveWaitPolicy(input);
+    if ("error" in policy) {
+      return policy;
+    }
+
+    const scheduler = this.deps.waitScheduler ?? createNodeWaitScheduler();
+    const startedAt = scheduler.now();
+    const cohort = this.deps.parentLedger.listLifecycleStates(false);
+    if (cohort.length === 0) {
+      return { outcome: "empty", waitedMs: 0 };
+    }
+
+    let scan = await this.scanWaitCohort(cohort.map((lifecycle) => lifecycle.id));
+    if ("error" in scan) {
+      return scan;
+    }
+    if (signal?.aborted) {
+      return this.cancelledWaitResult(startedAt, scheduler, scan);
+    }
+    if (scan.some(({ snapshot }) => snapshot.state !== "running")) {
+      return this.settledWaitResult(startedAt, scheduler, scan);
+    }
+
+    let delayMs = policy.initialDelayMs;
+    while (true) {
+      const remainingMs = policy.timeoutMs - this.waitedMs(startedAt, scheduler);
+      if (remainingMs <= 0) {
+        return this.timeoutWaitResult(startedAt, scheduler, scan);
+      }
+
+      if (signal?.aborted) {
+        return this.cancelledWaitResult(startedAt, scheduler, scan);
+      }
+
+      const sleepResult = await scheduler.sleep(Math.min(delayMs, remainingMs), signal);
+      if (sleepResult === "cancelled" || signal?.aborted) {
+        return this.cancelledWaitResult(startedAt, scheduler, scan);
+      }
+
+      scan = await this.scanWaitCohort(cohort.map((lifecycle) => lifecycle.id));
+      if ("error" in scan) {
+        return scan;
+      }
+      if (scan.some(({ snapshot }) => snapshot.state !== "running")) {
+        return this.settledWaitResult(startedAt, scheduler, scan);
+      }
+      if (this.waitedMs(startedAt, scheduler) >= policy.timeoutMs) {
+        return this.timeoutWaitResult(startedAt, scheduler, scan);
+      }
+
+      delayMs = Math.min(delayMs * 2, policy.maxDelayMs);
+    }
+  }
+
   async complete(input: CompleteInput): Promise<VigilResult> {
     const lifecycle = this.getLifecycleState(input.vigilId);
     if (!lifecycle) {
@@ -248,6 +313,83 @@ export class VigilService {
       latestResponse: activeSnapshot.latestResponse,
       completedAt,
     };
+  }
+
+  private async scanWaitCohort(
+    cohortIds: string[],
+  ): Promise<{ lifecycle: VigilLifecycleState; snapshot: VigilSnapshot }[] | { error: string }> {
+    const scans: Array<{ lifecycle: VigilLifecycleState; snapshot: VigilSnapshot } | { error: string }> =
+      await Promise.all(
+        cohortIds.map(async (vigilId) => {
+          const lifecycle = this.getLifecycleState(vigilId);
+          if (!lifecycle) {
+            return { error: `Watched vigil record no longer resolves: ${vigilId}` };
+          }
+          const snapshot = lifecycle.completionRecord
+            ? await this.buildCompletedSnapshot(lifecycle)
+            : await this.buildActiveSnapshot(lifecycle);
+          return { lifecycle, snapshot };
+        }),
+      );
+
+    const failure = scans.find((scan): scan is { error: string } => "error" in scan);
+    if (failure) {
+      return failure;
+    }
+    return scans as { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot }[];
+  }
+
+  private settledWaitResult(
+    startedAt: number,
+    scheduler: WaitScheduler,
+    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot }[],
+  ): VigilWaitResult {
+    return {
+      outcome: "settled",
+      waitedMs: this.waitedMs(startedAt, scheduler),
+      settled: scan.filter(({ snapshot }) => snapshot.state !== "running").map(({ snapshot }) => snapshot),
+    };
+  }
+
+  private timeoutWaitResult(
+    startedAt: number,
+    scheduler: WaitScheduler,
+    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot }[],
+  ): VigilWaitResult {
+    return {
+      outcome: "timeout",
+      waitedMs: this.waitedMs(startedAt, scheduler),
+      pending: this.waitPendingItems(scan),
+    };
+  }
+
+  private cancelledWaitResult(
+    startedAt: number,
+    scheduler: WaitScheduler,
+    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot }[],
+  ): VigilWaitResult {
+    return {
+      outcome: "cancelled",
+      waitedMs: this.waitedMs(startedAt, scheduler),
+      pending: this.waitPendingItems(scan),
+    };
+  }
+
+  private waitPendingItems(
+    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot }[],
+  ): VigilListItem[] {
+    return scan.map(({ snapshot }) => ({
+      id: snapshot.id,
+      sessionId: snapshot.sessionId,
+      name: snapshot.name,
+      cwd: snapshot.cwd,
+      state: snapshot.state,
+      ...(snapshot.completedAt ? { completedAt: snapshot.completedAt } : {}),
+    }));
+  }
+
+  private waitedMs(startedAt: number, scheduler: WaitScheduler): number {
+    return Math.max(0, scheduler.now() - startedAt);
   }
 
   private getLifecycleState(vigilId: string): VigilLifecycleState | null {
@@ -319,6 +461,54 @@ export class VigilService {
       completedAt: completion.completedAt,
     };
   }
+}
+
+export function resolveWaitPolicy(input: WaitInput): VigilWaitPolicy | { error: string } {
+  const timeoutMs = input.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS;
+  const initialDelayMs = input.initialDelayMs ?? DEFAULT_WAIT_INITIAL_DELAY_MS;
+  const maxDelayMs = input.maxDelayMs ?? DEFAULT_WAIT_MAX_DELAY_MS;
+
+  for (const [name, value, maximum] of [
+    ["timeoutMs", timeoutMs, MAX_WAIT_TIMEOUT_MS],
+    ["initialDelayMs", initialDelayMs, MAX_WAIT_DELAY_MS],
+    ["maxDelayMs", maxDelayMs, MAX_WAIT_DELAY_MS],
+  ] as const) {
+    if (!Number.isSafeInteger(value) || value <= 0 || value > maximum) {
+      return { error: `${name} must be a positive safe integer no greater than ${maximum}` };
+    }
+  }
+  if (maxDelayMs < initialDelayMs) {
+    return { error: "maxDelayMs must be greater than or equal to initialDelayMs" };
+  }
+
+  return { timeoutMs, initialDelayMs, maxDelayMs };
+}
+
+export function createNodeWaitScheduler(): WaitScheduler {
+  return {
+    now: () => Date.now(),
+    sleep(ms, signal) {
+      if (signal?.aborted) {
+        return Promise.resolve("cancelled");
+      }
+
+      return new Promise((resolve) => {
+        let done = false;
+        const finish = (result: "elapsed" | "cancelled") => {
+          if (done) {
+            return;
+          }
+          done = true;
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", onAbort);
+          resolve(result);
+        };
+        const onAbort = () => finish("cancelled");
+        const timer = setTimeout(() => finish("elapsed"), ms);
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
+    },
+  };
 }
 
 export function buildPiChildArgs(input: SpawnChildInput): string[] {
@@ -539,6 +729,7 @@ export function createVigilServiceForContext(options: {
   childSessionReader?: ChildSessionReader;
   childSessionNamer?: ChildSessionNamer;
   reapTimeoutMs?: number;
+  waitScheduler?: WaitScheduler;
 }): VigilService {
   return new VigilService({
     processRunner: options.processRunner ?? createNodeProcessRunner(),
@@ -547,5 +738,6 @@ export function createVigilServiceForContext(options: {
     parentLedger: createSessionParentLedger(options.sessionManager, options.appendEntry),
     sessionDir: options.sessionDir,
     reapTimeoutMs: options.reapTimeoutMs,
+    waitScheduler: options.waitScheduler,
   });
 }
