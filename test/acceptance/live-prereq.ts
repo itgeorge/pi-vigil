@@ -25,7 +25,7 @@ export async function verifyPiAuthentication(model = getVigilTestModel()): Promi
   const { formatPiCommandFailure, runPiJsonPrintCommand } = await import("./pi-json-print.js");
 
   const result = await runPiJsonPrintCommand({
-    args: ["--mode", "json", "-p", "--no-tools", "--model", model, "Reply with exactly: VIGIL_AUTH_OK"],
+    args: ["--mode", "json", "-p", "--no-session", "--no-tools", "--model", model, "Reply with exactly: VIGIL_AUTH_OK"],
     timeoutMs: getPreflightTimeoutMs(),
     successMarker: "VIGIL_AUTH_OK",
   });

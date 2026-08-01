@@ -223,4 +223,4 @@ vigil({ action: "poll", id })
 - `@earendil-works/pi-ai` is a peer dependency (also in devDependencies for local tests).
 - **Poll / Pi lifecycle:** Pi print-mode children may remain alive after `agent_settled`. `poll` transitions to `waiting` when the child session's latest assistant turn is complete (`stopReason !== pending`) or the PID has exited.
 - **Custom session dirs:** when a launch record includes `sessionDir`, child lookup uses `SessionManager.listAll(sessionDir)` so macOS `/private` cwd prefixes do not hide sessions from `SessionManager.list(cwd, sessionDir)`.
-- **Preflight / acceptance:** live tests use JSON print stdout (`agent_settled` + marker) rather than `spawnSync` waiting for Pi process exit.
+- **Preflight / acceptance:** live tests use JSON print stdout (`agent_settled` + marker) with `--no-session` preflight rather than `spawnSync` waiting for Pi process exit.
