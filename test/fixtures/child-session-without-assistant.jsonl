@@ -1,0 +1,2 @@
+{"type":"session","version":3,"id":"vigil-fixture-session-002","timestamp":"2026-08-01T12:00:00.000Z","cwd":"/tmp/vigil-fixture-cwd"}
+{"type":"message","id":"user-002","parentId":null,"timestamp":"2026-08-01T12:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"Do something"}],"timestamp":1722513601000}}

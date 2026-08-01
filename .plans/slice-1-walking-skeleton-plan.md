@@ -50,18 +50,18 @@ vigil({ action: "poll", id })
 
 ## Todos
 
-- [ ] Add a package manifest for `pi-vigil`:
+- [x] Add a package manifest for `pi-vigil`:
   - package is ESM;
   - `pi.extensions` points to `./src/index.ts`;
   - Node engine is compatible with the installed Pi requirement (currently Node >=22.19);
   - runtime dependencies contain only packages required at extension execution;
   - Pi packages are declared as peer/dev dependencies as appropriate for type checking and tests.
-- [ ] Add TypeScript and Vitest configuration plus scripts:
+- [x] Add TypeScript and Vitest configuration plus scripts:
   - `npm test` runs deterministic tests only;
   - `npm run test:unit` is an explicit deterministic equivalent;
   - `npm run test:acceptance` runs live acceptance tests only;
   - acceptance tests are not included in the default test command.
-- [ ] Add a minimal source/test layout:
+- [x] Add a minimal source/test layout:
 
   ```text
   src/index.ts                 # Thin Pi extension adapter
@@ -75,9 +75,9 @@ vigil({ action: "poll", id })
   ```
 
   File/module names may evolve if a clearer small design emerges; update this plan if they do.
-- [ ] Add a test helper that captures the registered `vigil` tool from the extension and provides a fake parent context/API. It should allow tests to invoke the registered tool’s `execute` function without an LLM.
-- [ ] Add JSONL fixtures representing: a valid child session header, a user message, and an assistant message containing text. Fixtures should resemble current Pi v3 session entries.
-- [ ] Verify the empty package baseline: install dependencies, run `npm test`, and run type checking if configured.
+- [x] Add a test helper that captures the registered `vigil` tool from the extension and provides a fake parent context/API. It should allow tests to invoke the registered tool’s `execute` function without an LLM.
+- [x] Add JSONL fixtures representing: a valid child session header, a user message, and an assistant message containing text. Fixtures should resemble current Pi v3 session entries.
+- [x] Verify the empty package baseline: install dependencies, run `npm test`, and run type checking if configured.
 
 ## Agent notes / assumptions
 
@@ -90,7 +90,7 @@ vigil({ action: "poll", id })
 
 ## Todos
 
-- [ ] Write failing tests for the domain result shape before implementing it:
+- [x] Write failing tests for the domain result shape before implementing it:
 
   ```ts
   type VigilState = "running" | "waiting";
@@ -105,23 +105,23 @@ vigil({ action: "poll", id })
   ```
 
   Additional fields are allowed only when useful and stable; callers must always receive the fields above.
-- [ ] Define small ports rather than coupling service logic to Node globals:
+- [x] Define small ports rather than coupling service logic to Node globals:
   - start a detached child Pi turn and return a PID;
   - determine whether a PID is alive;
   - find/read a child session by exact session ID, cwd, and optional session directory;
   - append parent ledger data.
-- [ ] Write failing outcome-based tests for `launch` using a fake runtime:
+- [x] Write failing outcome-based tests for `launch` using a fake runtime:
   - returns a `running` snapshot with a unique `vigil-` ID;
   - uses parent cwd when no override is supplied;
   - uses explicit `cwd` when supplied;
   - preserves the requested model as launch metadata;
   - makes one durable parent `vigil-launch` record whose data can reconstruct the child identity, PID, cwd, and optional model.
-- [ ] Write failing outcome-based tests for `poll`:
+- [x] Write failing outcome-based tests for `poll`:
   - alive child returns `running` and the latest persisted assistant text, if any;
   - exited child returns `waiting` and the most recent complete assistant text;
   - a child session with no assistant message returns `latestResponse: null` without throwing.
-- [ ] Implement only enough pure/core code to make these tests pass.
-- [ ] Add exactly one focused boundary test for command construction. Assert only the externally required child invocation semantics:
+- [x] Implement only enough pure/core code to make these tests pass.
+- [x] Add exactly one focused boundary test for command construction. Assert only the externally required child invocation semantics:
   - noninteractive JSON mode and print mode are selected;
   - exact `--session-id` is included;
   - optional `--model` is included when requested;
@@ -138,22 +138,22 @@ vigil({ action: "poll", id })
 
 ## Todos
 
-- [ ] Implement a Node process runner that starts a detached Pi child without waiting for completion:
+- [x] Implement a Node process runner that starts a detached Pi child without waiting for completion:
   - invoke the installed `pi` executable (or the current Pi executable when that is the safer equivalent);
   - use `--mode json -p --session-id <id>`;
   - pass optional `--model <model>` and the message;
   - use the selected cwd;
   - avoid retaining stdout/stderr or attempting live progress in this slice;
   - call `unref()` so the parent tool returns immediately.
-- [ ] Implement a child-session reader using public Pi session APIs where possible. It must locate a child by exact session ID and read the latest assistant text from its persisted session entries.
-- [ ] Implement the extension in `src/index.ts`:
+- [x] Implement a child-session reader using public Pi session APIs where possible. It must locate a child by exact session ID and read the latest assistant text from its persisted session entries.
+- [x] Implement the extension in `src/index.ts`:
   - register a `vigil` tool with a typed action enum (`launch`, `poll`);
   - use a schema compatible with Pi providers (use `StringEnum` for string enum parameters where required);
   - call `pi.appendEntry("vigil-launch", …)` on successful launch;
   - return a concise, machine-readable snapshot in tool text and the structured snapshot in `details`;
   - do not add custom TUI rendering in Slice 1.
-- [ ] Add adapter-level tests that invoke the registered tool through the test helper and assert tool results and captured persisted entry data, not internal service calls.
-- [ ] Verify all deterministic tests pass.
+- [x] Add adapter-level tests that invoke the registered tool through the test helper and assert tool results and captured persisted entry data, not internal service calls.
+- [x] Verify all deterministic tests pass.
 
 ## Agent notes / assumptions
 
@@ -167,26 +167,26 @@ vigil({ action: "poll", id })
 
 ## Todos
 
-- [ ] Add a live-test prerequisite helper:
+- [x] Add a live-test prerequisite helper:
   - `PI_VIGIL_LIVE` must equal `1`; otherwise `npm run test:acceptance` fails with instructions;
   - model defaults to `openai-codex/gpt-5.5`, overridable through `PI_VIGIL_TEST_MODEL`;
   - verify usable Pi authentication with a real, tiny Pi request rather than provider-specific credential-file inspection;
   - authentication/preflight failure must fail with an actionable message, never skip.
-- [ ] Write one end-to-end acceptance test through the registered tool adapter and real process runner:
+- [x] Write one end-to-end acceptance test through the registered tool adapter and real process runner:
   1. make a unique temporary cwd and isolated test session directory;
   2. call `vigil.launch` with a request to reply exactly with a unique marker such as `VIGIL_READY_<random>`;
   3. assert the launch result is `running` and has a `vigil-` ID;
   4. repeatedly call `vigil.poll` until `waiting` or a bounded timeout;
   5. assert the final snapshot contains the exact marker;
   6. assert the child session is persisted and contains the expected complete assistant response.
-- [ ] Ensure test cleanup removes temporary cwd/session storage even after failures.
-- [ ] Document the live test command and required variables in `README.md`.
-- [ ] Run deterministic tests and, if this machine is authenticated and opt-in is supplied, run the acceptance command. Record whether it was run and its result in this plan.
+- [x] Ensure test cleanup removes temporary cwd/session storage even after failures.
+- [x] Document the live test command and required variables in `README.md`.
+- [x] Run deterministic tests and, if this machine is authenticated and opt-in is supplied, run the acceptance command. Record whether it was run and its result in this plan.
 
 ## Agent notes / assumptions
 
 - The live test should validate outcomes, not whether `spawn()` was called.
-- The test may use a test-only isolated session directory; production behavior continues to use Pi’s default session store.
+- The live test may use a test-only isolated session directory; production behavior continues to use Pi’s default session store.
 - Keep timeout/poll interval configurable through test-only environment variables with conservative defaults.
 
 ---
@@ -195,11 +195,11 @@ vigil({ action: "poll", id })
 
 ## Todos
 
-- [ ] Confirm all default tests are deterministic and credential-free.
-- [ ] Confirm `npm run test:acceptance` fails fast and helpfully without opt-in/auth, rather than being skipped.
-- [ ] Confirm no Slice 2+ APIs (`send`, `list`, `search`, `complete`) were added beyond any private abstractions strictly needed by Slice 1.
-- [ ] Update this plan’s checkboxes, notes, and deviations; commit plan changes with code/test changes.
-- [ ] Provide the reviewer with: commit SHA, test commands/results, whether acceptance was run, changed public API, and any deviations from this plan.
+- [x] Confirm all default tests are deterministic and credential-free.
+- [x] Confirm `npm run test:acceptance` fails fast and helpfully without opt-in/auth, rather than being skipped.
+- [x] Confirm no Slice 2+ APIs (`send`, `list`, `search`, `complete`) were added beyond any private abstractions strictly needed by Slice 1.
+- [x] Update this plan’s checkboxes, notes, and deviations; commit plan changes with code/test changes.
+- [x] Provide the reviewer with: commit SHA, test commands/results, whether acceptance was run, changed public API, and any deviations from this plan.
 
 ## Future slices (not implementation work for this handoff)
 
@@ -210,3 +210,12 @@ vigil({ action: "poll", id })
 ## Progress notes
 
 - 2026-08-01: Plan created. No implementation has started.
+- 2026-08-02: Slice 1 implemented. Deterministic tests: 17/17 passing (`npm test`, `npm run typecheck`). Acceptance: attempted with `PI_VIGIL_LIVE=1`; preflight failed (`spawnSync pi ETIMEDOUT` after 120s) — fails helpfully, not skipped. Without opt-in, `npm run test:acceptance` fails in setup with PI_VIGIL_LIVE instructions.
+
+## Deviations / implementation notes
+
+- `VigilService` lives in `src/vigil/node-runtime.ts` alongside Node adapters (no separate `service.ts`) to keep the walking skeleton small.
+- Child session reading uses exported `parseSessionEntries` plus `SessionManager.list` rather than non-exported `loadEntriesFromFile` / `getDefaultSessionDir` helpers from `@earendil-works/pi-coding-agent@0.83.0`.
+- Test-only runtime injection uses `setVigilRuntimeOverrides()` rather than mocking internal module calls.
+- Launch `id` and Pi `--session-id` share the same generated `vigil-<uuid>` value; `VigilSnapshot.sessionId` mirrors `id`.
+- Test-only isolated child storage is enabled via `PI_VIGIL_SESSION_DIR` (passed as `--session-dir`); production omits it and uses Pi defaults.
