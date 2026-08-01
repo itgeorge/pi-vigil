@@ -197,6 +197,8 @@ vigil({ action: "send", id, message, model? })
 - 2026-08-02: Slice 2 implemented. Added `send`, `vigil-turn` parent entries, current-turn-aware session parsing, and bounded process reaping on `send`.
 - 2026-08-02: Added `deriveVigilState()` so a newly spawned turn stays `running` until the child session catches up with the parent turn timestamp, preventing premature `waiting` after `send`.
 - 2026-08-02: Deterministic tests: `npm test` => 43 passed. Typecheck clean. Live acceptance with auth: `PI_VIGIL_LIVE=1 npm run test:acceptance` => 1 passed (~9s test body).
+- 2026-08-02: Follow-up fix: capture `turnStartedAt` immediately before each spawn attempt and persist that value in `vigil-launch` / `vigil-turn` records so fast child completions during spawn cannot leave a settled alive child stuck in `running`. Added a focused poll regression test simulating in-flight session completion (confirmed red under post-spawn timestamps, green after fix).
+- 2026-08-02: Live acceptance reaping assertion is now conditional on `wasAliveBeforeSend` so Pi builds that exit immediately after settling remain valid. Deterministic reaping tests continue to cover the definitely-alive path.
 
 ## Deviations
 

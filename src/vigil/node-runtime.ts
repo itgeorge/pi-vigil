@@ -40,6 +40,7 @@ export class VigilService {
     const id = this.deps.createId?.() ?? createVigilId();
     const sessionId = id;
     const cwd = input.cwd ?? input.parentCwd;
+    const turnStartedAt = new Date().toISOString();
 
     let pid: number;
     try {
@@ -62,7 +63,7 @@ export class VigilService {
       cwd,
       model: input.model,
       sessionDir: this.deps.sessionDir,
-      launchedAt: new Date().toISOString(),
+      launchedAt: turnStartedAt,
     };
 
     this.deps.parentLedger.appendLaunch(record);
@@ -113,6 +114,7 @@ export class VigilService {
     }
 
     let pid: number;
+    const turnStartedAt = new Date().toISOString();
     try {
       ({ pid } = await this.deps.processRunner.spawnDetached({
         sessionId: record.sessionId,
@@ -133,7 +135,7 @@ export class VigilService {
       cwd: record.cwd,
       model: input.model,
       sessionDir: record.sessionDir ?? this.deps.sessionDir,
-      sentAt: new Date().toISOString(),
+      sentAt: turnStartedAt,
     };
 
     this.deps.parentLedger.appendTurn(turnRecord);

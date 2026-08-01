@@ -288,6 +288,65 @@ describe("VigilService.poll", () => {
     expect(polled.latestResponse).toBeNull();
   });
 
+  it("returns waiting when the child completes during spawn before the parent would have recorded turn start", async () => {
+    const launches: VigilLaunchRecord[] = [];
+    let latestResponse: string | null = null;
+    let turnComplete = false;
+    let lastConversationTimestamp: string | null = null;
+    let alive = true;
+
+    const processRunner: ProcessRunner = {
+      async spawnDetached() {
+        lastConversationTimestamp = new Date().toISOString();
+        latestResponse = "Fast answer.";
+        turnComplete = true;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return { pid: 8801 };
+      },
+      isAlive: () => alive,
+      terminateAndWait: async () => {
+        alive = false;
+      },
+    };
+
+    const childSessionReader: ChildSessionReader = {
+      async readChildSessionState() {
+        return { latestResponse, turnComplete, lastConversationTimestamp };
+      },
+    };
+
+    const parentLedger: ParentLedger = {
+      appendLaunch(record) {
+        launches.push(record);
+      },
+      appendTurn() {},
+      findLatestTurn(vigilId) {
+        return launches.find((launch) => launch.id === vigilId) ?? null;
+      },
+    };
+
+    const service = new VigilService({
+      processRunner,
+      childSessionReader,
+      parentLedger,
+      createId: () => "vigil-fast-turn",
+    });
+
+    const launched = await service.launch({
+      message: "complete quickly",
+      parentCwd: "/parent/default",
+    });
+    expectSnapshot(launched);
+
+    const polled = await service.poll(launched.id);
+    expectSnapshot(polled);
+    expect(polled.state).toBe("waiting");
+    expect(polled.latestResponse).toBe("Fast answer.");
+    expect(launches[0]?.launchedAt).toBeTruthy();
+    expect(lastConversationTimestamp).toBeTruthy();
+    expect(launches[0]!.launchedAt <= lastConversationTimestamp!).toBe(true);
+  });
+
   it("returns a clear error for an unknown vigil id", async () => {
     const { service } = createFakeDeps();
 
