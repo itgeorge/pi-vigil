@@ -315,7 +315,10 @@ describe("vigil extension adapter", () => {
       waitedMs: 500,
       settled: [expect.objectContaining({ id: launched.id, latestResponse: "Waited response." })],
     });
-    expect(result.content[0]).toEqual({ type: "text", text: expect.stringContaining("outcome: settled") });
+    const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+    expect(text).toContain("outcome: settled");
+    expect(text).toContain(`id: ${launched.id}`);
+    expect(text).toContain("latestResponse: Waited response.");
     expect(sleeps).toEqual([500]);
   });
 
@@ -361,6 +364,11 @@ describe("vigil extension adapter", () => {
       waitedMs: 100,
       pending: [expect.objectContaining({ id: launched.id, state: "running" })],
     });
+    const cancelledText = cancelled.content[0]?.type === "text" ? cancelled.content[0].text : "";
+    expect(cancelledText).toContain("outcome: cancelled");
+    expect(cancelledText).toContain(`id: ${launched.id}`);
+    expect(cancelledText).toContain("name: Wait outcomes");
+    expect(cancelledText).toContain("state: running");
 
     time = 0;
     const timeout = await harness.execute({
@@ -375,6 +383,11 @@ describe("vigil extension adapter", () => {
       waitedMs: 50,
       pending: [expect.objectContaining({ id: launched.id, state: "running" })],
     });
+    const timeoutText = timeout.content[0]?.type === "text" ? timeout.content[0].text : "";
+    expect(timeoutText).toContain("outcome: timeout");
+    expect(timeoutText).toContain(`id: ${launched.id}`);
+    expect(timeoutText).toContain("name: Wait outcomes");
+    expect(timeoutText).toContain("state: running");
   });
 
   it("returns concise errors for invalid wait timing", async () => {

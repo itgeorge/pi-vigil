@@ -129,13 +129,33 @@ export function formatSnapshotText(snapshot: VigilSnapshot): string {
   return lines.join("\n");
 }
 
+function formatWaitPendingItemText(item: VigilListItem): string {
+  const parts = [`id: ${item.id}`, `name: ${item.name}`, `state: ${item.state}`];
+  if (item.completedAt) {
+    parts.push(`completedAt: ${item.completedAt}`);
+  }
+  return parts.join(", ");
+}
+
 export function formatWaitText(result: VigilWaitResult): string {
   if (result.outcome === "empty") {
     return "outcome: empty\nwaitedMs: 0";
   }
 
-  const items = result.outcome === "settled" ? result.settled : result.pending;
-  return [`outcome: ${result.outcome}`, `waitedMs: ${result.waitedMs}`, `count: ${items.length}`].join("\n");
+  const header = [`outcome: ${result.outcome}`, `waitedMs: ${result.waitedMs}`];
+  if (result.outcome === "settled") {
+    header.push(`count: ${result.settled.length}`);
+    if (result.settled.length === 0) {
+      return header.join("\n");
+    }
+    return [...header, "", ...result.settled.map(formatSnapshotText)].join("\n");
+  }
+
+  header.push(`count: ${result.pending.length}`);
+  if (result.pending.length === 0) {
+    return header.join("\n");
+  }
+  return [...header, "", ...result.pending.map(formatWaitPendingItemText)].join("\n");
 }
 
 export function formatListText(result: VigilListResult): string {

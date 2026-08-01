@@ -133,7 +133,7 @@ The exact DTO spelling can evolve, but `outcome`, elapsed time, and settled/pend
 ## Agent notes / assumptions
 
 - Do not add a dependency merely for scheduling or retries.
-- Do not expose timing implementation details in normal successful tool text beyond `waitedMs` and outcome.
+- Tool `content` for `wait` must be self-sufficient when a parent only receives text: settled outcomes include full snapshot text per child; timeout/cancellation include concise pending id/name/state (and `completedAt` when present). Structured `details` remain unchanged.
 
 ---
 
@@ -241,6 +241,7 @@ The exact DTO spelling can evolve, but `outcome`, elapsed time, and settled/pend
 ## Test notes
 
 - `npm test`: 77 deterministic credential-free tests passed.
+- Follow-up: `formatWaitText()` now embeds settled snapshot text and concise pending identity in tool `content` so parent models that only see text can identify which child settled and read its latest response.
 - `npm run typecheck`: passed.
 - `npm run test:acceptance` without `PI_VIGIL_LIVE=1`: failed fast with the expected opt-in instructions.
 - `PI_VIGIL_LIVE=1 npm run test:acceptance`: 1/1 passed (~11 s total); the real child was observed through `wait` before and after `send`.
