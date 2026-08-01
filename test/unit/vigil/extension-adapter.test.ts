@@ -21,6 +21,7 @@ describe("vigil extension adapter", () => {
       processRunner: {
         spawnDetached: async () => ({ pid: 5150 }),
         isAlive: () => true,
+        terminateAndWait: async () => undefined,
       },
     });
 
@@ -83,6 +84,7 @@ describe("vigil extension adapter", () => {
     const fakeRunner: ProcessRunner = {
       spawnDetached: async () => ({ pid: 0 }),
       isAlive: () => false,
+      terminateAndWait: async () => undefined,
     };
 
     setVigilRuntimeOverrides({
@@ -105,12 +107,100 @@ describe("vigil extension adapter", () => {
     });
   });
 
+  it("send returns a running snapshot and appends a vigil-turn parent entry", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+    const launchPid = 8181;
+    const sendPid = 8282;
+    let spawnCount = 0;
+    let terminatedPid: number | undefined;
+
+    setVigilRuntimeOverrides({
+      processRunner: {
+        spawnDetached: async (input) => {
+          spawnCount += 1;
+          if (spawnCount === 1) {
+            return { pid: launchPid };
+          }
+          expect(input.sessionId).toMatch(/^vigil-/);
+          expect(input.message).toBe("Continue the work");
+          expect(input.cwd).toBe("/child/worktree");
+          expect(input.model).toBe("openai-codex/gpt-5.5:high");
+          return { pid: sendPid };
+        },
+        isAlive: (pid) => pid === launchPid,
+        terminateAndWait: async (pid) => {
+          terminatedPid = pid;
+        },
+      },
+      childSessionReader: {
+        readChildSessionState: async () => ({
+          latestResponse: "First answer.",
+          turnComplete: true,
+          lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+        }),
+      },
+    });
+
+    const launchResult = await harness.execute({
+      action: "launch",
+      message: "Start work",
+      cwd: "/child/worktree",
+      model: "openai-codex/gpt-5.5",
+    });
+
+    const launched = launchResult.details as VigilSnapshot;
+
+    const sendResult = await harness.execute({
+      action: "send",
+      id: launched.id,
+      message: "Continue the work",
+      model: "openai-codex/gpt-5.5:high",
+    });
+
+    expect((sendResult as { isError?: boolean }).isError).toBeFalsy();
+    expect(sendResult.details).toEqual({
+      id: launched.id,
+      sessionId: launched.sessionId,
+      cwd: "/child/worktree",
+      state: "running",
+      latestResponse: "First answer.",
+    });
+    expect(terminatedPid).toBe(launchPid);
+
+    const turnEntry = harness.capturedEntries.find((entry) => entry.customType === "vigil-turn");
+    expect(turnEntry?.data).toEqual(
+      expect.objectContaining({
+        id: launched.id,
+        sessionId: launched.sessionId,
+        pid: sendPid,
+        cwd: "/child/worktree",
+        model: "openai-codex/gpt-5.5:high",
+      }),
+    );
+  });
+
   it("poll returns an error for an unknown vigil id", async () => {
     const harness = await createVigilTestHarness({ cwd: "/parent/project" });
 
     const result = await harness.execute({
       action: "poll",
       id: "vigil-missing",
+    });
+
+    expect((result as { isError?: boolean }).isError).toBe(true);
+    expect(result.content[0]).toEqual({
+      type: "text",
+      text: "Unknown vigil id: vigil-missing",
+    });
+  });
+
+  it("send returns an error for an unknown vigil id", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+
+    const result = await harness.execute({
+      action: "send",
+      id: "vigil-missing",
+      message: "Continue",
     });
 
     expect((result as { isError?: boolean }).isError).toBe(true);

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -12,6 +12,15 @@ import {
   requireLiveAcceptanceEnv,
   verifyPiAuthentication,
 } from "./live-prereq";
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 describe("live vigil acceptance", () => {
   let tempCwd = "";
@@ -46,16 +55,18 @@ describe("live vigil acceptance", () => {
     }
   });
 
-  it("launches a real child session and polls until waiting with the expected marker", async () => {
+  it("launches a child, sends a follow-up turn, and polls until both markers appear", async () => {
     const { createVigilTestHarness } = await import("../helpers/vigil-test-harness");
 
-    const marker = `VIGIL_READY_${crypto.randomUUID()}`;
+    const firstMarker = `VIGIL_READY_${crypto.randomUUID()}`;
+    const secondMarker = `VIGIL_FOLLOW_${crypto.randomUUID()}`;
     const harness = await createVigilTestHarness({ cwd: tempCwd });
+    const testModel = getVigilTestModel();
 
     const launchResult = await harness.execute({
       action: "launch",
-      message: `Reply with exactly: ${marker}`,
-      model: getVigilTestModel(),
+      message: `Reply with exactly: ${firstMarker}`,
+      model: testModel,
       cwd: tempCwd,
     });
 
@@ -69,9 +80,55 @@ describe("live vigil acceptance", () => {
     launchedChildPids.push(launchRecord.pid);
 
     const deadline = Date.now() + getAcceptanceTimeoutMs();
-    let finalSnapshot: VigilSnapshot | undefined;
+    let firstWaiting: VigilSnapshot | undefined;
 
     while (Date.now() < deadline) {
+      const pollResult = await harness.execute({
+        action: "poll",
+        id: launched.id,
+      });
+
+      expect((pollResult as { isError?: boolean }).isError).toBeFalsy();
+      firstWaiting = pollResult.details as VigilSnapshot;
+
+      if (firstWaiting.state === "waiting") {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, getAcceptancePollIntervalMs()));
+    }
+
+    expect(firstWaiting?.state).toBe("waiting");
+    expect(firstWaiting?.latestResponse).toContain(firstMarker);
+
+    const launchPid = launchRecord.pid;
+    expect(isProcessAlive(launchPid)).toBe(true);
+
+    const sendResult = await harness.execute({
+      action: "send",
+      id: launched.id,
+      message: `Include both ${firstMarker} and ${secondMarker} in your reply.`,
+      model: testModel,
+    });
+
+    expect((sendResult as { isError?: boolean }).isError).toBeFalsy();
+    const sent = sendResult.details as VigilSnapshot;
+    expect(sent.state).toBe("running");
+    expect(sent.id).toBe(launched.id);
+    expect(sent.sessionId).toBe(launched.sessionId);
+    expect(isProcessAlive(launchPid)).toBe(false);
+
+    const turnRecord = harness.capturedEntries.find((entry) => entry.customType === "vigil-turn")?.data as
+      | VigilLaunchRecord
+      | undefined;
+    expect(turnRecord?.pid).toBeTruthy();
+    if (turnRecord?.pid) {
+      launchedChildPids.push(turnRecord.pid);
+    }
+
+    let finalSnapshot: VigilSnapshot | undefined;
+    const secondDeadline = Date.now() + getAcceptanceTimeoutMs();
+    while (Date.now() < secondDeadline) {
       const pollResult = await harness.execute({
         action: "poll",
         id: launched.id,
@@ -88,12 +145,19 @@ describe("live vigil acceptance", () => {
     }
 
     expect(finalSnapshot?.state).toBe("waiting");
-    expect(finalSnapshot?.latestResponse).toContain(marker);
+    expect(finalSnapshot?.latestResponse).toContain(firstMarker);
+    expect(finalSnapshot?.latestResponse).toContain(secondMarker);
 
     const childSessionPath = await findChildSessionPath(launched.sessionId, tempCwd, sessionDir);
     expect(childSessionPath).toBeTruthy();
     expect(childSessionPath!.startsWith(sessionDir)).toBe(true);
+
+    const childSessionText = readFileSync(childSessionPath!, "utf8");
+    expect(childSessionText).toContain(firstMarker);
+    expect(childSessionText).toContain(secondMarker);
+
     const persistedText = readLatestAssistantTextFromFile(childSessionPath!);
-    expect(persistedText).toContain(marker);
-  }, getAcceptanceTimeoutMs() + 30_000);
+    expect(persistedText).toContain(firstMarker);
+    expect(persistedText).toContain(secondMarker);
+  }, getAcceptanceTimeoutMs() + 60_000);
 });

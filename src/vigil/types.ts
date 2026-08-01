@@ -18,9 +18,28 @@ export interface VigilLaunchRecord {
   launchedAt: string;
 }
 
+export interface VigilTurnRecord {
+  id: string;
+  sessionId: string;
+  pid: number;
+  cwd: string;
+  model?: string;
+  sessionDir?: string;
+  sentAt: string;
+}
+
+export type VigilRuntimeRecord = VigilLaunchRecord | VigilTurnRecord;
+
 export interface LaunchInput {
   message: string;
   cwd?: string;
+  model?: string;
+  parentCwd: string;
+}
+
+export interface SendInput {
+  vigilId: string;
+  message: string;
   model?: string;
   parentCwd: string;
 }

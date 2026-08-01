@@ -1,4 +1,4 @@
-import type { VigilLaunchRecord } from "./types";
+import type { VigilLaunchRecord, VigilRuntimeRecord, VigilTurnRecord } from "./types";
 
 export interface SpawnChildInput {
   sessionId: string;
@@ -8,14 +8,20 @@ export interface SpawnChildInput {
   sessionDir?: string;
 }
 
+export interface TerminateAndWaitOptions {
+  timeoutMs?: number;
+}
+
 export interface ProcessRunner {
   spawnDetached(input: SpawnChildInput): Promise<{ pid: number }>;
   isAlive(pid: number): boolean;
+  terminateAndWait(pid: number, options?: TerminateAndWaitOptions): Promise<void>;
 }
 
 export interface ChildSessionState {
   latestResponse: string | null;
   turnComplete: boolean;
+  lastConversationTimestamp: string | null;
 }
 
 export interface ChildSessionReader {
@@ -28,7 +34,8 @@ export interface ChildSessionReader {
 
 export interface ParentLedger {
   appendLaunch(record: VigilLaunchRecord): void;
-  findLaunch(vigilId: string): VigilLaunchRecord | null;
+  appendTurn(record: VigilTurnRecord): void;
+  findLatestTurn(vigilId: string): VigilRuntimeRecord | null;
 }
 
 export interface VigilServiceDeps {
@@ -37,4 +44,5 @@ export interface VigilServiceDeps {
   parentLedger: ParentLedger;
   createId?: () => string;
   sessionDir?: string;
+  reapTimeoutMs?: number;
 }

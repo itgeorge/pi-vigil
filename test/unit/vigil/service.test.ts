@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ChildSessionReader, ParentLedger, ProcessRunner } from "../../../src/vigil/ports";
+import type { ChildSessionReader, ParentLedger, ProcessRunner, SpawnChildInput } from "../../../src/vigil/ports";
 import { VigilService } from "../../../src/vigil/node-runtime";
-import { isVigilError, type VigilLaunchRecord, type VigilSnapshot } from "../../../src/vigil/types";
+import {
+  isVigilError,
+  type VigilLaunchRecord,
+  type VigilSnapshot,
+  type VigilTurnRecord,
+} from "../../../src/vigil/types";
 
 function createFakeDeps(options?: {
   pid?: number;
@@ -11,28 +16,45 @@ function createFakeDeps(options?: {
   createId?: () => string;
   sessionDir?: string;
   spawnError?: Error;
+  terminateError?: Error;
+  initialRecord?: VigilLaunchRecord;
 }) {
   const launches: VigilLaunchRecord[] = [];
+  const turns: VigilTurnRecord[] = [];
+  const spawnInputs: SpawnChildInput[] = [];
+  const terminatedPids: number[] = [];
   let nextPid = options?.pid ?? 4242;
   let alive = options?.alive ?? true;
+  let lastConversationTimestamp = "2099-01-01T00:00:00.000Z";
   const latestResponse = options?.latestResponse ?? null;
   const turnComplete = options?.turnComplete ?? false;
 
   const processRunner: ProcessRunner = {
-    async spawnDetached(_input) {
+    async spawnDetached(input) {
+      spawnInputs.push(input);
       if (options?.spawnError) {
         throw options.spawnError;
       }
-      return { pid: nextPid };
+      const pid = nextPid;
+      nextPid += 1;
+      alive = true;
+      return { pid };
     },
     isAlive() {
       return alive;
+    },
+    async terminateAndWait(pid) {
+      if (options?.terminateError) {
+        throw options.terminateError;
+      }
+      terminatedPids.push(pid);
+      alive = false;
     },
   };
 
   const childSessionReader: ChildSessionReader = {
     async readChildSessionState() {
-      return { latestResponse, turnComplete };
+      return { latestResponse, turnComplete, lastConversationTimestamp };
     },
   };
 
@@ -40,8 +62,16 @@ function createFakeDeps(options?: {
     appendLaunch(record) {
       launches.push(record);
     },
-    findLaunch(vigilId) {
-      return launches.find((launch) => launch.id === vigilId) ?? null;
+    appendTurn(record) {
+      turns.push(record);
+    },
+    findLatestTurn(vigilId) {
+      for (let index = turns.length - 1; index >= 0; index -= 1) {
+        if (turns[index]?.id === vigilId) {
+          return turns[index] ?? null;
+        }
+      }
+      return launches.find((launch) => launch.id === vigilId) ?? options?.initialRecord ?? null;
     },
   };
 
@@ -56,8 +86,14 @@ function createFakeDeps(options?: {
   return {
     service,
     launches,
+    turns,
+    spawnInputs,
+    terminatedPids,
     setAlive(value: boolean) {
       alive = value;
+    },
+    setLastConversationTimestamp(value: string) {
+      lastConversationTimestamp = value;
     },
   };
 }
@@ -260,5 +296,267 @@ describe("VigilService.poll", () => {
     if (isVigilError(result)) {
       expect(result.error).toContain("Unknown vigil id");
     }
+  });
+
+  it("stays running when a prior assistant response is complete but a newer user message started the next turn", async () => {
+    const { service } = createFakeDeps({
+      createId: () => "vigil-new-turn-running",
+      alive: true,
+      latestResponse: "First answer.",
+      turnComplete: false,
+    });
+
+    const launched = await service.launch({
+      message: "first turn",
+      parentCwd: "/parent/default",
+    });
+
+    const polled = await service.poll((launched as VigilSnapshot).id);
+    expectSnapshot(polled);
+    expect(polled.state).toBe("running");
+    expect(polled.latestResponse).toBe("First answer.");
+  });
+});
+
+describe("VigilService.send", () => {
+  it("returns a running snapshot with the same id, sessionId, and cwd for a waiting child", async () => {
+    const { service } = createFakeDeps({
+      createId: () => "vigil-send-resume",
+      pid: 7000,
+      alive: true,
+      latestResponse: "First answer.",
+      turnComplete: true,
+      sessionDir: "/tmp/vigil-sessions",
+    });
+
+    const launched = await service.launch({
+      message: "first turn",
+      parentCwd: "/parent/default",
+      cwd: "/child/work",
+    });
+    expectSnapshot(launched);
+
+    const sent = await service.send({
+      vigilId: launched.id,
+      message: "second turn",
+      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5:high",
+    });
+
+    expectSnapshot(sent);
+    expect(sent.id).toBe(launched.id);
+    expect(sent.sessionId).toBe(launched.sessionId);
+    expect(sent.cwd).toBe("/child/work");
+    expect(sent.state).toBe("running");
+    expect(sent.latestResponse).toBe("First answer.");
+  });
+
+  it("appends a vigil-turn parent entry with the new pid and supplied model", async () => {
+    const { service, turns, terminatedPids } = createFakeDeps({
+      createId: () => "vigil-send-turn-record",
+      pid: 7100,
+      alive: true,
+      latestResponse: "Done.",
+      turnComplete: true,
+      sessionDir: "/tmp/vigil-sessions",
+    });
+
+    const launched = await service.launch({
+      message: "first turn",
+      parentCwd: "/parent/default",
+      cwd: "/child/work",
+    });
+    expectSnapshot(launched);
+    const launchPid = 7100;
+
+    const sent = await service.send({
+      vigilId: launched.id,
+      message: "second turn",
+      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5:high",
+    });
+    expectSnapshot(sent);
+
+    expect(terminatedPids).toEqual([launchPid]);
+    expect(turns).toHaveLength(1);
+    expect(turns[0]).toEqual({
+      id: launched.id,
+      sessionId: launched.sessionId,
+      pid: expect.any(Number),
+      cwd: "/child/work",
+      model: "openai-codex/gpt-5.5:high",
+      sessionDir: "/tmp/vigil-sessions",
+      sentAt: expect.any(String),
+    });
+    expect(turns[0]?.pid).not.toBe(launchPid);
+  });
+
+  it("rejects send while the current turn is still running", async () => {
+    const { service, turns } = createFakeDeps({
+      createId: () => "vigil-send-running",
+      alive: true,
+      latestResponse: "Working...",
+      turnComplete: false,
+    });
+
+    const launched = await service.launch({
+      message: "first turn",
+      parentCwd: "/parent/default",
+    });
+    expectSnapshot(launched);
+
+    const result = await service.send({
+      vigilId: launched.id,
+      message: "too early",
+      parentCwd: "/parent/default",
+    });
+
+    expect(isVigilError(result)).toBe(true);
+    if (isVigilError(result)) {
+      expect(result.error).toContain("running");
+    }
+    expect(turns).toHaveLength(0);
+  });
+
+  it("returns clear errors for unknown ids and missing arguments", async () => {
+    const { service } = createFakeDeps({ createId: () => "vigil-send-errors" });
+
+    const unknown = await service.send({
+      vigilId: "vigil-missing",
+      message: "hello",
+      parentCwd: "/parent/default",
+    });
+    expect(isVigilError(unknown)).toBe(true);
+    if (isVigilError(unknown)) {
+      expect(unknown.error).toContain("Unknown vigil id");
+    }
+
+    const launched = await service.launch({
+      message: "first turn",
+      parentCwd: "/parent/default",
+    });
+    expectSnapshot(launched);
+
+    const missingMessage = await service.send({
+      vigilId: launched.id,
+      message: "",
+      parentCwd: "/parent/default",
+    });
+    expect(isVigilError(missingMessage)).toBe(true);
+    if (isVigilError(missingMessage)) {
+      expect(missingMessage.error).toContain("message");
+    }
+  });
+
+  it("omits model from the turn record and spawn input when not supplied", async () => {
+    const { service, turns, spawnInputs } = createFakeDeps({
+      createId: () => "vigil-send-no-model",
+      pid: 7200,
+      alive: true,
+      latestResponse: "Done.",
+      turnComplete: true,
+    });
+
+    const launched = await service.launch({
+      message: "first turn",
+      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5",
+    });
+    expectSnapshot(launched);
+
+    const sent = await service.send({
+      vigilId: launched.id,
+      message: "second turn",
+      parentCwd: "/parent/default",
+    });
+    expectSnapshot(sent);
+
+    expect(turns[0]?.model).toBeUndefined();
+    expect(spawnInputs.at(-1)?.model).toBeUndefined();
+  });
+
+  it("continues without termination failure when the tracked child has already exited", async () => {
+    const { service, turns, terminatedPids, setAlive } = createFakeDeps({
+      createId: () => "vigil-send-exited",
+      pid: 7300,
+      alive: true,
+      latestResponse: "Done.",
+      turnComplete: true,
+    });
+
+    const launched = await service.launch({
+      message: "first turn",
+      parentCwd: "/parent/default",
+    });
+    expectSnapshot(launched);
+    setAlive(false);
+
+    const sent = await service.send({
+      vigilId: launched.id,
+      message: "second turn",
+      parentCwd: "/parent/default",
+    });
+
+    expectSnapshot(sent);
+    expect(terminatedPids).toHaveLength(0);
+    expect(turns).toHaveLength(1);
+  });
+
+  it("returns an error and does not append a turn when the settled child cannot be reaped", async () => {
+    const { service, turns } = createFakeDeps({
+      createId: () => "vigil-send-unreapable",
+      pid: 7400,
+      alive: true,
+      latestResponse: "Done.",
+      turnComplete: true,
+      terminateError: new Error("Process 7401 did not exit within 5000ms"),
+    });
+
+    const launched = await service.launch({
+      message: "first turn",
+      parentCwd: "/parent/default",
+    });
+    expectSnapshot(launched);
+
+    const result = await service.send({
+      vigilId: launched.id,
+      message: "second turn",
+      parentCwd: "/parent/default",
+    });
+
+    expect(isVigilError(result)).toBe(true);
+    if (isVigilError(result)) {
+      expect(result.error).toContain("reap");
+    }
+    expect(turns).toHaveLength(0);
+  });
+
+  it("uses the latest vigil-turn record when polling after send", async () => {
+    const { service, setLastConversationTimestamp } = createFakeDeps({
+      createId: () => "vigil-send-poll-latest",
+      pid: 7500,
+      alive: true,
+      latestResponse: "Done.",
+      turnComplete: true,
+    });
+
+    const launched = await service.launch({
+      message: "first turn",
+      parentCwd: "/parent/default",
+    });
+    expectSnapshot(launched);
+
+    const sent = await service.send({
+      vigilId: launched.id,
+      message: "second turn",
+      parentCwd: "/parent/default",
+    });
+    expectSnapshot(sent);
+
+    setLastConversationTimestamp("2026-08-01T12:00:02.000Z");
+
+    const polled = await service.poll(launched.id);
+    expectSnapshot(polled);
+    expect(polled.state).toBe("running");
   });
 });

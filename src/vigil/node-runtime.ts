@@ -12,10 +12,22 @@ import type {
   ParentLedger,
   ProcessRunner,
   SpawnChildInput,
+  TerminateAndWaitOptions,
   VigilServiceDeps,
 } from "./ports";
-import { extractLatestAssistantState } from "./session-text";
-import { createVigilId, type LaunchInput, type VigilLaunchRecord, type VigilResult } from "./types";
+import { extractLatestAssistantState, deriveVigilState, getTurnStartedAt } from "./session-text";
+import {
+  createVigilId,
+  type LaunchInput,
+  type SendInput,
+  type VigilLaunchRecord,
+  type VigilResult,
+  type VigilRuntimeRecord,
+  type VigilTurnRecord,
+} from "./types";
+
+const DEFAULT_REAP_TIMEOUT_MS = 5000;
+const REAP_POLL_INTERVAL_MS = 50;
 
 export class VigilService {
   private readonly deps: VigilServiceDeps;
@@ -65,19 +77,91 @@ export class VigilService {
   }
 
   async poll(vigilId: string): Promise<VigilResult> {
-    const record = this.deps.parentLedger.findLaunch(vigilId);
+    const record = this.deps.parentLedger.findLatestTurn(vigilId);
     if (!record) {
       return { error: `Unknown vigil id: ${vigilId}` };
     }
 
-    const { latestResponse, turnComplete } = await this.deps.childSessionReader.readChildSessionState({
+    return this.buildSnapshot(record);
+  }
+
+  async send(input: SendInput): Promise<VigilResult> {
+    if (!input.message.trim()) {
+      return { error: "send requires message" };
+    }
+
+    const record = this.deps.parentLedger.findLatestTurn(input.vigilId);
+    if (!record) {
+      return { error: `Unknown vigil id: ${input.vigilId}` };
+    }
+
+    const snapshot = await this.buildSnapshot(record);
+
+    if (snapshot.state === "running") {
+      return { error: `Vigil child is still running: ${input.vigilId}` };
+    }
+
+    if (this.deps.processRunner.isAlive(record.pid)) {
+      try {
+        await this.deps.processRunner.terminateAndWait(record.pid, {
+          timeoutMs: this.deps.reapTimeoutMs ?? DEFAULT_REAP_TIMEOUT_MS,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { error: `Failed to reap settled Pi child before send: ${message}` };
+      }
+    }
+
+    let pid: number;
+    try {
+      ({ pid } = await this.deps.processRunner.spawnDetached({
+        sessionId: record.sessionId,
+        message: input.message,
+        cwd: record.cwd,
+        model: input.model,
+        sessionDir: record.sessionDir ?? this.deps.sessionDir,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { error: `Failed to launch Pi child: ${message}` };
+    }
+
+    const turnRecord: VigilTurnRecord = {
+      id: record.id,
+      sessionId: record.sessionId,
+      pid,
+      cwd: record.cwd,
+      model: input.model,
+      sessionDir: record.sessionDir ?? this.deps.sessionDir,
+      sentAt: new Date().toISOString(),
+    };
+
+    this.deps.parentLedger.appendTurn(turnRecord);
+
+    return {
+      id: record.id,
       sessionId: record.sessionId,
       cwd: record.cwd,
-      sessionDir: record.sessionDir,
-    });
+      state: "running",
+      latestResponse: snapshot.latestResponse,
+    };
+  }
+
+  private async buildSnapshot(record: VigilRuntimeRecord) {
+    const { latestResponse, turnComplete, lastConversationTimestamp } =
+      await this.deps.childSessionReader.readChildSessionState({
+        sessionId: record.sessionId,
+        cwd: record.cwd,
+        sessionDir: record.sessionDir,
+      });
 
     const alive = this.deps.processRunner.isAlive(record.pid);
-    const state = !alive || turnComplete ? "waiting" : "running";
+    const state = deriveVigilState({
+      alive,
+      turnComplete,
+      lastConversationTimestamp,
+      turnStartedAt: getTurnStartedAt(record),
+    });
 
     return {
       id: record.id,
@@ -85,7 +169,7 @@ export class VigilService {
       cwd: record.cwd,
       state,
       latestResponse,
-    };
+    } as const;
   }
 }
 
@@ -139,20 +223,54 @@ export function attachDetachedChildErrorHandler(child: ChildProcess): void {
   });
 }
 
+export async function terminateTrackedProcess(
+  isAlive: (pid: number) => boolean,
+  pid: number,
+  options?: TerminateAndWaitOptions,
+): Promise<void> {
+  if (!isAlive(pid)) {
+    return;
+  }
+
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_REAP_TIMEOUT_MS;
+
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isAlive(pid)) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, REAP_POLL_INTERVAL_MS));
+  }
+
+  throw new Error(`Process ${pid} did not exit within ${timeoutMs}ms`);
+}
+
 export function createNodeProcessRunner(options?: { piExecutable?: string }): ProcessRunner {
   const piExecutable = options?.piExecutable ?? "pi";
+
+  const isAlive = (pid: number): boolean => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   return {
     spawnDetached(input) {
       return spawnDetachedPiChild(piExecutable, input);
     },
-    isAlive(pid) {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
+    isAlive,
+    terminateAndWait(pid, terminateOptions) {
+      return terminateTrackedProcess(isAlive, pid, terminateOptions);
     },
   };
 }
@@ -185,31 +303,43 @@ export function createNodeChildSessionReader(): ChildSessionReader {
     async readChildSessionState({ sessionId, cwd, sessionDir }) {
       const sessionPath = await findChildSessionPath(sessionId, cwd, sessionDir);
       if (!sessionPath) {
-        return { latestResponse: null, turnComplete: false };
+        return { latestResponse: null, turnComplete: false, lastConversationTimestamp: null };
       }
       return readChildSessionStateFromFile(sessionPath);
     },
   };
 }
 
-export function findLaunchInSessionManager(
+export function findLatestTurnInSessionManager(
   sessionManager: Pick<SessionManagerType, "getEntries">,
   vigilId: string,
-): VigilLaunchRecord | null {
+): VigilRuntimeRecord | null {
   const entries = sessionManager.getEntries();
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
-    if (entry.type !== "custom" || entry.customType !== "vigil-launch") {
+    if (entry?.type !== "custom") {
       continue;
     }
 
-    const data = entry.data as VigilLaunchRecord | undefined;
+    if (entry.customType !== "vigil-launch" && entry.customType !== "vigil-turn") {
+      continue;
+    }
+
+    const data = entry.data as VigilRuntimeRecord | undefined;
     if (data?.id === vigilId) {
       return data;
     }
   }
 
   return null;
+}
+
+export function findLaunchInSessionManager(
+  sessionManager: Pick<SessionManagerType, "getEntries">,
+  vigilId: string,
+): VigilRuntimeRecord | null {
+  const record = findLatestTurnInSessionManager(sessionManager, vigilId);
+  return record ?? null;
 }
 
 export function createSessionParentLedger(
@@ -220,8 +350,11 @@ export function createSessionParentLedger(
     appendLaunch(record) {
       appendEntry("vigil-launch", record);
     },
-    findLaunch(vigilId) {
-      return findLaunchInSessionManager(sessionManager, vigilId);
+    appendTurn(record) {
+      appendEntry("vigil-turn", record);
+    },
+    findLatestTurn(vigilId) {
+      return findLatestTurnInSessionManager(sessionManager, vigilId);
     },
   };
 }
@@ -233,11 +366,13 @@ export function createVigilServiceForContext(options: {
   sessionDir?: string;
   processRunner?: ProcessRunner;
   childSessionReader?: ChildSessionReader;
+  reapTimeoutMs?: number;
 }): VigilService {
   return new VigilService({
     processRunner: options.processRunner ?? createNodeProcessRunner(),
     childSessionReader: options.childSessionReader ?? createNodeChildSessionReader(),
     parentLedger: createSessionParentLedger(options.sessionManager, options.appendEntry),
     sessionDir: options.sessionDir,
+    reapTimeoutMs: options.reapTimeoutMs,
   });
 }

@@ -34,6 +34,7 @@ describe("vigil session directory configuration", () => {
           return { pid: 9090 };
         },
         isAlive: () => true,
+        terminateAndWait: async () => undefined,
       },
     });
 

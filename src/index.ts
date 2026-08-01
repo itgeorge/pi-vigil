@@ -30,14 +30,14 @@ export const vigilTool = defineTool({
   name: "vigil",
   label: "Vigil",
   description:
-    "Launch and poll detached Pi child sessions. Use action launch to start a child turn and poll to read running/waiting status plus the latest complete assistant response.",
+    "Launch, poll, and continue detached Pi child sessions. Use launch to start a child turn, poll to read running/waiting status plus the latest complete assistant response, and send to resume the same child session with a new prompt.",
   parameters: Type.Object({
-    action: StringEnum(["launch", "poll"], {
-      description: "launch starts a detached child session; poll reads its latest status",
+    action: StringEnum(["launch", "poll", "send"], {
+      description: "launch starts a detached child session; poll reads status; send continues a waiting child",
     }),
     message: Type.Optional(
       Type.String({
-        description: "Prompt for the child session (required for launch)",
+        description: "Prompt for the child session (required for launch and send)",
       }),
     ),
     model: Type.Optional(
@@ -52,7 +52,7 @@ export const vigilTool = defineTool({
     ),
     id: Type.Optional(
       Type.String({
-        description: "Vigil id returned by launch (required for poll)",
+        description: "Vigil id returned by launch (required for poll and send)",
       }),
     ),
   }),
@@ -73,6 +73,41 @@ export const vigilTool = defineTool({
         message: params.message,
         model: params.model,
         cwd: params.cwd,
+        parentCwd: ctx.cwd,
+      });
+
+      if (isVigilError(result)) {
+        return {
+          content: [{ type: "text" as const, text: result.error }],
+          details: result,
+          isError: true,
+        };
+      }
+
+      return snapshotResult(result);
+    }
+
+    if (params.action === "send") {
+      if (!params.id) {
+        return {
+          content: [{ type: "text" as const, text: "send requires id" }],
+          details: { error: "send requires id" },
+          isError: true,
+        };
+      }
+
+      if (!params.message) {
+        return {
+          content: [{ type: "text" as const, text: "send requires message" }],
+          details: { error: "send requires message" },
+          isError: true,
+        };
+      }
+
+      const result = await service.send({
+        vigilId: params.id,
+        message: params.message,
+        model: params.model,
         parentCwd: ctx.cwd,
       });
 

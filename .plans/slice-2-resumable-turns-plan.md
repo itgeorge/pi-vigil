@@ -50,19 +50,19 @@ vigil({ action: "send", id, message, model? })
 
 ## Todos
 
-- [ ] Read the completed Slice 1 plan and current implementation before changing code; preserve its accepted semantics unless this plan explicitly refines them.
-- [ ] Add failing service/adapter tests for the `send` action:
+- [x] Read the completed Slice 1 plan and current implementation before changing code; preserve its accepted semantics unless this plan explicitly refines them.
+- [x] Add failing service/adapter tests for the `send` action:
   - a waiting child produces a new `running` snapshot with the same `id`, `sessionId`, and cwd;
   - the newly persisted parent entry has custom type `vigil-turn` and records the new tracked PID plus supplied model;
   - a `running` child returns a clear error and does not create another turn entry;
   - unknown ID and missing `id`/`message` return clear tool errors;
   - an omitted model remains omitted from the child invocation/turn record, allowing Pi to restore the child’s prior model.
-- [ ] Add failing tests for current-turn detection using JSONL fixtures or direct session entries:
+- [x] Add failing tests for current-turn detection using JSONL fixtures or direct session entries:
   - previous terminal assistant response followed by a newer user message => `latestResponse` retains the prior text but `turnComplete === false`;
   - assistant `toolUse` followed by a tool-result message => incomplete;
   - final assistant with each terminal stop reason => complete;
   - no assistant response => `latestResponse: null`, incomplete.
-- [ ] Add a regression test demonstrating the Slice 1 failure mode: a child whose old assistant response is complete but whose newest turn starts with a user message must remain `running` while its PID is alive.
+- [x] Add a regression test demonstrating the Slice 1 failure mode: a child whose old assistant response is complete but whose newest turn starts with a user message must remain `running` while its PID is alive.
 
 ## Agent notes / assumptions
 
@@ -75,14 +75,14 @@ vigil({ action: "send", id, message, model? })
 
 ## Todos
 
-- [ ] Refine the child-session state extraction so it derives two independent facts:
+- [x] Refine the child-session state extraction so it derives two independent facts:
   1. `latestResponse`: last assistant text found in the conversation;
   2. `turnComplete`: whether the **latest relevant conversation message** represents a terminal assistant result.
-- [ ] Ensure the implementation handles Pi tool-use sequences correctly:
+- [x] Ensure the implementation handles Pi tool-use sequences correctly:
   - terminal assistant messages are complete only for `stop`, `length`, `error`, or `aborted`;
   - an assistant `toolUse`, a tool result, or a user message as the newest message is incomplete.
-- [ ] Update `poll` tests and README/plan wording to describe the refined completion semantics. Do not change the public `VigilSnapshot` shape.
-- [ ] Run deterministic tests after this focused refactor before adding continuation behavior.
+- [x] Update `poll` tests and README/plan wording to describe the refined completion semantics. Do not change the public `VigilSnapshot` shape.
+- [x] Run deterministic tests after this focused refactor before adding continuation behavior.
 
 ## Agent notes / assumptions
 
@@ -95,18 +95,18 @@ vigil({ action: "send", id, message, model? })
 
 ## Todos
 
-- [ ] Add a typed `VigilTurnRecord` and parent-ledger support for:
+- [x] Add a typed `VigilTurnRecord` and parent-ledger support for:
   - appending `vigil-turn` entries;
   - resolving the latest tracked turn for a Vigil ID by considering its launch record plus subsequent turn records.
-- [ ] Keep launch as the first turn; resolve the current runtime record from the most recent `vigil-launch`/`vigil-turn` entry for that ID.
-- [ ] Extend the process-runner port with a bounded terminate-and-wait operation for a tracked PID.
-- [ ] Implement Node process reaping:
+- [x] Keep launch as the first turn; resolve the current runtime record from the most recent `vigil-launch`/`vigil-turn` entry for that ID.
+- [x] Extend the process-runner port with a bounded terminate-and-wait operation for a tracked PID.
+- [x] Implement Node process reaping:
   - send `SIGTERM` only to the tracked Pi PID when it is still alive;
   - wait for exit with a short, configurable internal bound;
   - return a clear error if it cannot be reaped in time;
   - treat an already-exited PID as successfully reaped;
   - preserve the existing spawn-error hardening.
-- [ ] Add outcome-based tests for handoff:
+- [x] Add outcome-based tests for handoff:
   - a settled-but-still-alive child is no longer alive before the next turn is started;
   - a child that has already exited can continue without termination failure;
   - an unreapable child returns an error and no new `vigil-turn` entry is appended;
@@ -124,13 +124,13 @@ vigil({ action: "send", id, message, model? })
 
 ## Todos
 
-- [ ] Add `send` to the `vigil` action schema using `StringEnum` compatibility.
-- [ ] Validate adapter arguments:
+- [x] Add `send` to the `vigil` action schema using `StringEnum` compatibility.
+- [x] Validate adapter arguments:
   - `launch` requires `message`;
   - `poll` requires `id`;
   - `send` requires both `id` and `message`;
   - validation errors use the existing concise tool-error pattern.
-- [ ] Implement service `send`:
+- [x] Implement service `send`:
   1. resolve the latest persisted turn record for the supplied Vigil ID;
   2. derive current state from child session + tracked PID;
   3. reject if currently `running`;
@@ -138,9 +138,9 @@ vigil({ action: "send", id, message, model? })
   5. start a detached child Pi turn with the same session ID/cwd/session directory and optional requested model;
   6. append `vigil-turn` only after successful spawn;
   7. return the new `running` snapshot.
-- [ ] Update the narrow CLI-boundary test to cover `send`’s observable continuation contract: same session ID, same cwd/session directory, supplied model when present, and new message.
-- [ ] Update README public API and lifecycle documentation.
-- [ ] Run deterministic tests and typecheck.
+- [x] Update the narrow CLI-boundary test to cover `send`’s observable continuation contract: same session ID, same cwd/session directory, supplied model when present, and new message.
+- [x] Update README public API and lifecycle documentation.
+- [x] Run deterministic tests and typecheck.
 
 ## Agent notes / assumptions
 
@@ -153,7 +153,7 @@ vigil({ action: "send", id, message, model? })
 
 ## Todos
 
-- [ ] Extend the existing opt-in acceptance test rather than adding a separate provider-dependent suite:
+- [x] Extend the existing opt-in acceptance test rather than adding a separate provider-dependent suite:
   1. launch a child asked to reply with a unique first marker;
   2. poll until `waiting`;
   3. call `send` using the same Vigil ID, an explicit test model, and a prompt requiring both the first marker and a unique follow-up marker in its response;
@@ -162,9 +162,9 @@ vigil({ action: "send", id, message, model? })
   6. assert the final response contains both markers;
   7. assert the persisted child session contains both turns;
   8. ensure temporary child processes/session files are cleaned up after the test.
-- [ ] Assert the original tracked child PID is no longer alive after the handoff when it was alive at send time; phrase this as an observable no-lingering-process outcome, not a spy/call assertion.
-- [ ] Keep `PI_VIGIL_LIVE=1`, authentication preflight, test model overrides, timeouts, and no-opt-in failure behavior intact.
-- [ ] Run and record:
+- [x] Assert the original tracked child PID is no longer alive after the handoff when it was alive at send time; phrase this as an observable no-lingering-process outcome, not a spy/call assertion.
+- [x] Keep `PI_VIGIL_LIVE=1`, authentication preflight, test model overrides, timeouts, and no-opt-in failure behavior intact.
+- [x] Run and record:
   - `npm test`;
   - `npm run typecheck`;
   - `PI_VIGIL_LIVE=1 npm run test:acceptance` when this system is authenticated.
@@ -180,11 +180,11 @@ vigil({ action: "send", id, message, model? })
 
 ## Todos
 
-- [ ] Confirm default tests remain deterministic and credential-free.
-- [ ] Confirm live acceptance fails helpfully without opt-in/auth and passes with the configured authenticated test model.
-- [ ] Confirm no Slice 3+ APIs (`list`, `search`, `complete`) or mutable external registry were added.
-- [ ] Update this plan’s checkboxes, deviations, and progress notes; commit the plan changes with implementation/tests.
-- [ ] Provide the reviewer with the commit SHA, test results, live acceptance status, public API change, lifecycle/reaping behavior, and deviations.
+- [x] Confirm default tests remain deterministic and credential-free.
+- [x] Confirm live acceptance fails helpfully without opt-in/auth and passes with the configured authenticated test model.
+- [x] Confirm no Slice 3+ APIs (`list`, `search`, `complete`) or mutable external registry were added.
+- [x] Update this plan’s checkboxes, deviations, and progress notes; commit the plan changes with implementation/tests.
+- [x] Provide the reviewer with the commit SHA, test results, live acceptance status, public API change, lifecycle/reaping behavior, and deviations.
 
 ## Future slices (not implementation work for this handoff)
 
@@ -194,3 +194,11 @@ vigil({ action: "send", id, message, model? })
 ## Progress notes
 
 - 2026-08-02: Plan created from accepted Slice 1 state, including the follow-up fixes and ephemeral auth preflight cleanup. No Slice 2 implementation has started.
+- 2026-08-02: Slice 2 implemented. Added `send`, `vigil-turn` parent entries, current-turn-aware session parsing, and bounded process reaping on `send`.
+- 2026-08-02: Added `deriveVigilState()` so a newly spawned turn stays `running` until the child session catches up with the parent turn timestamp, preventing premature `waiting` after `send`.
+- 2026-08-02: Deterministic tests: `npm test` => 43 passed. Typecheck clean. Live acceptance with auth: `PI_VIGIL_LIVE=1 npm run test:acceptance` => 1 passed (~9s test body).
+
+## Deviations
+
+- Poll state now compares the latest parent turn timestamp (`launchedAt` / `sentAt`) against the child session’s newest conversation timestamp. This keeps `send` eligible for settled alive children while avoiding a false `waiting` state immediately after spawning the next turn, before Pi appends the new user message.
+- Internal default reap timeout is 5000ms via `terminateTrackedProcess()`; configurable through `VigilServiceDeps.reapTimeoutMs`.
