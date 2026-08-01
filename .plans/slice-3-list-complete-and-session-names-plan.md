@@ -232,6 +232,7 @@ vigil({ action: "complete", id })
 
 - 2026-08-02: Plan created after accepted Slices 1–2. User confirmed that `complete` must retain child session JSONL, use Pi-native required launch names, prefix the child’s current name with `[completed]`, and expose completed items only through `list({ includeCompleted: true })`. No Slice 3 implementation has started.
 - 2026-08-02: Slice 3 implemented. Added lifecycle reconstruction (`src/vigil/lifecycle.ts`), required launch `name` with Pi `--name`, `list`/`complete` actions, `ChildSessionNamer` via `SessionManager.appendSessionInfo`, and parent `vigil-complete` tombstones. Unit tests: 63 passed; typecheck clean. Live acceptance extended but not executed in CI (requires `PI_VIGIL_LIVE=1` + authenticated Pi). `npm run test:acceptance` without opt-in fails fast with setup instructions as expected.
+- 2026-08-02: Lifecycle hardening follow-up. `reconstructVigilLifecycleFromEntries()` now treats the first valid launch as canonical (ignores duplicate launches), requires matching `sessionId`/`cwd` for later turns/completions, and freezes lifecycle state after the first valid completion so malformed duplicate records cannot reactivate completed IDs. Added focused reconstruction test; unit count 64.
 
 ## Deviations
 
@@ -239,7 +240,7 @@ vigil({ action: "complete", id })
 
 ## Test notes
 
-- `npm test`: 63/63 unit tests passed (credential-free).
+- `npm test`: 64/64 unit tests passed (credential-free).
 - `npm run typecheck`: passed.
 - `npm run test:acceptance` without `PI_VIGIL_LIVE=1`: fails immediately with opt-in instructions (expected).
-- `PI_VIGIL_LIVE=1 npm run test:acceptance`: not run in this environment (no authenticated Pi session available here).
+- `PI_VIGIL_LIVE=1 npm run test:acceptance`: 1/1 passed after lifecycle hardening follow-up.

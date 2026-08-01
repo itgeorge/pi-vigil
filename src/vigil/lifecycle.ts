@@ -61,6 +61,13 @@ function isValidCompletionRecord(data: unknown): data is VigilCompletionRecord {
   );
 }
 
+function matchesCanonicalIdentity(
+  existing: VigilLifecycleState,
+  data: { sessionId: string; cwd: string },
+): boolean {
+  return existing.sessionId === data.sessionId && existing.cwd === data.cwd;
+}
+
 export function reconstructVigilLifecycleFromEntries(
   entries: SessionEntry[],
 ): Map<string, VigilLifecycleState> {
@@ -74,6 +81,10 @@ export function reconstructVigilLifecycleFromEntries(
     if (entry.customType === "vigil-launch") {
       const data = entry.data;
       if (!isValidLaunchRecord(data)) {
+        continue;
+      }
+
+      if (byId.has(data.id)) {
         continue;
       }
 
@@ -100,6 +111,10 @@ export function reconstructVigilLifecycleFromEntries(
         continue;
       }
 
+      if (!matchesCanonicalIdentity(existing, data)) {
+        continue;
+      }
+
       existing.runtimeRecord = data;
       existing.lastUpdatedAt = data.sentAt;
       continue;
@@ -112,7 +127,11 @@ export function reconstructVigilLifecycleFromEntries(
       }
 
       const existing = byId.get(data.id);
-      if (!existing) {
+      if (!existing || existing.completionRecord) {
+        continue;
+      }
+
+      if (!matchesCanonicalIdentity(existing, data)) {
         continue;
       }
 

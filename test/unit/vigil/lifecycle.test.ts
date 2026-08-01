@@ -141,4 +141,85 @@ describe("vigil lifecycle reconstruction", () => {
       "vigil-active",
     ]);
   });
+
+  it("keeps the first valid completion immutable when later duplicate or mismatched records appear", () => {
+    const sessionManager = SessionManager.inMemory("/parent/project");
+    const originalLaunch: VigilLaunchRecord = {
+      id: "vigil-done",
+      sessionId: "vigil-done",
+      name: "Done",
+      pid: 101,
+      cwd: "/parent/project",
+      launchedAt: "2026-08-01T09:00:00.000Z",
+    };
+    const originalTurn: VigilTurnRecord = {
+      id: "vigil-done",
+      sessionId: "vigil-done",
+      pid: 202,
+      cwd: "/parent/project",
+      sentAt: "2026-08-01T10:30:00.000Z",
+    };
+    const originalCompletion: VigilCompletionRecord = {
+      id: "vigil-done",
+      sessionId: "vigil-done",
+      name: "[completed] Done",
+      cwd: "/parent/project",
+      completedAt: "2026-08-01T11:00:00.000Z",
+    };
+
+    appendLaunch(sessionManager, originalLaunch);
+    appendTurn(sessionManager, originalTurn);
+    appendComplete(sessionManager, originalCompletion);
+
+    appendLaunch(sessionManager, {
+      id: "vigil-done",
+      sessionId: "vigil-done-relaunch",
+      name: "Reactivated",
+      pid: 999,
+      cwd: "/other/project",
+      launchedAt: "2026-08-02T12:00:00.000Z",
+    });
+    appendTurn(sessionManager, {
+      id: "vigil-done",
+      sessionId: "vigil-done",
+      pid: 303,
+      cwd: "/parent/project",
+      sentAt: "2026-08-02T12:30:00.000Z",
+    });
+    appendTurn(sessionManager, {
+      id: "vigil-done",
+      sessionId: "vigil-other-session",
+      pid: 404,
+      cwd: "/other/project",
+      sentAt: "2026-08-02T13:00:00.000Z",
+    });
+    appendComplete(sessionManager, {
+      id: "vigil-done",
+      sessionId: "vigil-done",
+      name: "[completed] Overwritten",
+      cwd: "/parent/project",
+      completedAt: "2026-08-02T14:00:00.000Z",
+    });
+    appendComplete(sessionManager, {
+      id: "vigil-done",
+      sessionId: "vigil-other-session",
+      name: "[completed] Wrong identity",
+      cwd: "/other/project",
+      completedAt: "2026-08-02T15:00:00.000Z",
+    });
+
+    const lifecycle = getLifecycleFromSessionManager(sessionManager, "vigil-done");
+    expect(lifecycle).toEqual({
+      id: "vigil-done",
+      sessionId: "vigil-done",
+      cwd: "/parent/project",
+      launchName: "Done",
+      runtimeRecord: originalTurn,
+      completionRecord: originalCompletion,
+      lastUpdatedAt: "2026-08-01T11:00:00.000Z",
+    });
+
+    expect(listLifecycleStatesFromSessionManager(sessionManager, false).map((state) => state.id)).toEqual([]);
+    expect(listLifecycleStatesFromSessionManager(sessionManager, true)).toEqual([lifecycle]);
+  });
 });
