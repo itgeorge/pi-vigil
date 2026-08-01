@@ -6,7 +6,14 @@ import {
   type SessionEntry,
   type SessionManager as SessionManagerType,
 } from "@earendil-works/pi-coding-agent";
+import {
+  lifecycleStateToListItem,
+  reconstructVigilLifecycleFromEntries,
+  sortLifecycleStatesMostRecentFirst,
+  type VigilLifecycleState,
+} from "./lifecycle";
 import type {
+  ChildSessionNamer,
   ChildSessionReader,
   ChildSessionState,
   ParentLedger,
@@ -18,11 +25,17 @@ import type {
 import { extractLatestAssistantState, deriveVigilState, getTurnStartedAt } from "./session-text";
 import {
   createVigilId,
+  normalizeVigilName,
+  type CompleteInput,
   type LaunchInput,
   type SendInput,
+  type VigilCompletionRecord,
   type VigilLaunchRecord,
+  type VigilListItem,
+  type VigilListOrError,
   type VigilResult,
   type VigilRuntimeRecord,
+  type VigilSnapshot,
   type VigilTurnRecord,
 } from "./types";
 
@@ -37,6 +50,15 @@ export class VigilService {
   }
 
   async launch(input: LaunchInput): Promise<VigilResult> {
+    const normalizedName = normalizeVigilName(input.name);
+    if (!normalizedName) {
+      return { error: "launch requires name" };
+    }
+
+    if (!input.message.trim()) {
+      return { error: "launch requires message" };
+    }
+
     const id = this.deps.createId?.() ?? createVigilId();
     const sessionId = id;
     const cwd = input.cwd ?? input.parentCwd;
@@ -50,6 +72,7 @@ export class VigilService {
         cwd,
         model: input.model,
         sessionDir: this.deps.sessionDir,
+        name: normalizedName,
       }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -59,6 +82,7 @@ export class VigilService {
     const record: VigilLaunchRecord = {
       id,
       sessionId,
+      name: normalizedName,
       pid,
       cwd,
       model: input.model,
@@ -71,6 +95,7 @@ export class VigilService {
     return {
       id,
       sessionId,
+      name: normalizedName,
       cwd,
       state: "running",
       latestResponse: null,
@@ -78,12 +103,16 @@ export class VigilService {
   }
 
   async poll(vigilId: string): Promise<VigilResult> {
-    const record = this.deps.parentLedger.findLatestTurn(vigilId);
-    if (!record) {
+    const lifecycle = this.getLifecycleState(vigilId);
+    if (!lifecycle) {
       return { error: `Unknown vigil id: ${vigilId}` };
     }
 
-    return this.buildSnapshot(record);
+    if (lifecycle.completionRecord) {
+      return this.buildCompletedSnapshot(lifecycle);
+    }
+
+    return this.buildActiveSnapshot(lifecycle);
   }
 
   async send(input: SendInput): Promise<VigilResult> {
@@ -91,12 +120,17 @@ export class VigilService {
       return { error: "send requires message" };
     }
 
-    const record = this.deps.parentLedger.findLatestTurn(input.vigilId);
-    if (!record) {
+    const lifecycle = this.getLifecycleState(input.vigilId);
+    if (!lifecycle) {
       return { error: `Unknown vigil id: ${input.vigilId}` };
     }
 
-    const snapshot = await this.buildSnapshot(record);
+    if (lifecycle.completionRecord) {
+      return { error: `Vigil child is completed: ${input.vigilId}` };
+    }
+
+    const record = lifecycle.runtimeRecord;
+    const snapshot = await this.buildActiveSnapshot(lifecycle);
 
     if (snapshot.state === "running") {
       return { error: `Vigil child is still running: ${input.vigilId}` };
@@ -143,13 +177,104 @@ export class VigilService {
     return {
       id: record.id,
       sessionId: record.sessionId,
+      name: lifecycle.launchName,
       cwd: record.cwd,
       state: "running",
       latestResponse: snapshot.latestResponse,
     };
   }
 
-  private async buildSnapshot(record: VigilRuntimeRecord) {
+  async list(includeCompleted = false): Promise<VigilListOrError> {
+    const items = await this.buildListItems(includeCompleted);
+    return { vigils: items };
+  }
+
+  async complete(input: CompleteInput): Promise<VigilResult> {
+    const lifecycle = this.getLifecycleState(input.vigilId);
+    if (!lifecycle) {
+      return { error: `Unknown vigil id: ${input.vigilId}` };
+    }
+
+    if (lifecycle.completionRecord) {
+      return this.buildCompletedSnapshot(lifecycle);
+    }
+
+    const record = lifecycle.runtimeRecord;
+    const activeSnapshot = await this.buildActiveSnapshot(lifecycle);
+
+    if (activeSnapshot.state === "running") {
+      return { error: `Vigil child is still running: ${input.vigilId}` };
+    }
+
+    if (this.deps.processRunner.isAlive(record.pid)) {
+      try {
+        await this.deps.processRunner.terminateAndWait(record.pid, {
+          timeoutMs: this.deps.reapTimeoutMs ?? DEFAULT_REAP_TIMEOUT_MS,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { error: `Failed to reap settled Pi child before complete: ${message}` };
+      }
+    }
+
+    const renameResult = await this.deps.childSessionNamer.markCompleted({
+      sessionId: record.sessionId,
+      cwd: record.cwd,
+      sessionDir: record.sessionDir ?? this.deps.sessionDir,
+    });
+
+    if ("error" in renameResult) {
+      return { error: renameResult.error };
+    }
+
+    const completedAt = new Date().toISOString();
+    const completionRecord: VigilCompletionRecord = {
+      id: record.id,
+      sessionId: record.sessionId,
+      name: renameResult.completedName,
+      cwd: record.cwd,
+      sessionDir: record.sessionDir ?? this.deps.sessionDir,
+      completedAt,
+    };
+
+    this.deps.parentLedger.appendComplete(completionRecord);
+
+    return {
+      id: record.id,
+      sessionId: record.sessionId,
+      name: renameResult.completedName,
+      cwd: record.cwd,
+      state: "completed",
+      latestResponse: activeSnapshot.latestResponse,
+      completedAt,
+    };
+  }
+
+  private getLifecycleState(vigilId: string): VigilLifecycleState | null {
+    return this.deps.parentLedger.getLifecycle(vigilId);
+  }
+
+  private async buildListItems(includeCompleted: boolean): Promise<VigilListItem[]> {
+    const states = this.deps.parentLedger.listLifecycleStates(includeCompleted);
+    const items: VigilListItem[] = [];
+
+    for (const lifecycle of states) {
+      if (lifecycle.completionRecord) {
+        items.push(lifecycleStateToListItem(lifecycle, "completed"));
+        continue;
+      }
+
+      const activeSnapshot = await this.buildActiveSnapshot(lifecycle);
+      items.push(
+        lifecycleStateToListItem(lifecycle, activeSnapshot.state === "running" ? "running" : "waiting"),
+      );
+    }
+
+    return items;
+  }
+
+  private async buildActiveSnapshot(lifecycle: VigilLifecycleState): Promise<VigilSnapshot> {
+    const record = lifecycle.runtimeRecord;
     const { latestResponse, turnComplete, lastConversationTimestamp } =
       await this.deps.childSessionReader.readChildSessionState({
         sessionId: record.sessionId,
@@ -168,15 +293,39 @@ export class VigilService {
     return {
       id: record.id,
       sessionId: record.sessionId,
+      name: lifecycle.launchName,
       cwd: record.cwd,
       state,
       latestResponse,
-    } as const;
+    };
+  }
+
+  private async buildCompletedSnapshot(lifecycle: VigilLifecycleState): Promise<VigilSnapshot> {
+    const completion = lifecycle.completionRecord!;
+    const record = lifecycle.runtimeRecord;
+    const { latestResponse } = await this.deps.childSessionReader.readChildSessionState({
+      sessionId: record.sessionId,
+      cwd: record.cwd,
+      sessionDir: record.sessionDir,
+    });
+
+    return {
+      id: record.id,
+      sessionId: record.sessionId,
+      name: completion.name,
+      cwd: record.cwd,
+      state: "completed",
+      latestResponse,
+      completedAt: completion.completedAt,
+    };
   }
 }
 
 export function buildPiChildArgs(input: SpawnChildInput): string[] {
   const args = ["--mode", "json", "-p", "--session-id", input.sessionId];
+  if (input.name) {
+    args.push("--name", input.name);
+  }
   if (input.model) {
     args.push("--model", input.model);
   }
@@ -312,36 +461,50 @@ export function createNodeChildSessionReader(): ChildSessionReader {
   };
 }
 
+export function createNodeChildSessionNamer(): ChildSessionNamer {
+  return {
+    async markCompleted({ sessionId, cwd, sessionDir }) {
+      const sessionPath = await findChildSessionPath(sessionId, cwd, sessionDir);
+      if (!sessionPath) {
+        return { error: `Child session not found: ${sessionId}` };
+      }
+
+      const sessionManager = SessionManager.open(sessionPath, sessionDir, cwd);
+      const currentName = sessionManager.getSessionName();
+      const completedName = currentName ? `[completed] ${currentName}` : "[completed]";
+      sessionManager.appendSessionInfo(completedName);
+      return { completedName };
+    },
+  };
+}
+
+export function getLifecycleFromSessionManager(
+  sessionManager: Pick<SessionManagerType, "getEntries">,
+  vigilId: string,
+): VigilLifecycleState | null {
+  const lifecycle = reconstructVigilLifecycleFromEntries(sessionManager.getEntries());
+  return lifecycle.get(vigilId) ?? null;
+}
+
+export function listLifecycleStatesFromSessionManager(
+  sessionManager: Pick<SessionManagerType, "getEntries">,
+  includeCompleted: boolean,
+): VigilLifecycleState[] {
+  const lifecycle = reconstructVigilLifecycleFromEntries(sessionManager.getEntries());
+  const sorted = sortLifecycleStatesMostRecentFirst(lifecycle.values());
+
+  if (includeCompleted) {
+    return sorted;
+  }
+
+  return sorted.filter((state) => !state.completionRecord);
+}
+
 export function findLatestTurnInSessionManager(
   sessionManager: Pick<SessionManagerType, "getEntries">,
   vigilId: string,
 ): VigilRuntimeRecord | null {
-  const entries = sessionManager.getEntries();
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index];
-    if (entry?.type !== "custom") {
-      continue;
-    }
-
-    if (entry.customType !== "vigil-launch" && entry.customType !== "vigil-turn") {
-      continue;
-    }
-
-    const data = entry.data as VigilRuntimeRecord | undefined;
-    if (data?.id === vigilId) {
-      return data;
-    }
-  }
-
-  return null;
-}
-
-export function findLaunchInSessionManager(
-  sessionManager: Pick<SessionManagerType, "getEntries">,
-  vigilId: string,
-): VigilRuntimeRecord | null {
-  const record = findLatestTurnInSessionManager(sessionManager, vigilId);
-  return record ?? null;
+  return getLifecycleFromSessionManager(sessionManager, vigilId)?.runtimeRecord ?? null;
 }
 
 export function createSessionParentLedger(
@@ -355,8 +518,14 @@ export function createSessionParentLedger(
     appendTurn(record) {
       appendEntry("vigil-turn", record);
     },
-    findLatestTurn(vigilId) {
-      return findLatestTurnInSessionManager(sessionManager, vigilId);
+    appendComplete(record) {
+      appendEntry("vigil-complete", record);
+    },
+    getLifecycle(vigilId) {
+      return getLifecycleFromSessionManager(sessionManager, vigilId);
+    },
+    listLifecycleStates(includeCompleted) {
+      return listLifecycleStatesFromSessionManager(sessionManager, includeCompleted);
     },
   };
 }
@@ -368,11 +537,13 @@ export function createVigilServiceForContext(options: {
   sessionDir?: string;
   processRunner?: ProcessRunner;
   childSessionReader?: ChildSessionReader;
+  childSessionNamer?: ChildSessionNamer;
   reapTimeoutMs?: number;
 }): VigilService {
   return new VigilService({
     processRunner: options.processRunner ?? createNodeProcessRunner(),
     childSessionReader: options.childSessionReader ?? createNodeChildSessionReader(),
+    childSessionNamer: options.childSessionNamer ?? createNodeChildSessionNamer(),
     parentLedger: createSessionParentLedger(options.sessionManager, options.appendEntry),
     sessionDir: options.sessionDir,
     reapTimeoutMs: options.reapTimeoutMs,

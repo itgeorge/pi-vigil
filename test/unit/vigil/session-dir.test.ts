@@ -40,6 +40,7 @@ describe("vigil session directory configuration", () => {
 
     const result = await harness.execute({
       action: "launch",
+      name: "Live acceptance child",
       message: "Inspect the repository",
     });
 

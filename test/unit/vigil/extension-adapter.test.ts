@@ -2,9 +2,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { resetVigilRuntimeOverrides, setVigilRuntimeOverrides } from "../../../src/vigil/runtime-overrides";
-import type { ChildSessionReader, ProcessRunner } from "../../../src/vigil/ports";
+import type { ChildSessionNamer, ChildSessionReader, ProcessRunner } from "../../../src/vigil/ports";
 import { readLatestAssistantTextFromFile, readChildSessionStateFromFile } from "../../../src/vigil/node-runtime";
-import type { VigilLaunchRecord, VigilSnapshot } from "../../../src/vigil/types";
+import type { VigilLaunchRecord, VigilListResult, VigilSnapshot } from "../../../src/vigil/types";
 import { createVigilTestHarness } from "../../helpers/vigil-test-harness";
 
 const fixturesDir = path.dirname(fileURLToPath(import.meta.url));
@@ -27,6 +27,7 @@ describe("vigil extension adapter", () => {
 
     const result = await harness.execute({
       action: "launch",
+      name: "Summarize repo",
       message: "Summarize the repo",
       model: "openai-codex/gpt-5.5",
       cwd: "/child/worktree",
@@ -36,6 +37,7 @@ describe("vigil extension adapter", () => {
     const snapshot = result.details as VigilSnapshot;
     expect(snapshot.id).toMatch(/^vigil-/);
     expect(snapshot.sessionId).toBe(snapshot.id);
+    expect(snapshot.name).toBe("Summarize repo");
     expect(snapshot.state).toBe("running");
     expect(snapshot.cwd).toBe("/child/worktree");
     expect(snapshot.latestResponse).toBeNull();
@@ -50,6 +52,7 @@ describe("vigil extension adapter", () => {
       data: expect.objectContaining({
         id: snapshot.id,
         sessionId: snapshot.id,
+        name: "Summarize repo",
         pid: 5150,
         cwd: "/child/worktree",
         model: "openai-codex/gpt-5.5",
@@ -70,6 +73,7 @@ describe("vigil extension adapter", () => {
     const record: VigilLaunchRecord = {
       id: "vigil-adapter-poll",
       sessionId: "vigil-adapter-poll",
+      name: "Adapter poll",
       pid: 6060,
       cwd: "/parent/project",
       launchedAt: "2026-08-01T12:00:00.000Z",
@@ -101,6 +105,7 @@ describe("vigil extension adapter", () => {
     expect(result.details).toEqual({
       id: record.id,
       sessionId: record.sessionId,
+      name: "Adapter poll",
       cwd: record.cwd,
       state: "waiting",
       latestResponse: "Hello from the child session.",
@@ -122,6 +127,7 @@ describe("vigil extension adapter", () => {
             return { pid: launchPid };
           }
           expect(input.sessionId).toMatch(/^vigil-/);
+          expect(input.name).toBeUndefined();
           expect(input.message).toBe("Continue the work");
           expect(input.cwd).toBe("/child/worktree");
           expect(input.model).toBe("openai-codex/gpt-5.5:high");
@@ -143,6 +149,7 @@ describe("vigil extension adapter", () => {
 
     const launchResult = await harness.execute({
       action: "launch",
+      name: "Continue work",
       message: "Start work",
       cwd: "/child/worktree",
       model: "openai-codex/gpt-5.5",
@@ -161,6 +168,7 @@ describe("vigil extension adapter", () => {
     expect(sendResult.details).toEqual({
       id: launched.id,
       sessionId: launched.sessionId,
+      name: "Continue work",
       cwd: "/child/worktree",
       state: "running",
       latestResponse: "First answer.",
@@ -177,6 +185,95 @@ describe("vigil extension adapter", () => {
         model: "openai-codex/gpt-5.5:high",
       }),
     );
+  });
+
+  it("list returns concise active items without latestResponse", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+
+    setVigilRuntimeOverrides({
+      processRunner: {
+        spawnDetached: async () => ({ pid: 9000 }),
+        isAlive: () => false,
+        terminateAndWait: async () => undefined,
+      },
+      childSessionReader: {
+        readChildSessionState: async () => ({
+          latestResponse: "Large response body",
+          turnComplete: true,
+          lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+        }),
+      },
+    });
+
+    const launchResult = await harness.execute({
+      action: "launch",
+      name: "Listed task",
+      message: "Do work",
+    });
+    const launched = launchResult.details as VigilSnapshot;
+
+    const listResult = await harness.execute({ action: "list" });
+    const listed = listResult.details as VigilListResult;
+    expect(listed.vigils).toHaveLength(1);
+    expect(listed.vigils[0]).toEqual({
+      id: launched.id,
+      sessionId: launched.sessionId,
+      name: "Listed task",
+      cwd: "/parent/project",
+      state: "waiting",
+    });
+    expect(listed.vigils[0]).not.toHaveProperty("latestResponse");
+  });
+
+  it("complete returns a completed snapshot and rejects send afterward", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+    const namer: ChildSessionNamer = {
+      markCompleted: async () => ({ completedName: "[completed] Retire in adapter" }),
+    };
+
+    setVigilRuntimeOverrides({
+      processRunner: {
+        spawnDetached: async () => ({ pid: 9100 }),
+        isAlive: () => false,
+        terminateAndWait: async () => undefined,
+      },
+      childSessionReader: {
+        readChildSessionState: async () => ({
+          latestResponse: "Done.",
+          turnComplete: true,
+          lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+        }),
+      },
+      childSessionNamer: namer,
+    });
+
+    const launchResult = await harness.execute({
+      action: "launch",
+      name: "Retire in adapter",
+      message: "Do work",
+    });
+    const launched = launchResult.details as VigilSnapshot;
+
+    const completeResult = await harness.execute({
+      action: "complete",
+      id: launched.id,
+    });
+
+    expect((completeResult as { isError?: boolean }).isError).toBeFalsy();
+    expect(completeResult.details).toEqual(
+      expect.objectContaining({
+        id: launched.id,
+        state: "completed",
+        name: "[completed] Retire in adapter",
+      }),
+    );
+
+    const sendResult = await harness.execute({
+      action: "send",
+      id: launched.id,
+      message: "Too late",
+    });
+    expect((sendResult as { isError?: boolean }).isError).toBe(true);
   });
 
   it("poll returns an error for an unknown vigil id", async () => {

@@ -1,4 +1,9 @@
-import type { VigilLaunchRecord, VigilRuntimeRecord, VigilTurnRecord } from "./types";
+import type { VigilLifecycleState } from "./lifecycle";
+import type {
+  VigilCompletionRecord,
+  VigilLaunchRecord,
+  VigilTurnRecord,
+} from "./types";
 
 export interface SpawnChildInput {
   sessionId: string;
@@ -6,6 +11,7 @@ export interface SpawnChildInput {
   cwd: string;
   model?: string;
   sessionDir?: string;
+  name?: string;
 }
 
 export interface TerminateAndWaitOptions {
@@ -32,15 +38,26 @@ export interface ChildSessionReader {
   }): Promise<ChildSessionState>;
 }
 
+export interface ChildSessionNamer {
+  markCompleted(input: {
+    sessionId: string;
+    cwd: string;
+    sessionDir?: string;
+  }): Promise<{ completedName: string } | { error: string }>;
+}
+
 export interface ParentLedger {
   appendLaunch(record: VigilLaunchRecord): void;
   appendTurn(record: VigilTurnRecord): void;
-  findLatestTurn(vigilId: string): VigilRuntimeRecord | null;
+  appendComplete(record: VigilCompletionRecord): void;
+  getLifecycle(vigilId: string): VigilLifecycleState | null;
+  listLifecycleStates(includeCompleted: boolean): VigilLifecycleState[];
 }
 
 export interface VigilServiceDeps {
   processRunner: ProcessRunner;
   childSessionReader: ChildSessionReader;
+  childSessionNamer: ChildSessionNamer;
   parentLedger: ParentLedger;
   createId?: () => string;
   sessionDir?: string;

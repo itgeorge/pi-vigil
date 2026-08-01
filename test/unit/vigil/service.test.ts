@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ChildSessionReader, ParentLedger, ProcessRunner, SpawnChildInput } from "../../../src/vigil/ports";
-import { VigilService } from "../../../src/vigil/node-runtime";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, SpawnChildInput } from "../../../src/vigil/ports";
+import { createSessionParentLedger, VigilService } from "../../../src/vigil/node-runtime";
 import {
   isVigilError,
   type VigilLaunchRecord,
   type VigilSnapshot,
   type VigilTurnRecord,
 } from "../../../src/vigil/types";
+
+const TEST_VIGIL_NAME = "Test vigil";
 
 function createFakeDeps(options?: {
   pid?: number;
@@ -19,6 +22,7 @@ function createFakeDeps(options?: {
   terminateError?: Error;
   initialRecord?: VigilLaunchRecord;
 }) {
+  const sessionManager = SessionManager.inMemory("/parent/default");
   const launches: VigilLaunchRecord[] = [];
   const turns: VigilTurnRecord[] = [];
   const spawnInputs: SpawnChildInput[] = [];
@@ -28,6 +32,25 @@ function createFakeDeps(options?: {
   let lastConversationTimestamp = "2099-01-01T00:00:00.000Z";
   const latestResponse = options?.latestResponse ?? null;
   const turnComplete = options?.turnComplete ?? false;
+
+  const appendEntry = (customType: string, data: unknown) => {
+    sessionManager.appendCustomEntry(customType, data);
+  };
+
+  if (options?.initialRecord) {
+    appendEntry("vigil-launch", options.initialRecord);
+    launches.push(options.initialRecord);
+  }
+
+  const parentLedger = createSessionParentLedger(sessionManager, (customType, data) => {
+    appendEntry(customType, data);
+    if (customType === "vigil-launch") {
+      launches.push(data as VigilLaunchRecord);
+    }
+    if (customType === "vigil-turn") {
+      turns.push(data as VigilTurnRecord);
+    }
+  });
 
   const processRunner: ProcessRunner = {
     async spawnDetached(input) {
@@ -58,26 +81,16 @@ function createFakeDeps(options?: {
     },
   };
 
-  const parentLedger: ParentLedger = {
-    appendLaunch(record) {
-      launches.push(record);
-    },
-    appendTurn(record) {
-      turns.push(record);
-    },
-    findLatestTurn(vigilId) {
-      for (let index = turns.length - 1; index >= 0; index -= 1) {
-        if (turns[index]?.id === vigilId) {
-          return turns[index] ?? null;
-        }
-      }
-      return launches.find((launch) => launch.id === vigilId) ?? options?.initialRecord ?? null;
+  const childSessionNamer: ChildSessionNamer = {
+    async markCompleted() {
+      return { completedName: "[completed] Test vigil" };
     },
   };
 
   const service = new VigilService({
     processRunner,
     childSessionReader,
+    childSessionNamer,
     parentLedger,
     createId: options?.createId,
     sessionDir: options?.sessionDir,
@@ -110,10 +123,12 @@ describe("VigilService.launch", () => {
     });
 
     const first = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "hello",
       parentCwd: "/parent/a",
     });
     const second = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "hello again",
       parentCwd: "/parent/a",
     });
@@ -131,6 +146,7 @@ describe("VigilService.launch", () => {
     const { service, launches } = createFakeDeps({ createId: () => "vigil-parent-cwd" });
 
     const snapshot = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "hello",
       parentCwd: "/parent/default",
     });
@@ -144,6 +160,7 @@ describe("VigilService.launch", () => {
     const { service, launches } = createFakeDeps({ createId: () => "vigil-explicit-cwd" });
 
     const snapshot = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "hello",
       parentCwd: "/parent/default",
       cwd: "/child/override",
@@ -158,6 +175,7 @@ describe("VigilService.launch", () => {
     const { service, launches } = createFakeDeps({ createId: () => "vigil-model-meta" });
 
     await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "hello",
       parentCwd: "/parent/default",
       model: "openai-codex/gpt-5.5:high",
@@ -174,6 +192,7 @@ describe("VigilService.launch", () => {
     });
 
     await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "do work",
       parentCwd: "/parent/default",
       cwd: "/child/work",
@@ -184,6 +203,7 @@ describe("VigilService.launch", () => {
     expect(launches[0]).toEqual({
       id: "vigil-launch-record",
       sessionId: "vigil-launch-record",
+      name: TEST_VIGIL_NAME,
       pid: 9001,
       cwd: "/child/work",
       model: "openai-codex/gpt-5.5",
@@ -198,6 +218,7 @@ describe("VigilService.launch", () => {
     });
 
     const result = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "hello",
       parentCwd: "/parent/default",
     });
@@ -220,6 +241,7 @@ describe("VigilService.poll", () => {
     });
 
     const launched = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "hello",
       parentCwd: "/parent/default",
     });
@@ -240,6 +262,7 @@ describe("VigilService.poll", () => {
     });
 
     const launched = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "hello",
       parentCwd: "/parent/default",
     });
@@ -259,6 +282,7 @@ describe("VigilService.poll", () => {
     });
 
     const launched = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "hello",
       parentCwd: "/parent/default",
     });
@@ -279,6 +303,7 @@ describe("VigilService.poll", () => {
     });
 
     const launched = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "hello",
       parentCwd: "/parent/default",
     });
@@ -289,6 +314,7 @@ describe("VigilService.poll", () => {
   });
 
   it("returns waiting when the child completes during spawn before the parent would have recorded turn start", async () => {
+    const sessionManager = SessionManager.inMemory("/parent/default");
     const launches: VigilLaunchRecord[] = [];
     let latestResponse: string | null = null;
     let turnComplete = false;
@@ -315,24 +341,27 @@ describe("VigilService.poll", () => {
       },
     };
 
-    const parentLedger: ParentLedger = {
-      appendLaunch(record) {
-        launches.push(record);
-      },
-      appendTurn() {},
-      findLatestTurn(vigilId) {
-        return launches.find((launch) => launch.id === vigilId) ?? null;
-      },
-    };
+    const parentLedger = createSessionParentLedger(sessionManager, (customType, data) => {
+      sessionManager.appendCustomEntry(customType, data);
+      if (customType === "vigil-launch") {
+        launches.push(data as VigilLaunchRecord);
+      }
+    });
 
     const service = new VigilService({
       processRunner,
       childSessionReader,
+      childSessionNamer: {
+        async markCompleted() {
+          return { completedName: "[completed] Test vigil" };
+        },
+      },
       parentLedger,
       createId: () => "vigil-fast-turn",
     });
 
     const launched = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "complete quickly",
       parentCwd: "/parent/default",
     });
@@ -366,6 +395,7 @@ describe("VigilService.poll", () => {
     });
 
     const launched = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "first turn",
       parentCwd: "/parent/default",
     });
@@ -389,6 +419,7 @@ describe("VigilService.send", () => {
     });
 
     const launched = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "first turn",
       parentCwd: "/parent/default",
       cwd: "/child/work",
@@ -421,6 +452,7 @@ describe("VigilService.send", () => {
     });
 
     const launched = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "first turn",
       parentCwd: "/parent/default",
       cwd: "/child/work",
@@ -459,6 +491,7 @@ describe("VigilService.send", () => {
     });
 
     const launched = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "first turn",
       parentCwd: "/parent/default",
     });
@@ -491,6 +524,7 @@ describe("VigilService.send", () => {
     }
 
     const launched = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "first turn",
       parentCwd: "/parent/default",
     });
@@ -517,6 +551,7 @@ describe("VigilService.send", () => {
     });
 
     const launched = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "first turn",
       parentCwd: "/parent/default",
       model: "openai-codex/gpt-5.5",
@@ -544,6 +579,7 @@ describe("VigilService.send", () => {
     });
 
     const launched = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "first turn",
       parentCwd: "/parent/default",
     });
@@ -572,6 +608,7 @@ describe("VigilService.send", () => {
     });
 
     const launched = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "first turn",
       parentCwd: "/parent/default",
     });
@@ -600,6 +637,7 @@ describe("VigilService.send", () => {
     });
 
     const launched = await service.launch({
+      name: TEST_VIGIL_NAME,
       message: "first turn",
       parentCwd: "/parent/default",
     });

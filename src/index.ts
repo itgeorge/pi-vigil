@@ -8,7 +8,13 @@ import {
 import { createVigilServiceForContext } from "./vigil/node-runtime";
 import { getVigilSessionDir } from "./vigil/config";
 import { getVigilRuntimeOverrides } from "./vigil/runtime-overrides";
-import { formatSnapshotText, isVigilError, type VigilSnapshot } from "./vigil/types";
+import {
+  formatListText,
+  formatSnapshotText,
+  isVigilError,
+  type VigilListResult,
+  type VigilSnapshot,
+} from "./vigil/types";
 
 let appendEntryForTool: ExtensionAPI["appendEntry"] = () => {
   throw new Error("pi-vigil extension not initialized");
@@ -23,6 +29,7 @@ function createService(ctx: ExtensionContext) {
     sessionDir: overrides.sessionDir ?? getVigilSessionDir(),
     processRunner: overrides.processRunner,
     childSessionReader: overrides.childSessionReader,
+    childSessionNamer: overrides.childSessionNamer,
   });
 }
 
@@ -30,11 +37,17 @@ export const vigilTool = defineTool({
   name: "vigil",
   label: "Vigil",
   description:
-    "Launch, poll, and continue detached Pi child sessions. Use launch to start a child turn, poll to read running/waiting status plus the latest complete assistant response, and send to resume the same child session with a new prompt.",
+    "Launch, poll, continue, list, and complete detached Pi child sessions. Use launch to start a named child turn, poll to read running/waiting/completed status plus the latest complete assistant response, send to resume a waiting child, list to inspect the parent working set, and complete to retire a waiting child without deleting its session.",
   parameters: Type.Object({
-    action: StringEnum(["launch", "poll", "send"], {
-      description: "launch starts a detached child session; poll reads status; send continues a waiting child",
+    action: StringEnum(["launch", "poll", "send", "list", "complete"], {
+      description:
+        "launch starts a detached child session; poll reads status; send continues a waiting child; list returns the parent working set; complete retires a waiting child",
     }),
+    name: Type.Optional(
+      Type.String({
+        description: "Human-readable Pi session name (required for launch)",
+      }),
+    ),
     message: Type.Optional(
       Type.String({
         description: "Prompt for the child session (required for launch and send)",
@@ -52,7 +65,12 @@ export const vigilTool = defineTool({
     ),
     id: Type.Optional(
       Type.String({
-        description: "Vigil id returned by launch (required for poll and send)",
+        description: "Vigil id returned by launch (required for poll, send, and complete)",
+      }),
+    ),
+    includeCompleted: Type.Optional(
+      Type.Boolean({
+        description: "When listing, include completed children (default false)",
       }),
     ),
   }),
@@ -61,6 +79,14 @@ export const vigilTool = defineTool({
     const service = createService(ctx);
 
     if (params.action === "launch") {
+      if (!params.name?.trim()) {
+        return {
+          content: [{ type: "text" as const, text: "launch requires name" }],
+          details: { error: "launch requires name" },
+          isError: true,
+        };
+      }
+
       if (!params.message) {
         return {
           content: [{ type: "text" as const, text: "launch requires message" }],
@@ -70,9 +96,51 @@ export const vigilTool = defineTool({
       }
 
       const result = await service.launch({
+        name: params.name,
         message: params.message,
         model: params.model,
         cwd: params.cwd,
+        parentCwd: ctx.cwd,
+      });
+
+      if (isVigilError(result)) {
+        return {
+          content: [{ type: "text" as const, text: result.error }],
+          details: result,
+          isError: true,
+        };
+      }
+
+      return snapshotResult(result);
+    }
+
+    if (params.action === "list") {
+      const result = await service.list(params.includeCompleted ?? false);
+      if (isVigilError(result)) {
+        return {
+          content: [{ type: "text" as const, text: result.error }],
+          details: result,
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: "text" as const, text: formatListText(result) }],
+        details: result,
+      };
+    }
+
+    if (params.action === "complete") {
+      if (!params.id) {
+        return {
+          content: [{ type: "text" as const, text: "complete requires id" }],
+          details: { error: "complete requires id" },
+          isError: true,
+        };
+      }
+
+      const result = await service.complete({
+        vigilId: params.id,
         parentCwd: ctx.cwd,
       });
 

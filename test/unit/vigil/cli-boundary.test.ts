@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { buildPiChildArgs } from "../../../src/vigil/node-runtime";
 
 describe("buildPiChildArgs", () => {
-  it("continues the same child session id, cwd, session directory, and model on send", () => {
+  it("includes --name for launch and omits it for send", () => {
     const launchArgs = buildPiChildArgs({
       sessionId: "vigil-cli-boundary",
       message: "Inspect the repository",
       cwd: "/parent/default",
+      name: "Inspect repo",
     });
 
     const sendArgs = buildPiChildArgs({
@@ -23,6 +24,8 @@ describe("buildPiChildArgs", () => {
       "-p",
       "--session-id",
       "vigil-cli-boundary",
+      "--name",
+      "Inspect repo",
       "Inspect the repository",
     ]);
 
