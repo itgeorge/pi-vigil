@@ -1,5 +1,3 @@
-import { spawnSync } from "node:child_process";
-
 export const DEFAULT_VIGIL_TEST_MODEL = "openai-codex/gpt-5.5";
 
 export function getVigilTestModel(): string {
@@ -18,46 +16,32 @@ export function requireLiveAcceptanceEnv(): void {
   }
 }
 
-export function verifyPiAuthentication(model = getVigilTestModel()): void {
-  const result = spawnSync(
-    "pi",
-    ["--mode", "json", "-p", "--model", model, "Reply with exactly: VIGIL_AUTH_OK"],
-    {
-      encoding: "utf8",
-      timeout: 120_000,
-      env: process.env,
-    },
-  );
+export function getPreflightTimeoutMs(): number {
+  const value = Number(process.env.PI_VIGIL_PREFLIGHT_TIMEOUT_MS ?? "180000");
+  return Number.isFinite(value) && value > 0 ? value : 180_000;
+}
 
-  if (result.error) {
-    throw new Error(`Pi authentication preflight failed: ${result.error.message}`);
-  }
+export async function verifyPiAuthentication(model = getVigilTestModel()): Promise<void> {
+  const { formatPiCommandFailure, runPiJsonPrintCommand } = await import("./pi-json-print.js");
 
-  if (result.status !== 0) {
-    const stderr = result.stderr?.trim();
-    const stdout = result.stdout?.trim();
+  const result = await runPiJsonPrintCommand({
+    args: ["--mode", "json", "-p", "--no-tools", "--model", model, "Reply with exactly: VIGIL_AUTH_OK"],
+    timeoutMs: getPreflightTimeoutMs(),
+    successMarker: "VIGIL_AUTH_OK",
+  });
+
+  if (!result.stdout.includes("VIGIL_AUTH_OK")) {
     throw new Error(
-      [
-        "Pi authentication preflight failed.",
-        "Ensure the `pi` CLI is installed and authenticated for the configured model.",
-        `Model: ${model}`,
-        stderr ? `stderr: ${stderr}` : undefined,
-        stdout ? `stdout: ${stdout}` : undefined,
-      ]
-        .filter(Boolean)
-        .join("\n"),
+      formatPiCommandFailure("Pi authentication preflight did not return the expected marker", result, model),
     );
   }
 
-  const combined = `${result.stdout}\n${result.stderr}`;
-  if (!combined.includes("VIGIL_AUTH_OK")) {
-    throw new Error(
-      [
-        "Pi authentication preflight did not return the expected marker.",
-        `Model: ${model}`,
-        `Output: ${combined.trim()}`,
-      ].join("\n"),
-    );
+  if (!result.sawAgentSettled) {
+    throw new Error(formatPiCommandFailure("Pi authentication preflight did not settle", result, model));
+  }
+
+  if (result.timedOut) {
+    throw new Error(formatPiCommandFailure("Pi authentication preflight timed out", result, model));
   }
 }
 
@@ -67,6 +51,6 @@ export function getAcceptancePollIntervalMs(): number {
 }
 
 export function getAcceptanceTimeoutMs(): number {
-  const value = Number(process.env.PI_VIGIL_ACCEPTANCE_TIMEOUT_MS ?? "120000");
-  return Number.isFinite(value) && value > 0 ? value : 120_000;
+  const value = Number(process.env.PI_VIGIL_ACCEPTANCE_TIMEOUT_MS ?? "180000");
+  return Number.isFinite(value) && value > 0 ? value : 180_000;
 }

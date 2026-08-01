@@ -6,10 +6,9 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createVigilServiceForContext } from "./vigil/node-runtime";
+import { getVigilSessionDir } from "./vigil/config";
 import { getVigilRuntimeOverrides } from "./vigil/runtime-overrides";
 import { formatSnapshotText, isVigilError, type VigilSnapshot } from "./vigil/types";
-
-const VIGIL_SESSION_DIR = process.env.PI_VIGIL_SESSION_DIR;
 
 let appendEntryForTool: ExtensionAPI["appendEntry"] = () => {
   throw new Error("pi-vigil extension not initialized");
@@ -21,7 +20,7 @@ function createService(ctx: ExtensionContext) {
     parentCwd: ctx.cwd,
     sessionManager: ctx.sessionManager,
     appendEntry: appendEntryForTool,
-    sessionDir: overrides.sessionDir ?? VIGIL_SESSION_DIR,
+    sessionDir: overrides.sessionDir ?? getVigilSessionDir(),
     processRunner: overrides.processRunner,
     childSessionReader: overrides.childSessionReader,
   });

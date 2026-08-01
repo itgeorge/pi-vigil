@@ -211,6 +211,7 @@ vigil({ action: "poll", id })
 
 - 2026-08-01: Plan created. No implementation has started.
 - 2026-08-02: Slice 1 implemented. Deterministic tests: 17/17 passing (`npm test`, `npm run typecheck`). Acceptance: attempted with `PI_VIGIL_LIVE=1`; preflight failed (`spawnSync pi ETIMEDOUT` after 120s) — fails helpfully, not skipped. Without opt-in, `npm run test:acceptance` fails in setup with PI_VIGIL_LIVE instructions.
+- 2026-08-02: Slice 1 follow-up. Fixed runtime session-dir lookup (`SessionManager.listAll` for explicit `--session-dir`), execution-time `PI_VIGIL_SESSION_DIR`, Pi print-mode `waiting` semantics (turn complete OR process exit), async spawn error handling, and `@earendil-works/pi-ai` peer dependency. Deterministic tests: 22/22. Acceptance with `PI_VIGIL_LIVE=1`: passed (~3s poll loop).
 
 ## Deviations / implementation notes
 
@@ -218,4 +219,8 @@ vigil({ action: "poll", id })
 - Child session reading uses exported `parseSessionEntries` plus `SessionManager.list` rather than non-exported `loadEntriesFromFile` / `getDefaultSessionDir` helpers from `@earendil-works/pi-coding-agent@0.83.0`.
 - Test-only runtime injection uses `setVigilRuntimeOverrides()` rather than mocking internal module calls.
 - Launch `id` and Pi `--session-id` share the same generated `vigil-<uuid>` value; `VigilSnapshot.sessionId` mirrors `id`.
-- Test-only isolated child storage is enabled via `PI_VIGIL_SESSION_DIR` (passed as `--session-dir`); production omits it and uses Pi defaults.
+- Test-only isolated child storage is enabled via `PI_VIGIL_SESSION_DIR` (read at tool execution time, passed as `--session-dir`); production omits it and uses Pi defaults.
+- `@earendil-works/pi-ai` is a peer dependency (also in devDependencies for local tests).
+- **Poll / Pi lifecycle:** Pi print-mode children may remain alive after `agent_settled`. `poll` transitions to `waiting` when the child session's latest assistant turn is complete (`stopReason !== pending`) or the PID has exited.
+- **Custom session dirs:** when a launch record includes `sessionDir`, child lookup uses `SessionManager.listAll(sessionDir)` so macOS `/private` cwd prefixes do not hide sessions from `SessionManager.list(cwd, sessionDir)`.
+- **Preflight / acceptance:** live tests use JSON print stdout (`agent_settled` + marker) rather than `spawnSync` waiting for Pi process exit.

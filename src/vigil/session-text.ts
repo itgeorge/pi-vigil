@@ -1,6 +1,11 @@
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
-export function extractLatestAssistantText(entries: SessionEntry[]): string | null {
+export interface ChildSessionState {
+  latestResponse: string | null;
+  turnComplete: boolean;
+}
+
+export function extractLatestAssistantState(entries: SessionEntry[]): ChildSessionState {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
     if (entry.type !== "message") {
@@ -23,11 +28,20 @@ export function extractLatestAssistantText(entries: SessionEntry[]): string | nu
       }
     }
 
-    const trimmed = text.trim();
-    if (trimmed) {
-      return trimmed;
-    }
+    const turnComplete = message.stopReason !== undefined && message.stopReason !== "pending";
+
+    return {
+      latestResponse: text.trim() || null,
+      turnComplete,
+    };
   }
 
-  return null;
+  return {
+    latestResponse: null,
+    turnComplete: false,
+  };
+}
+
+export function extractLatestAssistantText(entries: SessionEntry[]): string | null {
+  return extractLatestAssistantState(entries).latestResponse;
 }

@@ -4,8 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { resetVigilRuntimeOverrides } from "../../src/vigil/runtime-overrides";
 import { findChildSessionPath, readLatestAssistantTextFromFile } from "../../src/vigil/node-runtime";
-import type { VigilSnapshot } from "../../src/vigil/types";
-import { createVigilTestHarness } from "../helpers/vigil-test-harness";
+import type { VigilLaunchRecord, VigilSnapshot } from "../../src/vigil/types";
 import {
   getAcceptancePollIntervalMs,
   getAcceptanceTimeoutMs,
@@ -17,10 +16,11 @@ import {
 describe("live vigil acceptance", () => {
   let tempCwd = "";
   let sessionDir = "";
+  const launchedChildPids: number[] = [];
 
-  beforeAll(() => {
+  beforeAll(async () => {
     requireLiveAcceptanceEnv();
-    verifyPiAuthentication();
+    await verifyPiAuthentication();
     tempCwd = mkdtempSync(path.join(os.tmpdir(), "pi-vigil-live-"));
     sessionDir = mkdtempSync(path.join(os.tmpdir(), "pi-vigil-live-sessions-"));
     process.env.PI_VIGIL_SESSION_DIR = sessionDir;
@@ -29,6 +29,15 @@ describe("live vigil acceptance", () => {
   afterAll(() => {
     resetVigilRuntimeOverrides();
     delete process.env.PI_VIGIL_SESSION_DIR;
+
+    for (const pid of launchedChildPids) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // Child may already have exited.
+      }
+    }
+
     if (tempCwd) {
       rmSync(tempCwd, { recursive: true, force: true });
     }
@@ -38,6 +47,8 @@ describe("live vigil acceptance", () => {
   });
 
   it("launches a real child session and polls until waiting with the expected marker", async () => {
+    const { createVigilTestHarness } = await import("../helpers/vigil-test-harness");
+
     const marker = `VIGIL_READY_${crypto.randomUUID()}`;
     const harness = await createVigilTestHarness({ cwd: tempCwd });
 
@@ -52,6 +63,10 @@ describe("live vigil acceptance", () => {
     const launched = launchResult.details as VigilSnapshot;
     expect(launched.id).toMatch(/^vigil-/);
     expect(launched.state).toBe("running");
+
+    const launchRecord = harness.capturedEntries[0]?.data as VigilLaunchRecord;
+    expect(launchRecord.sessionDir).toBe(sessionDir);
+    launchedChildPids.push(launchRecord.pid);
 
     const deadline = Date.now() + getAcceptanceTimeoutMs();
     let finalSnapshot: VigilSnapshot | undefined;
@@ -77,6 +92,7 @@ describe("live vigil acceptance", () => {
 
     const childSessionPath = await findChildSessionPath(launched.sessionId, tempCwd, sessionDir);
     expect(childSessionPath).toBeTruthy();
+    expect(childSessionPath!.startsWith(sessionDir)).toBe(true);
     const persistedText = readLatestAssistantTextFromFile(childSessionPath!);
     expect(persistedText).toContain(marker);
   }, getAcceptanceTimeoutMs() + 30_000);

@@ -1,4 +1,4 @@
-import type { VigilLaunchRecord } from "./types.ts";
+import type { VigilLaunchRecord } from "./types";
 
 export interface SpawnChildInput {
   sessionId: string;
@@ -9,16 +9,21 @@ export interface SpawnChildInput {
 }
 
 export interface ProcessRunner {
-  spawnDetached(input: SpawnChildInput): { pid: number };
+  spawnDetached(input: SpawnChildInput): Promise<{ pid: number }>;
   isAlive(pid: number): boolean;
 }
 
+export interface ChildSessionState {
+  latestResponse: string | null;
+  turnComplete: boolean;
+}
+
 export interface ChildSessionReader {
-  readLatestAssistantText(input: {
+  readChildSessionState(input: {
     sessionId: string;
     cwd: string;
     sessionDir?: string;
-  }): Promise<string | null>;
+  }): Promise<ChildSessionState>;
 }
 
 export interface ParentLedger {

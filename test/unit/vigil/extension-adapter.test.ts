@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { resetVigilRuntimeOverrides, setVigilRuntimeOverrides } from "../../../src/vigil/runtime-overrides";
 import type { ChildSessionReader, ProcessRunner } from "../../../src/vigil/ports";
-import { readLatestAssistantTextFromFile } from "../../../src/vigil/node-runtime";
+import { readLatestAssistantTextFromFile, readChildSessionStateFromFile } from "../../../src/vigil/node-runtime";
 import type { VigilLaunchRecord, VigilSnapshot } from "../../../src/vigil/types";
 import { createVigilTestHarness } from "../../helpers/vigil-test-harness";
 
@@ -19,7 +19,7 @@ describe("vigil extension adapter", () => {
 
     setVigilRuntimeOverrides({
       processRunner: {
-        spawnDetached: () => ({ pid: 5150 }),
+        spawnDetached: async () => ({ pid: 5150 }),
         isAlive: () => true,
       },
     });
@@ -77,11 +77,11 @@ describe("vigil extension adapter", () => {
     harness.sessionManager.appendCustomEntry("vigil-launch", record);
 
     const fakeReader: ChildSessionReader = {
-      readLatestAssistantText: async () => readLatestAssistantTextFromFile(fixturePath),
+      readChildSessionState: async () => readChildSessionStateFromFile(fixturePath),
     };
 
     const fakeRunner: ProcessRunner = {
-      spawnDetached: () => ({ pid: 0 }),
+      spawnDetached: async () => ({ pid: 0 }),
       isAlive: () => false,
     };
 

@@ -1,13 +1,20 @@
 import { readFileSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import {
   parseSessionEntries,
   SessionManager,
   type SessionEntry,
   type SessionManager as SessionManagerType,
 } from "@earendil-works/pi-coding-agent";
-import type { ChildSessionReader, ParentLedger, ProcessRunner, SpawnChildInput, VigilServiceDeps } from "./ports";
-import { extractLatestAssistantText } from "./session-text";
+import type {
+  ChildSessionReader,
+  ChildSessionState,
+  ParentLedger,
+  ProcessRunner,
+  SpawnChildInput,
+  VigilServiceDeps,
+} from "./ports";
+import { extractLatestAssistantState } from "./session-text";
 import { createVigilId, type LaunchInput, type VigilLaunchRecord, type VigilResult } from "./types";
 
 export class VigilService {
@@ -22,13 +29,19 @@ export class VigilService {
     const sessionId = id;
     const cwd = input.cwd ?? input.parentCwd;
 
-    const { pid } = this.deps.processRunner.spawnDetached({
-      sessionId,
-      message: input.message,
-      cwd,
-      model: input.model,
-      sessionDir: this.deps.sessionDir,
-    });
+    let pid: number;
+    try {
+      ({ pid } = await this.deps.processRunner.spawnDetached({
+        sessionId,
+        message: input.message,
+        cwd,
+        model: input.model,
+        sessionDir: this.deps.sessionDir,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { error: `Failed to launch Pi child: ${message}` };
+    }
 
     const record: VigilLaunchRecord = {
       id,
@@ -57,13 +70,14 @@ export class VigilService {
       return { error: `Unknown vigil id: ${vigilId}` };
     }
 
-    const latestResponse = await this.deps.childSessionReader.readLatestAssistantText({
+    const { latestResponse, turnComplete } = await this.deps.childSessionReader.readChildSessionState({
       sessionId: record.sessionId,
       cwd: record.cwd,
       sessionDir: record.sessionDir,
     });
 
-    const state = this.deps.processRunner.isAlive(record.pid) ? "running" : "waiting";
+    const alive = this.deps.processRunner.isAlive(record.pid);
+    const state = !alive || turnComplete ? "waiting" : "running";
 
     return {
       id: record.id,
@@ -87,24 +101,50 @@ export function buildPiChildArgs(input: SpawnChildInput): string[] {
   return args;
 }
 
+export function spawnDetachedPiChild(
+  piExecutable: string,
+  input: SpawnChildInput,
+): Promise<{ pid: number }> {
+  return new Promise((resolve, reject) => {
+    const args = buildPiChildArgs(input);
+    const child = spawn(piExecutable, args, {
+      cwd: input.cwd,
+      detached: true,
+      stdio: "ignore",
+    });
+
+    child.on("error", (error) => {
+      reject(error);
+    });
+
+    child.once("spawn", () => {
+      child.on("error", () => {
+        // Detached children may fail after unref; never crash the parent Pi process.
+      });
+      child.unref();
+
+      if (!child.pid) {
+        reject(new Error("Failed to spawn detached Pi child process"));
+        return;
+      }
+
+      resolve({ pid: child.pid });
+    });
+  });
+}
+
+export function attachDetachedChildErrorHandler(child: ChildProcess): void {
+  child.on("error", () => {
+    // Prevent unhandled 'error' events on detached children after unref().
+  });
+}
+
 export function createNodeProcessRunner(options?: { piExecutable?: string }): ProcessRunner {
   const piExecutable = options?.piExecutable ?? "pi";
 
   return {
     spawnDetached(input) {
-      const args = buildPiChildArgs(input);
-      const child = spawn(piExecutable, args, {
-        cwd: input.cwd,
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
-
-      if (!child.pid) {
-        throw new Error("Failed to spawn detached Pi child process");
-      }
-
-      return { pid: child.pid };
+      return spawnDetachedPiChild(piExecutable, input);
     },
     isAlive(pid) {
       try {
@@ -122,26 +162,32 @@ export async function findChildSessionPath(
   cwd: string,
   sessionDir?: string,
 ): Promise<string | null> {
-  const sessions = await SessionManager.list(cwd, sessionDir);
+  const sessions = sessionDir
+    ? await SessionManager.listAll(sessionDir)
+    : await SessionManager.list(cwd);
   const match = sessions.find((session) => session.id === sessionId);
   return match?.path ?? null;
 }
 
-export function readLatestAssistantTextFromFile(sessionFile: string): string | null {
+export function readChildSessionStateFromFile(sessionFile: string): ChildSessionState {
   const content = readFileSync(sessionFile, "utf8");
   const fileEntries = parseSessionEntries(content);
   const entries = fileEntries.filter((entry) => entry.type !== "session") as SessionEntry[];
-  return extractLatestAssistantText(entries);
+  return extractLatestAssistantState(entries);
+}
+
+export function readLatestAssistantTextFromFile(sessionFile: string): string | null {
+  return readChildSessionStateFromFile(sessionFile).latestResponse;
 }
 
 export function createNodeChildSessionReader(): ChildSessionReader {
   return {
-    async readLatestAssistantText({ sessionId, cwd, sessionDir }) {
+    async readChildSessionState({ sessionId, cwd, sessionDir }) {
       const sessionPath = await findChildSessionPath(sessionId, cwd, sessionDir);
       if (!sessionPath) {
-        return null;
+        return { latestResponse: null, turnComplete: false };
       }
-      return readLatestAssistantTextFromFile(sessionPath);
+      return readChildSessionStateFromFile(sessionPath);
     },
   };
 }

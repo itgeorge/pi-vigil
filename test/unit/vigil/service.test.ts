@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { ChildSessionReader, ParentLedger, ProcessRunner } from "../../../src/vigil/ports";
 import { VigilService } from "../../../src/vigil/node-runtime";
 import { isVigilError, type VigilLaunchRecord, type VigilSnapshot } from "../../../src/vigil/types";
@@ -7,16 +7,22 @@ function createFakeDeps(options?: {
   pid?: number;
   alive?: boolean;
   latestResponse?: string | null;
+  turnComplete?: boolean;
   createId?: () => string;
   sessionDir?: string;
+  spawnError?: Error;
 }) {
   const launches: VigilLaunchRecord[] = [];
   let nextPid = options?.pid ?? 4242;
   let alive = options?.alive ?? true;
   const latestResponse = options?.latestResponse ?? null;
+  const turnComplete = options?.turnComplete ?? false;
 
   const processRunner: ProcessRunner = {
-    spawnDetached(_input) {
+    async spawnDetached(_input) {
+      if (options?.spawnError) {
+        throw options.spawnError;
+      }
       return { pid: nextPid };
     },
     isAlive() {
@@ -25,8 +31,8 @@ function createFakeDeps(options?: {
   };
 
   const childSessionReader: ChildSessionReader = {
-    async readLatestAssistantText() {
-      return latestResponse;
+    async readChildSessionState() {
+      return { latestResponse, turnComplete };
     },
   };
 
@@ -149,14 +155,32 @@ describe("VigilService.launch", () => {
       launchedAt: expect.any(String),
     });
   });
+
+  it("returns a clear error when the child process cannot be spawned", async () => {
+    const { service } = createFakeDeps({
+      spawnError: new Error("spawn pi ENOENT"),
+    });
+
+    const result = await service.launch({
+      message: "hello",
+      parentCwd: "/parent/default",
+    });
+
+    expect(isVigilError(result)).toBe(true);
+    if (isVigilError(result)) {
+      expect(result.error).toContain("Failed to launch Pi child");
+      expect(result.error).toContain("ENOENT");
+    }
+  });
 });
 
 describe("VigilService.poll", () => {
-  it("returns running and the latest persisted assistant text while the child is alive", async () => {
+  it("returns running and the latest persisted assistant text while the turn is incomplete", async () => {
     const { service } = createFakeDeps({
       createId: () => "vigil-running",
       alive: true,
       latestResponse: "Partial progress is persisted.",
+      turnComplete: false,
     });
 
     const launched = await service.launch({
@@ -171,11 +195,31 @@ describe("VigilService.poll", () => {
     expect(polled.latestResponse).toBe("Partial progress is persisted.");
   });
 
+  it("returns waiting when the child turn is complete even if the Pi process remains alive", async () => {
+    const { service } = createFakeDeps({
+      createId: () => "vigil-turn-complete",
+      alive: true,
+      latestResponse: "Final answer from child.",
+      turnComplete: true,
+    });
+
+    const launched = await service.launch({
+      message: "hello",
+      parentCwd: "/parent/default",
+    });
+
+    const polled = await service.poll((launched as VigilSnapshot).id);
+    expectSnapshot(polled);
+    expect(polled.state).toBe("waiting");
+    expect(polled.latestResponse).toBe("Final answer from child.");
+  });
+
   it("returns waiting and the most recent complete assistant text after exit", async () => {
     const { service, setAlive } = createFakeDeps({
       createId: () => "vigil-waiting",
       alive: true,
       latestResponse: "Final answer from child.",
+      turnComplete: false,
     });
 
     const launched = await service.launch({
@@ -191,10 +235,11 @@ describe("VigilService.poll", () => {
   });
 
   it("returns latestResponse null when the child session has no assistant message", async () => {
-    const { service, setAlive } = createFakeDeps({
+    const { service } = createFakeDeps({
       createId: () => "vigil-no-assistant",
       alive: false,
       latestResponse: null,
+      turnComplete: false,
     });
 
     const launched = await service.launch({
