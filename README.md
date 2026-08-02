@@ -120,12 +120,31 @@ Completion uses the child session's **current** display name, not the original l
 
 Child session JSONL files are never deleted by Vigil. Pi's normal session UI/manual cleanup remains available.
 
+## Install
+
+Pi loads this extension from source TypeScript (`pi.extensions` → `./src/index.ts`). Point your Pi host at a Git source pinned to a commit or tag, or at a local clone for development.
+
+**Git source (pinned):** configure Pi to load from `git+https://github.com/itgeorge/pi-vigil.git#<commit-or-tag>` (replace `<commit-or-tag>` with a release tag or full commit SHA).
+
+**Local development:** clone this repository and reference the checkout path in your Pi extension settings so Pi resolves `./src/index.ts` from your working tree.
+
+This package is not published to the npm registry; install through Pi Git/path source only.
+
+## Requirements
+
+- Node.js **>= 22.19** (see `engines` in `package.json`).
+- A Pi host runtime that already provides `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, and `@earendil-works/pi-tui` (Vigil imports all three at runtime).
+- Pi configured to load extensions from this package's `src/index.ts` entry.
+
 ## Dependencies
 
-Runtime imports require peer packages:
+Runtime imports use **host-provided Pi core peers** (declared in `peerDependencies` as `"*"` — resolved from your Pi installation, not bundled or npm-installed as runtime deps):
 
-- `@earendil-works/pi-coding-agent`
-- `@earendil-works/pi-ai` (for `Type` / `StringEnum` tool schemas)
+- `@earendil-works/pi-coding-agent` — extension/tool APIs, session types, TUI helpers
+- `@earendil-works/pi-ai` — `Type` / `StringEnum` tool schemas
+- `@earendil-works/pi-tui` — TUI components for compact tool call/result rendering
+
+For local development and CI, the same Pi packages are listed as **version-pinned `devDependencies`** so `npm run typecheck` and unit tests resolve types/modules without implying a separate runtime install step.
 
 ## Development
 
@@ -133,7 +152,12 @@ Runtime imports require peer packages:
 npm install
 npm test          # deterministic unit tests
 npm run typecheck
+npm run check     # typecheck + unit tests + package surface verification
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ## Live acceptance tests
 

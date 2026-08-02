@@ -7,6 +7,30 @@
   "engines": {
     "node": ">=22.19"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/itgeorge/pi-vigil.git"
+  },
+  "bugs": {
+    "url": "https://github.com/itgeorge/pi-vigil/issues"
+  },
+  "homepage": "https://github.com/itgeorge/pi-vigil#readme",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "vigil",
+    "subagent",
+    "subagents",
+    "coding-agent",
+    "async",
+    "orchestration"
+  ],
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "pi": {
     "extensions": [
       "./src/index.ts"
@@ -16,12 +40,15 @@
     "test": "vitest run --project unit",
     "test:unit": "vitest run --project unit",
     "test:acceptance": "vitest run --project acceptance",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pack:verify": "node --experimental-strip-types scripts/verify-package-surface.ts",
+    "check": "npm run typecheck && npm test && npm run pack:verify",
+    "prepublishOnly": "npm run check"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.75.0",
-    "@earendil-works/pi-coding-agent": ">=0.75.0",
-    "@earendil-works/pi-tui": ">=0.75.0"
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "^0.83.0",
