@@ -8,6 +8,64 @@ export const DEFAULT_READ_CONTEXT = 1;
 export const MAX_READ_CONTEXT = 10;
 export const MAX_READ_WINDOW_ENTRIES = 21;
 export const MAX_ENTRY_DETAIL_CHARS = 4_000;
+export const MAX_DISPLAY_NAME_CHARS = 120;
+export const MAX_DISPLAY_ID_CHARS = 128;
+export const MAX_DISPLAY_METADATA_CHARS = 120;
+
+const C0_C1_CONTROL =
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u0085\u2028\u2029]/g;
+const ANSI_SEQUENCE = /\u001B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
+const OSC_SEQUENCE = /\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g;
+
+export function stripTerminalControls(text: string, preserveNewlines = false): string {
+  let cleaned = text.replace(OSC_SEQUENCE, "").replace(ANSI_SEQUENCE, "");
+  cleaned = cleaned.replace(C0_C1_CONTROL, (character) => {
+    if (preserveNewlines && (character === "\n" || character === "\r" || character === "\t")) {
+      return character;
+    }
+    return "";
+  });
+  return cleaned;
+}
+
+export function sanitizeDisplayField(text: string, maxChars: number): string {
+  const cleaned = stripTerminalControls(text).replace(/\s+/g, " ").trim();
+  return truncateVisible(cleaned, maxChars);
+}
+
+export function sanitizeDisplayMultiline(text: string, maxChars: number): string {
+  const cleaned = stripTerminalControls(text, true)
+    .split("\n")
+    .map((line) => line.replace(/\r/g, ""))
+    .join("\n");
+  return truncateVisible(cleaned, maxChars);
+}
+
+function validateExactOptionalId(value: string | undefined, label: string): string | { error: string } | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value !== value.trim()) {
+    return { error: `${label} must not contain leading or trailing whitespace` };
+  }
+  if (!value) {
+    return { error: `${label} must be nonblank when supplied` };
+  }
+  return value;
+}
+
+function validateExactRequiredId(value: string | undefined, missingError: string, label: string): string | { error: string } {
+  if (value === undefined || value === "") {
+    return { error: missingError };
+  }
+  if (value !== value.trim()) {
+    return { error: `${label} must not contain leading or trailing whitespace` };
+  }
+  if (!value) {
+    return { error: missingError };
+  }
+  return value;
+}
 
 export interface ChildSessionTranscriptEntry {
   entryId: string;
@@ -99,18 +157,21 @@ export function truncateVisible(text: string, maxChars: number): string {
 
 export function serializeToolArguments(args: unknown, maxChars = 2_000): string {
   const serialized = serializeValue(args);
-  return truncateVisible(serialized, maxChars);
+  return sanitizeDisplayField(serialized, maxChars);
 }
 
 function serializeValue(value: unknown): string {
-  if (value === null || value === undefined) {
-    return String(value);
+  if (value === null) {
+    return "null";
+  }
+  if (value === undefined) {
+    return "null";
   }
   if (typeof value === "string") {
-    return value;
+    return JSON.stringify(value);
   }
   if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
+    return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
     return `[${value.map((item) => serializeValue(item)).join(",")}]`;
@@ -120,7 +181,7 @@ function serializeValue(value: unknown): string {
     const keys = Object.keys(record).sort();
     return `{${keys.map((key) => `${JSON.stringify(key)}:${serializeValue(record[key])}`).join(",")}}`;
   }
-  return String(value);
+  return JSON.stringify(String(value));
 }
 
 export function buildMatchExcerpt(text: string, query: string, maxChars: number): string {
@@ -172,8 +233,10 @@ export function resolveSearchPolicy(input: {
     return { error: "search requires query" };
   }
 
-  if (input.id !== undefined && !input.id.trim()) {
-    return { error: "search id must be nonblank when supplied" };
+  const validatedId =
+    input.id === undefined ? undefined : validateExactOptionalId(input.id, "search id");
+  if (validatedId && typeof validatedId === "object" && "error" in validatedId) {
+    return validatedId;
   }
 
   const maxResults = input.maxResults ?? DEFAULT_SEARCH_MAX_RESULTS;
@@ -187,7 +250,7 @@ export function resolveSearchPolicy(input: {
     query,
     includeCompleted: input.includeCompleted ?? false,
     maxResults,
-    ...(input.id?.trim() ? { id: input.id.trim() } : {}),
+    ...(typeof validatedId === "string" ? { id: validatedId } : {}),
   };
 }
 
@@ -198,14 +261,14 @@ export function resolveReadPolicy(input: {
   after?: number;
   includeCompleted?: boolean;
 }): ReadPolicy | { error: string } {
-  const id = input.id?.trim() ?? "";
-  if (!id) {
-    return { error: "read requires id" };
+  const id = validateExactRequiredId(input.id, "read requires id", "read id");
+  if (typeof id === "object" && "error" in id) {
+    return id;
   }
 
-  const entryId = input.entryId?.trim() ?? "";
-  if (!entryId) {
-    return { error: "read requires entryId" };
+  const entryId = validateExactRequiredId(input.entryId, "read requires entryId", "read entryId");
+  if (typeof entryId === "object" && "error" in entryId) {
+    return entryId;
   }
 
   const before = input.before ?? DEFAULT_READ_CONTEXT;
@@ -260,15 +323,25 @@ function projectMessageSearchable(entry: SessionEntry & { type: "message" }): {
   searchable: string;
   detail: string;
   role: string;
-} {
-  const role = entry.message.role;
+} | null {
+  const role = entry.message?.role;
+  if (typeof role !== "string" || !role) {
+    return null;
+  }
 
   if (role === "user") {
     const text = extractTextParts(entry.message.content);
-    return { searchable: text, detail: truncateVisible(text, MAX_ENTRY_DETAIL_CHARS), role };
+    return {
+      searchable: text,
+      detail: sanitizeDisplayMultiline(text, MAX_ENTRY_DETAIL_CHARS),
+      role,
+    };
   }
 
   if (role === "assistant") {
+    if (!Array.isArray(entry.message.content)) {
+      return null;
+    }
     const parts: string[] = [];
     const detailParts: string[] = [];
     for (const content of entry.message.content) {
@@ -284,7 +357,7 @@ function projectMessageSearchable(entry: SessionEntry & { type: "message" }): {
     const searchable = parts.join("\n");
     return {
       searchable,
-      detail: truncateVisible(detailParts.join("\n"), MAX_ENTRY_DETAIL_CHARS),
+      detail: sanitizeDisplayMultiline(detailParts.join("\n"), MAX_ENTRY_DETAIL_CHARS),
       role,
     };
   }
@@ -293,7 +366,7 @@ function projectMessageSearchable(entry: SessionEntry & { type: "message" }): {
     const text = extractTextParts(entry.message.content);
     const toolName = entry.message.toolName?.trim() ?? "";
     const searchable = [toolName, text].filter(Boolean).join("\n");
-    const detail = truncateVisible(
+    const detail = sanitizeDisplayMultiline(
       [toolName ? `tool: ${toolName}` : "", text].filter(Boolean).join("\n"),
       MAX_ENTRY_DETAIL_CHARS,
     );
@@ -304,7 +377,7 @@ function projectMessageSearchable(entry: SessionEntry & { type: "message" }): {
     const command = entry.message.command ?? "";
     const output = entry.message.output ?? "";
     const searchable = [command, output].filter(Boolean).join("\n");
-    const detail = truncateVisible(
+    const detail = sanitizeDisplayMultiline(
       [`$ ${command}`, output].filter((line) => line.length > 0).join("\n"),
       MAX_ENTRY_DETAIL_CHARS,
     );
@@ -313,14 +386,18 @@ function projectMessageSearchable(entry: SessionEntry & { type: "message" }): {
 
   if (role === "custom") {
     const text = extractTextParts(entry.message.content);
-    return { searchable: text, detail: truncateVisible(text, MAX_ENTRY_DETAIL_CHARS), role };
+    return {
+      searchable: text,
+      detail: sanitizeDisplayMultiline(text, MAX_ENTRY_DETAIL_CHARS),
+      role,
+    };
   }
 
   if (role === "branchSummary") {
     const summary = entry.message.summary ?? "";
     return {
       searchable: summary,
-      detail: truncateVisible(summary, MAX_ENTRY_DETAIL_CHARS),
+      detail: sanitizeDisplayMultiline(summary, MAX_ENTRY_DETAIL_CHARS),
       role,
     };
   }
@@ -329,19 +406,36 @@ function projectMessageSearchable(entry: SessionEntry & { type: "message" }): {
     const summary = entry.message.summary ?? "";
     return {
       searchable: summary,
-      detail: truncateVisible(summary, MAX_ENTRY_DETAIL_CHARS),
+      detail: sanitizeDisplayMultiline(summary, MAX_ENTRY_DETAIL_CHARS),
       role,
     };
   }
 
   return {
     searchable: "",
-    detail: truncateVisible(`${role} entry`, MAX_ENTRY_DETAIL_CHARS),
+    detail: sanitizeDisplayField(`${role} entry`, MAX_ENTRY_DETAIL_CHARS),
     role,
   };
 }
 
+function isValidTranscriptBaseMetadata(entry: SessionEntry): boolean {
+  if (typeof entry.id !== "string" || entry.id.length === 0 || entry.id.trim().length === 0) {
+    return false;
+  }
+  if (entry.parentId !== null && typeof entry.parentId !== "string") {
+    return false;
+  }
+  if (typeof entry.timestamp !== "string" || entry.timestamp.length === 0 || entry.timestamp.trim().length === 0) {
+    return false;
+  }
+  return true;
+}
+
 export function projectTranscriptEntry(entry: SessionEntry): ChildSessionTranscriptEntry | null {
+  if (!isValidTranscriptBaseMetadata(entry)) {
+    return null;
+  }
+
   const base = {
     entryId: entry.id,
     parentId: entry.parentId,
@@ -350,6 +444,9 @@ export function projectTranscriptEntry(entry: SessionEntry): ChildSessionTranscr
 
   if (entry.type === "message") {
     const projected = projectMessageSearchable(entry);
+    if (!projected) {
+      return null;
+    }
     return {
       ...base,
       entryType: "message",
@@ -365,7 +462,7 @@ export function projectTranscriptEntry(entry: SessionEntry): ChildSessionTranscr
       ...base,
       entryType: "custom_message",
       searchableText: text,
-      detailText: truncateVisible(text, MAX_ENTRY_DETAIL_CHARS),
+      detailText: sanitizeDisplayMultiline(text, MAX_ENTRY_DETAIL_CHARS),
     };
   }
 
@@ -375,7 +472,7 @@ export function projectTranscriptEntry(entry: SessionEntry): ChildSessionTranscr
       ...base,
       entryType: "compaction",
       searchableText: summary,
-      detailText: truncateVisible(summary, MAX_ENTRY_DETAIL_CHARS),
+      detailText: sanitizeDisplayMultiline(summary, MAX_ENTRY_DETAIL_CHARS),
     };
   }
 
@@ -385,7 +482,7 @@ export function projectTranscriptEntry(entry: SessionEntry): ChildSessionTranscr
       ...base,
       entryType: "branch_summary",
       searchableText: summary,
-      detailText: truncateVisible(summary, MAX_ENTRY_DETAIL_CHARS),
+      detailText: sanitizeDisplayMultiline(summary, MAX_ENTRY_DETAIL_CHARS),
     };
   }
 
@@ -395,7 +492,7 @@ export function projectTranscriptEntry(entry: SessionEntry): ChildSessionTranscr
       ...base,
       entryType: "model_change",
       searchableText: searchable,
-      detailText: truncateVisible(`model: ${searchable}`, MAX_ENTRY_DETAIL_CHARS),
+      detailText: sanitizeDisplayField(`model: ${searchable}`, MAX_ENTRY_DETAIL_CHARS),
     };
   }
 
@@ -405,7 +502,7 @@ export function projectTranscriptEntry(entry: SessionEntry): ChildSessionTranscr
       ...base,
       entryType: "thinking_level_change",
       searchableText: searchable,
-      detailText: truncateVisible(`thinking level: ${searchable}`, MAX_ENTRY_DETAIL_CHARS),
+      detailText: sanitizeDisplayField(`thinking level: ${searchable}`, MAX_ENTRY_DETAIL_CHARS),
     };
   }
 
@@ -415,7 +512,7 @@ export function projectTranscriptEntry(entry: SessionEntry): ChildSessionTranscr
       ...base,
       entryType: "label",
       searchableText: searchable,
-      detailText: truncateVisible(
+      detailText: sanitizeDisplayField(
         entry.label ? `label: ${entry.label}` : "label cleared",
         MAX_ENTRY_DETAIL_CHARS,
       ),
@@ -478,7 +575,10 @@ export function searchTranscriptEntries(
       entryType: entry.entryType,
       ...(entry.role ? { role: entry.role } : {}),
       timestamp: entry.timestamp,
-      match: buildMatchExcerpt(entry.searchableText, query, MAX_SEARCH_EXCERPT_CHARS),
+      match: sanitizeDisplayMultiline(
+        buildMatchExcerpt(entry.searchableText, query, MAX_SEARCH_EXCERPT_CHARS),
+        MAX_SEARCH_EXCERPT_CHARS,
+      ),
     });
 
     if (matches.length >= maxResults) {
@@ -490,17 +590,25 @@ export function searchTranscriptEntries(
 }
 
 function formatShortVigilId(id: string): string {
-  const trimmed = id.trim();
+  const trimmed = sanitizeDisplayField(id, MAX_DISPLAY_ID_CHARS);
   if (!trimmed.startsWith("vigil-")) {
-    return trimmed;
+    return sanitizeDisplayField(trimmed, MAX_DISPLAY_ID_CHARS);
   }
   const suffix = trimmed.slice("vigil-".length).replace(/-/g, "");
   return suffix ? `vigil-${suffix.slice(0, 7)}` : "vigil-?";
 }
 
 function formatEntryIdentity(entry: VigilReadContextEntry | VigilSearchMatch): string {
-  const role = "role" in entry && entry.role ? `/${entry.role}` : "";
-  return `${entry.entryType}${role}`;
+  const role = "role" in entry && entry.role ? `/${sanitizeDisplayField(entry.role, MAX_DISPLAY_METADATA_CHARS)}` : "";
+  return `${sanitizeDisplayField(entry.entryType, MAX_DISPLAY_METADATA_CHARS)}${role}`;
+}
+
+function formatTextEntryId(entryId: string): string {
+  return sanitizeDisplayField(entryId, MAX_DISPLAY_ID_CHARS);
+}
+
+function formatTextParentId(parentId: string | null): string {
+  return parentId === null ? "null" : sanitizeDisplayField(parentId, MAX_DISPLAY_ID_CHARS);
 }
 
 export function formatSearchText(result: VigilSearchResult): string {
@@ -510,11 +618,11 @@ export function formatSearchText(result: VigilSearchResult): string {
   }
 
   const blocks = result.matches.map((match) => {
-    const parent = match.parentId ?? "null";
+    const parent = formatTextParentId(match.parentId);
     const lines = [
-      `${match.name} [${formatShortVigilId(match.id)}] · entry ${match.entryId} · parent ${parent}`,
-      `${formatEntryIdentity(match)} · ${match.timestamp}`,
-      match.match,
+      `${sanitizeDisplayField(match.name, MAX_DISPLAY_NAME_CHARS)} [${formatShortVigilId(match.id)}] · entry ${formatTextEntryId(match.entryId)} · parent ${parent}`,
+      `${formatEntryIdentity(match)} · ${sanitizeDisplayField(match.timestamp, MAX_DISPLAY_METADATA_CHARS)}`,
+      sanitizeDisplayMultiline(match.match, MAX_SEARCH_EXCERPT_CHARS),
     ];
     return lines.join("\n");
   });
@@ -524,15 +632,15 @@ export function formatSearchText(result: VigilSearchResult): string {
 
 export function formatReadText(result: VigilReadResult): string {
   const header = [
-    `child: ${result.name} [${formatShortVigilId(result.id)}]`,
-    `anchor: ${result.anchorEntryId} · window: ${result.effectiveBefore} before, ${result.effectiveAfter} after · order: JSONL append order`,
+    `child: ${sanitizeDisplayField(result.name, MAX_DISPLAY_NAME_CHARS)} [${formatShortVigilId(result.id)}]`,
+    `anchor: ${formatTextEntryId(result.anchorEntryId)} · window: ${result.effectiveBefore} before, ${result.effectiveAfter} after · order: JSONL append order`,
   ];
 
   const entryBlocks = result.entries.map((entry) => {
     const anchorMarker = entry.isAnchor ? " (anchor)" : "";
     return [
-      `${entry.entryId} · ${formatEntryIdentity(entry)} · ${entry.timestamp}${anchorMarker}`,
-      entry.detail,
+      `${formatTextEntryId(entry.entryId)} · ${formatEntryIdentity(entry)} · ${sanitizeDisplayField(entry.timestamp, MAX_DISPLAY_METADATA_CHARS)}${anchorMarker}`,
+      sanitizeDisplayMultiline(entry.detail, MAX_ENTRY_DETAIL_CHARS),
     ].join("\n");
   });
 

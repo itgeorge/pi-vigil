@@ -10,6 +10,7 @@ import {
   lifecycleStateToListItem,
   reconstructVigilLifecycleFromEntries,
   sortLifecycleStatesMostRecentFirst,
+  deriveDiagnosticChildIdentity,
   type VigilLifecycleState,
 } from "./lifecycle";
 import type {
@@ -254,20 +255,17 @@ export class VigilService {
         return { error: `Child session transcript unavailable for vigil: ${lifecycle.id}` };
       }
 
-      const snapshot = lifecycle.completionRecord
-        ? await this.buildCompletedSnapshot(lifecycle)
-        : await this.buildActiveSnapshot(lifecycle);
-      const record = lifecycle.runtimeRecord;
+      const diagnostic = deriveDiagnosticChildIdentity(lifecycle);
 
       matches.push(
         ...searchTranscriptEntries(
           transcriptResult,
           policy.query,
           {
-            id: lifecycle.id,
-            sessionId: record.sessionId,
-            name: snapshot.name,
-            state: snapshot.state,
+            id: diagnostic.id,
+            sessionId: diagnostic.sessionId,
+            name: diagnostic.name,
+            state: diagnostic.state,
           },
           remaining,
         ),
@@ -311,17 +309,14 @@ export class VigilService {
 
     const start = Math.max(0, anchorIndex - policy.before);
     const end = Math.min(transcriptResult.entries.length - 1, anchorIndex + policy.after);
-    const snapshot = lifecycle.completionRecord
-      ? await this.buildCompletedSnapshot(lifecycle)
-      : await this.buildActiveSnapshot(lifecycle);
-    const record = lifecycle.runtimeRecord;
+    const diagnostic = deriveDiagnosticChildIdentity(lifecycle);
     const anchor = transcriptResult.entries[anchorIndex]!;
 
     const result: VigilReadResult = {
       id: policy.id,
-      sessionId: record.sessionId,
-      name: snapshot.name,
-      state: snapshot.state,
+      sessionId: diagnostic.sessionId,
+      name: diagnostic.name,
+      state: diagnostic.state,
       anchorEntryId: policy.entryId,
       anchorParentId: anchor.parentId,
       requestedBefore: policy.before,
@@ -529,11 +524,19 @@ export class VigilService {
     lifecycle: VigilLifecycleState,
   ): Promise<ChildSessionTranscript | { error: string }> {
     const record = lifecycle.runtimeRecord;
-    return this.deps.childSessionTranscriptReader.readChildTranscript({
-      sessionId: record.sessionId,
-      cwd: record.cwd,
-      sessionDir: record.sessionDir ?? this.deps.sessionDir,
-    });
+    try {
+      const result = await this.deps.childSessionTranscriptReader.readChildTranscript({
+        sessionId: record.sessionId,
+        cwd: record.cwd,
+        sessionDir: record.sessionDir ?? this.deps.sessionDir,
+      });
+      if ("error" in result) {
+        return result;
+      }
+      return result;
+    } catch {
+      return { error: `Child session transcript unavailable for vigil: ${lifecycle.id}` };
+    }
   }
 
   private async scanWaitCohort(
@@ -952,11 +955,16 @@ export function createEmptyChildSessionTranscriptReader(): ChildSessionTranscrip
 export function createNodeChildSessionTranscriptReader(): ChildSessionTranscriptReader {
   return {
     async readChildTranscript({ sessionId, cwd, sessionDir }) {
-      const sessionPath = await findChildSessionPath(sessionId, cwd, sessionDir);
-      if (!sessionPath) {
-        return { error: `Child session not found: ${sessionId}` };
+      try {
+        const sessionPath = await findChildSessionPath(sessionId, cwd, sessionDir);
+        if (!sessionPath) {
+          return { error: `Child session not found: ${sessionId}` };
+        }
+        return readChildTranscriptFromFile(sessionPath);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { error: `Failed to read child session transcript: ${message}` };
       }
-      return readChildTranscriptFromFile(sessionPath);
     },
   };
 }

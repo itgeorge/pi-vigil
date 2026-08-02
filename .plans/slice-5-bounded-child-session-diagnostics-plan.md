@@ -254,6 +254,16 @@ Exact DTO/format names can improve during implementation, but result identity, b
 - [x] Update this plan’s checkboxes/assumptions/deviations/test notes. Commit plan updates with code/tests.
 - [x] Prepare implementation-review handoff for an independent reviewer: commit SHA(s), final action signatures/defaults/bounds, exact search corpus and exclusions, ordering/tree semantics, direct-completed gating, sample structured/text result, test/live status, and explicit non-goals.
 
+## Slice 5 review remediation (2026-08-02)
+
+- [x] Safe/bounded output: raw transcript text retained for matching only; `formatSearchText`/`formatReadText` and structured match/detail projections strip C0/C1/ANSI/OSC controls, cap transcript-derived display fields, preserve read-detail newlines, and serialize tool arguments as deterministic valid JSON.
+- [x] Lifecycle-only diagnostics: `search`/`read` no longer invoke `processRunner.isAlive`, child state reader, snapshot builders, PID operations, or session-tree mutation; `deriveDiagnosticChildIdentity` supplies lifecycle-derived state (`completed` or lifecycle-active `running`).
+- [x] Controlled transcript errors: service and node transcript reader catch reader/path/file failures and rejected promises, returning canonical diagnostic errors.
+- [x] Exact ID semantics: reject `id`/`entryId`/`search.id` with leading/trailing whitespace; preserve raw ids after validation; `query` continues trim behavior.
+- [x] Entry metadata validation: skip malformed session entries before projection (nonblank `entryId`, `parentId` string|null, nonblank timestamp); defensive role projections.
+- [x] Coverage gaps filled: control/oversized output, JSON args, isAlive/state-reader non-use, rejected reader, whitespace IDs, all searchable/excluded surfaces, malformed records.
+- [x] Run `npm test`, `npm run typecheck`, opt-out and live acceptance.
+
 ## Future work (not implementation work for this handoff)
 
 - Fuzzy/semantic search with deliberate ranking, privacy/cost, and model-policy design.
@@ -264,6 +274,7 @@ Exact DTO/format names can improve during implementation, but result identity, b
 
 - 2026-08-02: Plan created after accepted Slice 4.6. User approved case-insensitive literal matching; default active (`running`/`waiting`) corpus with explicit `includeCompleted`; stable Pi entry IDs rather than array indices; and a separate bounded `read` action rather than changing `poll`. No Slice 5 implementation has started.
 - 2026-08-02: Slice 5 implemented. Added `src/vigil/transcript.ts`, `ChildSessionTranscriptReader` port/node adapter, `VigilService.search`/`read`, extension adapter dispatch, compact `renderCall` rows, README docs, unit + live acceptance coverage.
-- **Tests (2026-08-02):** `npm test` 150/150 pass; `npm run typecheck` pass; `npm run test:acceptance` without `PI_VIGIL_LIVE=1` fails fast with opt-in instructions (expected); `PI_VIGIL_LIVE=1 npm run test:acceptance` pass (~15s).
+- **Tests (2026-08-02 review remediation):** `npm test` 167/167 pass; `npm run typecheck` pass; `npm run test:acceptance` without `PI_VIGIL_LIVE=1` fails fast with opt-in instructions (expected); `PI_VIGIL_LIVE=1 npm run test:acceptance` pass (~15s).
+- **Review remediation deviations:** Diagnostic non-completed `state` is lifecycle-active `running` (not poll live running/waiting). Text output sanitizes ids/names/metadata; structured DTO keeps exact stable ids.
 - **Deviations:** `custom` and `session_info` child entries are omitted from search/read projection (opaque/non-troubleshooting metadata). Per-field `before`/`after` max of 10 makes the global 21-entry window check unreachable at current constants; validation remains for forward compatibility.
 - **Live note:** acceptance reuses the two existing turn markers (`VIGIL_READY_*`, `VIGIL_FOLLOW_*`) for search/read rather than adding a third child turn.

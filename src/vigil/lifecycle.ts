@@ -4,6 +4,7 @@ import type {
   VigilLaunchRecord,
   VigilListItem,
   VigilRuntimeRecord,
+  VigilState,
   VigilTurnRecord,
 } from "./types";
 
@@ -152,6 +153,34 @@ export function sortLifecycleStatesMostRecentFirst(
     }
     return left.lastUpdatedAt < right.lastUpdatedAt ? 1 : -1;
   });
+}
+
+/**
+ * Lifecycle-only identity for search/read diagnostics.
+ * For non-completed children, `state: "running"` means lifecycle-active (eligible
+ * for the default active corpus), not live poll running/waiting semantics.
+ */
+export function deriveDiagnosticChildIdentity(state: VigilLifecycleState): {
+  id: string;
+  sessionId: string;
+  name: string;
+  state: VigilState;
+} {
+  if (state.completionRecord) {
+    return {
+      id: state.id,
+      sessionId: state.sessionId,
+      name: state.completionRecord.name,
+      state: "completed",
+    };
+  }
+
+  return {
+    id: state.id,
+    sessionId: state.sessionId,
+    name: state.launchName,
+    state: "running",
+  };
 }
 
 export function lifecycleStateToListItem(
