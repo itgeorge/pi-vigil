@@ -58,7 +58,7 @@ export const vigilTool = defineTool({
   name: "vigil",
   label: "Vigil",
   description:
-    "Launch, poll, continue, list, complete, foreground-wait, search, or read detached Pi child sessions. Wait observes the current active cohort with bounded polling and never changes child state.",
+    "Launch, poll, continue, list, complete, foreground-wait, search, or read detached Pi child sessions. Wait observes the current active cohort or one targeted direct child with bounded polling and never changes child state.",
   parameters: Type.Object({
     action: StringEnum(["launch", "poll", "send", "list", "complete", "wait", "search", "read"], {
       description:

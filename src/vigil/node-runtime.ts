@@ -588,7 +588,7 @@ export class VigilService {
         const childState = await this.deps.childSessionReader.readChildSessionState({
           sessionId: record.sessionId,
           cwd: record.cwd,
-          sessionDir: record.sessionDir,
+          sessionDir: record.sessionDir ?? this.deps.sessionDir,
         });
         const snapshot = lifecycle.completionRecord
           ? await this.buildCompletedSnapshot(lifecycle, childState)

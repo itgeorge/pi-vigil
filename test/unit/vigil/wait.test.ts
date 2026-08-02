@@ -553,6 +553,65 @@ describe("VigilService.wait targeted id", () => {
     expect(mutations()).toEqual({ spawned: 0, reaped: 0, renamed: 0 });
   });
 
+  it("falls back to deps sessionDir for targeted wait when the lifecycle record lacks sessionDir", async () => {
+    const depsSessionDir = "/custom/vigil-sessions";
+    const sessionManager = SessionManager.inMemory("/parent");
+    const target = launchRecord("vigil-target", 1);
+    const sibling = launchRecord("vigil-other", 2);
+    sessionManager.appendCustomEntry("vigil-launch", target);
+    sessionManager.appendCustomEntry("vigil-launch", sibling);
+    const appendEntry = (customType: string, data: unknown) => {
+      sessionManager.appendCustomEntry(customType, data);
+    };
+    const scheduler = new FakeScheduler();
+    const readCalls: Array<{ sessionId: string; sessionDir: string | undefined }> = [];
+    const reader: ChildSessionReader = {
+      async readChildSessionState({ sessionId, sessionDir }) {
+        readCalls.push({ sessionId, sessionDir });
+        return {
+          latestResponse: sessionId === "vigil-target" ? "Target ready." : "Other ready.",
+          turnComplete: sessionId === "vigil-target",
+          lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+          activity: defaultActivity(),
+        };
+      },
+    };
+    const service = new VigilService({
+      processRunner: {
+        spawnDetached: async () => ({ pid: 9999 }),
+        isAlive: () => true,
+        terminateAndWait: async () => undefined,
+      },
+      childSessionReader: reader,
+      childSessionTranscriptReader: createEmptyChildSessionTranscriptReader(),
+      childSessionNamer: {
+        markCompleted: async () => ({ completedName: "[completed] unused" }),
+      },
+      descendantInspector: createZeroDescendantInspector(),
+      parentLedger: createSessionParentLedger(sessionManager, appendEntry),
+      sessionDir: depsSessionDir,
+      waitScheduler: scheduler,
+    });
+    const updates: VigilWaitProgress[] = [];
+
+    const result = await service.wait({ id: "vigil-target", progress: "status" }, undefined, (progress) =>
+      updates.push(progress),
+    );
+
+    expectWait(result);
+    expect(result).toEqual({
+      outcome: "settled",
+      waitedMs: 0,
+      settled: [expect.objectContaining({ id: "vigil-target", state: "waiting", latestResponse: "Target ready." })],
+    });
+    expect(readCalls.some((call) => call.sessionId === "vigil-target" && call.sessionDir === depsSessionDir)).toBe(
+      true,
+    );
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.items).toHaveLength(1);
+    expect(updates[0]?.items[0]?.id).toBe("vigil-target");
+  });
+
   it("scopes progress and final output to the selected child only", async () => {
     const { service } = createHarness({
       records: [launchRecord("vigil-target", 1), launchRecord("vigil-other", 2)],
