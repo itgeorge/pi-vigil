@@ -100,6 +100,12 @@ type WaitCohortScan = {
   directSubagents: VigilDirectSubagentInspection;
 };
 
+type CurrentSessionLifecycleAction = "poll" | "send" | "complete" | "wait";
+
+function formatCurrentSessionLifecycleError(action: CurrentSessionLifecycleAction): string {
+  return `Cannot ${action} the current Vigil session.`;
+}
+
 export class VigilService {
   private readonly deps: VigilServiceDeps;
 
@@ -166,6 +172,11 @@ export class VigilService {
       return { error: `Unknown vigil id: ${vigilId}` };
     }
 
+    const currentSessionRejection = this.rejectIfCurrentSessionTarget(lifecycle, "poll");
+    if (currentSessionRejection) {
+      return currentSessionRejection;
+    }
+
     if (lifecycle.completionRecord) {
       return this.buildCompletedSnapshot(lifecycle);
     }
@@ -181,6 +192,11 @@ export class VigilService {
     const lifecycle = this.getLifecycleState(input.vigilId);
     if (!lifecycle) {
       return { error: `Unknown vigil id: ${input.vigilId}` };
+    }
+
+    const currentSessionRejection = this.rejectIfCurrentSessionTarget(lifecycle, "send");
+    if (currentSessionRejection) {
+      return currentSessionRejection;
     }
 
     if (lifecycle.completionRecord) {
@@ -400,6 +416,11 @@ export class VigilService {
       return { outcome: "empty", waitedMs: 0 };
     }
 
+    const currentSessionRejection = this.rejectWaitCohortIfCurrentSession(cohortIds);
+    if (currentSessionRejection) {
+      return currentSessionRejection;
+    }
+
     let delayMs = policy.initialDelayMs;
     let lastFingerprint: string | null = null;
     let lastProgressAt = startedAt;
@@ -496,6 +517,11 @@ export class VigilService {
     const lifecycle = this.getLifecycleState(input.vigilId);
     if (!lifecycle) {
       return { error: `Unknown vigil id: ${input.vigilId}` };
+    }
+
+    const currentSessionRejection = this.rejectIfCurrentSessionTarget(lifecycle, "complete");
+    if (currentSessionRejection) {
+      return currentSessionRejection;
     }
 
     if (lifecycle.completionRecord) {
@@ -731,6 +757,31 @@ export class VigilService {
 
   private getLifecycleState(vigilId: string): VigilLifecycleState | null {
     return this.deps.parentLedger.getLifecycle(vigilId);
+  }
+
+  private rejectIfCurrentSessionTarget(
+    lifecycle: VigilLifecycleState,
+    action: CurrentSessionLifecycleAction,
+  ): { error: string } | null {
+    const currentSessionId = this.deps.currentParentSessionId;
+    if (currentSessionId && lifecycle.sessionId === currentSessionId) {
+      return { error: formatCurrentSessionLifecycleError(action) };
+    }
+    return null;
+  }
+
+  private rejectWaitCohortIfCurrentSession(cohortIds: string[]): { error: string } | null {
+    for (const vigilId of cohortIds) {
+      const lifecycle = this.getLifecycleState(vigilId);
+      if (!lifecycle) {
+        continue;
+      }
+      const rejection = this.rejectIfCurrentSessionTarget(lifecycle, "wait");
+      if (rejection) {
+        return rejection;
+      }
+    }
+    return null;
   }
 
   private async buildListItemsFromStates(states: VigilLifecycleState[]): Promise<VigilListItem[]> {
@@ -1167,7 +1218,7 @@ export function createSessionParentLedger(
 
 export function createVigilServiceForContext(options: {
   parentCwd: string;
-  sessionManager: Pick<SessionManagerType, "getEntries">;
+  sessionManager: Pick<SessionManagerType, "getEntries" | "getSessionId">;
   appendEntry: (customType: string, data: unknown) => void;
   sessionDir?: string;
   processRunner?: ProcessRunner;
@@ -1193,5 +1244,6 @@ export function createVigilServiceForContext(options: {
     sessionDir: options.sessionDir,
     reapTimeoutMs: options.reapTimeoutMs,
     waitScheduler: options.waitScheduler,
+    currentParentSessionId: options.sessionManager.getSessionId(),
   });
 }

@@ -84,4 +84,5 @@ export interface VigilServiceDeps {
   sessionDir?: string;
   reapTimeoutMs?: number;
   waitScheduler?: WaitScheduler;
+  currentParentSessionId?: string;
 }
