@@ -4,7 +4,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
 import type { VigilCallArgs } from "./render-call";
-import { MAX_ENTRY_DETAIL_CHARS, sanitizeDisplayMultiline } from "./transcript";
+import { MAX_ENTRY_DETAIL_CHARS, escapeTerminalControls, sanitizeDisplayMultiline } from "./transcript";
 import { formatMutationSnapshotText, type VigilSnapshot } from "./types";
 
 const MUTATION_ACTIONS = new Set(["launch", "send", "complete"]);
@@ -41,6 +41,14 @@ function isVigilSnapshot(details: unknown): details is VigilSnapshot {
 function getResultText(result: AgentToolResult<unknown>): string {
   const content = result.content[0];
   return content?.type === "text" && typeof content.text === "string" ? content.text : "";
+}
+
+function sanitizeRendererFallbackText(text: string): string {
+  return escapeTerminalControls(text, true);
+}
+
+function getSafeFallbackResultText(result: AgentToolResult<unknown>): string {
+  return sanitizeRendererFallbackText(getResultText(result));
 }
 
 function resolveTextComponent(lastComponent?: Component): Text {
@@ -92,12 +100,12 @@ export function renderVigilResultText(
 
   try {
     if (renderContext.isPartial || renderContext.isError || !args.action || !MUTATION_ACTIONS.has(args.action)) {
-      text.setText(getResultText(result));
+      text.setText(getSafeFallbackResultText(result));
       return text;
     }
 
     const details = isVigilSnapshot(result.details) ? result.details : undefined;
-    const compactText = details ? formatMutationSnapshotText(details) : getResultText(result);
+    const compactText = details ? formatMutationSnapshotText(details) : getSafeFallbackResultText(result);
     let rendered = theme.fg("toolOutput", compactText);
 
     const detailBlock = formatExpandableDetailBlock(args.action, args, details);
@@ -114,7 +122,7 @@ export function renderVigilResultText(
     text.setText(rendered);
     return text;
   } catch {
-    text.setText(getResultText(result));
+    text.setText(getSafeFallbackResultText(result));
     return text;
   }
 }

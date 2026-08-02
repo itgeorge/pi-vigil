@@ -73,6 +73,24 @@ describe("renderVigilResultText", () => {
     latestResponse: null,
   };
 
+  it("renders collapsed successful mutations without injected receipt fields from malicious names", () => {
+    const maliciousName =
+      "Research\nsessionId: injected\ncwd: /evil\nlatestResponse: pwned\u001b[31mRED\u0007";
+    const collapsed = renderPlainResult(
+      mutationResult({ ...runningSnapshot, name: maliciousName }),
+      { action: "launch", name: maliciousName, message: "go" },
+    );
+
+    expect(collapsed).toContain("state: running");
+    expect(collapsed.split("\n").filter((line) => line.startsWith("id: "))).toHaveLength(1);
+    expect(collapsed.split("\n").filter((line) => line.startsWith("name: "))).toHaveLength(1);
+    expect(collapsed.split("\n").filter((line) => line.startsWith("state: "))).toHaveLength(1);
+    expect(collapsed).not.toMatch(/\u001b|\u0007/);
+    expect(collapsed.split("\n").some((line) => line.startsWith("sessionId:"))).toBe(false);
+    expect(collapsed.split("\n").some((line) => line.startsWith("cwd:"))).toBe(false);
+    expect(collapsed.split("\n").some((line) => line.startsWith("latestResponse:"))).toBe(false);
+  });
+
   it("renders collapsed successful mutations compactly with an expand hint only when detail exists", () => {
     const sendCollapsed = renderPlainResult(
       mutationResult({ ...runningSnapshot, state: "waiting", latestResponse: "Old answer." }),
@@ -154,6 +172,61 @@ describe("renderVigilResultText", () => {
     expect(expanded).toContain("state: running");
     expect(expanded).not.toContain("Hidden launch prompt");
     expect(expanded).not.toContain("sent message:");
+  });
+
+  it("escapes terminal controls in error, partial, and non-mutation fallback rendering", () => {
+    const injected = "Unknown vigil id: x\u001b[31mRED\u0007\u0085after";
+
+    const errorText = renderPlainResult(
+      {
+        content: [{ type: "text", text: injected }],
+        details: { error: injected },
+        isError: true,
+      } as never,
+      { action: "send", id: "vigil-missing", message: "Too late" },
+      { isError: true },
+    );
+    expect(errorText).not.toMatch(/\u001b|\u0007|\u0085/);
+    expect(errorText).toContain("Unknown vigil id: x");
+    expect(errorText).toContain("\\u0007");
+
+    const partialText = renderPlainResult(
+      {
+        content: [{ type: "text", text: injected }],
+        details: runningSnapshot,
+      },
+      { action: "send", id: SAMPLE_UUID, message: "go" },
+      { isPartial: true },
+    );
+    expect(partialText).not.toMatch(/\u001b|\u0007|\u0085/);
+    expect(partialText).toContain("\\u0007");
+
+    const pollText = renderPlainResult(
+      {
+        content: [{ type: "text", text: `id: x\nlatestResponse: ${injected}` }],
+        details: runningSnapshot,
+      },
+      { action: "poll", id: SAMPLE_UUID },
+    );
+    expect(pollText).not.toMatch(/\u001b|\u0007|\u0085/);
+    expect(pollText).toContain("latestResponse:");
+  });
+
+  it("escapes terminal controls when malformed mutation details fall back to content", () => {
+    const injected = "id: x\nstate: running\u001b[2J\u0007";
+    expect(() =>
+      renderPlainResult(
+        { content: [{ type: "text", text: injected }] } as never,
+        { action: "launch", name: "Task", message: "go" },
+      ),
+    ).not.toThrow();
+
+    const rendered = renderPlainResult(
+      { content: [{ type: "text", text: injected }] } as never,
+      { action: "launch", name: "Task", message: "go" },
+    );
+    expect(rendered).not.toMatch(/\u001b|\u0007/);
+    expect(rendered).toContain("\\u0007");
   });
 
   it("falls back to result content for non-mutation actions and errors", () => {

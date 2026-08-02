@@ -77,6 +77,11 @@ export function sanitizeDisplayField(text: string, maxChars: number): string {
   return truncateVisible(cleaned, maxChars);
 }
 
+/** Sanitize a single-line mutation receipt field: escape C0/C1/ANSI, collapse newlines/whitespace, bound length. */
+export function sanitizeReceiptField(text: string, maxChars: number): string {
+  return sanitizeDisplayField(text, maxChars);
+}
+
 export function sanitizeDisplayMultiline(text: string, maxChars: number): string {
   const cleaned = escapeTerminalControls(text, true);
   return truncateVisible(cleaned, maxChars);

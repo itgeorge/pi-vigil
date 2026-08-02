@@ -1,5 +1,11 @@
 import type { VigilDirectSubagentInspection } from "./descendant-inspector";
 import { formatDirectSubagentsSummaryText } from "./descendant-inspector";
+import {
+  MAX_DISPLAY_ID_CHARS,
+  MAX_DISPLAY_METADATA_CHARS,
+  MAX_DISPLAY_NAME_CHARS,
+  sanitizeReceiptField,
+} from "./transcript";
 
 export type VigilState = "running" | "waiting" | "completed";
 
@@ -154,9 +160,13 @@ export function normalizeVigilName(name: string): string | null {
 }
 
 export function formatMutationSnapshotText(snapshot: VigilSnapshot): string {
-  const lines = [`id: ${snapshot.id}`, `name: ${snapshot.name}`, `state: ${snapshot.state}`];
+  const lines = [
+    `id: ${sanitizeReceiptField(snapshot.id, MAX_DISPLAY_ID_CHARS)}`,
+    `name: ${sanitizeReceiptField(snapshot.name, MAX_DISPLAY_NAME_CHARS)}`,
+    `state: ${sanitizeReceiptField(snapshot.state, MAX_DISPLAY_METADATA_CHARS)}`,
+  ];
   if (snapshot.completedAt) {
-    lines.push(`completedAt: ${snapshot.completedAt}`);
+    lines.push(`completedAt: ${sanitizeReceiptField(snapshot.completedAt, MAX_DISPLAY_METADATA_CHARS)}`);
   }
   return lines.join("\n");
 }

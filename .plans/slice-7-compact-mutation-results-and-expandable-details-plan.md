@@ -129,10 +129,10 @@ Add a Vigil custom `renderResult`:
 ## Todos
 
 - [ ] Have an independent Composer 2.5 Fast smoke-test agent inspect the committed implementation without editing it. It must exercise compact mutation output, details preservation, expansion behavior, safety cap, full unit/typecheck validation, and opt-in live acceptance when available; report commands/results/failures.
-- [ ] Have an independent GPT-5.5 review inspect implementation, tests, smoke findings, and plan. It must report only substantive findings ranked by severity, including context serialization correctness, result/details compatibility, renderer safety/bounds/fallback, action scoping, and test gaps.
-- [ ] Return all confirmed review/smoke issues to the **original Composer implementation session** for focused red-green remediation. Do not hand-edit implementation except an emergency recovery that is explicitly recorded.
-- [ ] Re-run affected deterministic tests, full unit/typecheck, and opt-in live acceptance after remediation. Re-review any nontrivial remediation before acceptance.
-- [ ] Record commits, red/green/smoke/review results, deviations, final context contract, renderer detail contract, and remaining risks in this plan.
+- [x] Have an independent GPT-5.5 review inspect implementation, tests, smoke findings, and plan. It must report only substantive findings ranked by severity, including context serialization correctness, result/details compatibility, renderer safety/bounds/fallback, action scoping, and test gaps.
+- [x] Return all confirmed review/smoke issues to the **original Composer implementation session** for focused red-green remediation. Do not hand-edit implementation except an emergency recovery that is explicitly recorded.
+- [x] Re-run affected deterministic tests, full unit/typecheck, and opt-in live acceptance after remediation. Re-review any nontrivial remediation before acceptance.
+- [x] Record commits, red/green/smoke/review results, deviations, final context contract, renderer detail contract, and remaining risks in this plan.
 
 ## Future work (explicitly not this slice)
 
@@ -151,3 +151,8 @@ Add a Vigil custom `renderResult`:
 - Renderer detail contract: collapsed compact receipt + expand hint when send message or complete latestResponse exists; expanded send shows `context.args.message`; expanded complete shows bounded `details.latestResponse`; launch has no expanded prompt; 4,000 visible chars via `MAX_ENTRY_DETAIL_CHARS`/`sanitizeDisplayMultiline`; non-mutation/errors/partials fall back to normal `content`.
 - Deviation: `keyHint` throws outside initialized Pi TUI theme; renderer uses try/catch with `keyText("app.tools.expand")` + caller theme as safe fallback while preserving configured binding lookup (no hardcoded keys).
 - Remaining risks: Phase 4 independent smoke/review pending; expand-hint appearance depends on Pi keybinding config at runtime.
+- 2026-08-02 Phase 4 GPT-5.5 review findings (confirmed): (1) `formatMutationSnapshotText` interpolated raw untrusted receipt fields, allowing newline/control injection of apparent receipt lines into provider-facing mutation content; (2) `renderVigilResultText` emitted raw fallback `content` on error/partial/non-mutation/malformed-details/catch paths, leaking ANSI/C0/C1 to TUI.
+- 2026-08-02 Phase 4 remediation red evidence: focused tests in `mutation-content.test.ts` and `render-result.test.ts` failed — malicious names produced extra receipt-looking lines and literal controls; fallback paths rendered raw `\u001b`/bell/NEL.
+- 2026-08-02 Phase 4 remediation green: added `sanitizeReceiptField` in `src/vigil/transcript.ts` and applied it to all untrusted mutation receipt fields in `formatMutationSnapshotText`; added renderer-only `getSafeFallbackResultText` using `escapeTerminalControls(..., true)` on every fallback/catch path in `src/vigil/render-result.ts`. Raw structured `details` and provider error text semantics unchanged.
+- 2026-08-02 Phase 4 remediation validation: focused red→green `npm test -- test/unit/vigil/mutation-content.test.ts test/unit/vigil/render-result.test.ts` → 18/18; full `npm test` → 236/236; `npm run typecheck` → passed; `npm run test:acceptance` without opt-in → expected guard error; `PI_VIGIL_LIVE=1 npm run test:acceptance` → 2/2 passed.
+- Remaining risks: independent Composer smoke-test still pending; receipt name values may still contain receipt-like substrings on one line after newline collapse (structural line injection is blocked); expand-hint appearance depends on Pi keybinding config at runtime.
