@@ -251,6 +251,28 @@ describe("formatVigilCallExpandedArgs", () => {
       ].join("\n"),
     );
   });
+
+  it("sanitizes terminal controls while preserving indent newlines and valid JSON", () => {
+    const args: VigilCallArgs = {
+      action: "search",
+      query: "before\u0081C1\u2028LS\u2029PS\u001b[31mRED\te\r\nf\u0007bell",
+      id: "vigil-\u0001child",
+    };
+
+    const expanded = formatVigilCallExpandedArgs(args);
+    expect(expanded).toMatch(/^\{\n  "action": "search",\n/);
+    expect(expanded.endsWith("\n}")).toBe(true);
+    expect(expanded).not.toMatch(/\u001b|\u0007|\u0081|\u2028|\u2029|\t|\r/);
+    expect(expanded).toContain("\\u0081");
+    expect(expanded).toContain("\\u2028");
+    expect(expanded).toContain("\\u2029");
+    expect(expanded).toContain("\\u001b");
+    expect(expanded).toContain("\\t");
+    expect(expanded).toContain("\\r");
+    expect(expanded).toContain("\\u0007");
+    expect(expanded).toContain('"id": "vigil-\\u0001child"');
+    expect(() => JSON.parse(expanded)).not.toThrow();
+  });
 });
 
 describe("renderVigilCallText", () => {

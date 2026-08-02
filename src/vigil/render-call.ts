@@ -151,7 +151,8 @@ function formatModelIndicator(model: string | undefined, fallback?: string): str
 
 export function formatVigilCallExpandedArgs(args: VigilCallArgs): string {
   try {
-    return JSON.stringify(args, null, 2);
+    const pretty = JSON.stringify(args, null, 2);
+    return escapeTerminalControls(pretty, true);
   } catch {
     return "{}";
   }
