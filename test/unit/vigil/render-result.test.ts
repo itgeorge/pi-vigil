@@ -106,7 +106,7 @@ describe("renderVigilResultText", () => {
       { action: "launch", name: "Research API", message: "Hidden launch prompt" },
     );
     expect(launchCollapsed).toContain("state: running");
-    expect(launchCollapsed).not.toContain("to expand");
+    expect(launchCollapsed).toContain("to expand");
     expect(launchCollapsed).not.toContain("Hidden launch prompt");
 
     const completeCollapsed = renderPlainResult(
@@ -163,15 +163,47 @@ describe("renderVigilResultText", () => {
     expect(collapsed).not.toContain("Final child answer.");
   });
 
-  it("does not show launch message preview when expanded", () => {
+  it("renders expanded launch detail from context args rather than details fields", () => {
     const expanded = renderPlainResult(
-      mutationResult(runningSnapshot),
+      mutationResult({ ...runningSnapshot, latestResponse: "Should not appear in launch detail" }),
       { action: "launch", name: "Research API", message: "Hidden launch prompt" },
       { expanded: true },
     );
-    expect(expanded).toContain("state: running");
-    expect(expanded).not.toContain("Hidden launch prompt");
+    expect(expanded).toContain("launch message:");
+    expect(expanded).toContain("Hidden launch prompt");
+    expect(expanded).not.toContain("Should not appear in launch detail");
     expect(expanded).not.toContain("sent message:");
+
+    const collapsed = renderPlainResult(
+      mutationResult(runningSnapshot),
+      { action: "launch", name: "Research API", message: "Hidden launch prompt" },
+    );
+    expect(collapsed).not.toContain("Hidden launch prompt");
+  });
+
+  it("does not show launch expansion hint or detail for empty, missing, or malformed message args", () => {
+    const emptyMessage = renderPlainResult(
+      mutationResult(runningSnapshot),
+      { action: "launch", name: "Research API", message: "" },
+    );
+    expect(emptyMessage).toContain("state: running");
+    expect(emptyMessage).not.toContain("to expand");
+    expect(emptyMessage).not.toContain("launch message:");
+
+    const missingMessage = renderPlainResult(
+      mutationResult(runningSnapshot),
+      { action: "launch", name: "Research API" },
+    );
+    expect(missingMessage).not.toContain("to expand");
+    expect(missingMessage).not.toContain("launch message:");
+
+    const malformedMessage = renderPlainResult(
+      mutationResult(runningSnapshot),
+      { action: "launch", name: "Research API", message: 42 as never },
+      { expanded: true },
+    );
+    expect(malformedMessage).not.toContain("launch message:");
+    expect(malformedMessage).not.toContain("to expand");
   });
 
   it("escapes terminal controls in error, partial, and non-mutation fallback rendering", () => {
@@ -251,18 +283,21 @@ describe("renderVigilResultText", () => {
     expect(errorText).toBe("Unknown vigil id: vigil-missing");
   });
 
-  it("sanitizes controls and caps expanded detail at 4000 visible characters", () => {
+  it.each([
+    ["send", { action: "send", id: SAMPLE_UUID, message: "" } satisfies VigilCallArgs, "sent message:"],
+    ["launch", { action: "launch", name: "Research API", message: "" } satisfies VigilCallArgs, "launch message:"],
+  ] as const)("sanitizes controls and caps expanded %s detail at 4000 visible characters", (action, args, label) => {
     const longMessage = `${"M".repeat(MAX_ENTRY_DETAIL_CHARS + 500)}\u001b[31mRED\u0007`;
     const expanded = renderPlainResult(
       mutationResult(runningSnapshot),
-      { action: "send", id: SAMPLE_UUID, message: longMessage },
+      { ...args, message: longMessage } as VigilCallArgs,
       { expanded: true },
     );
     expect(expanded).not.toMatch(/\u001b|\u0007/);
     const bounded = sanitizeDisplayMultiline(longMessage, MAX_ENTRY_DETAIL_CHARS);
     expect(bounded.length).toBeLessThanOrEqual(MAX_ENTRY_DETAIL_CHARS);
     expect(bounded).toContain("…");
-    expect(expanded).toContain("sent message:");
+    expect(expanded).toContain(label);
     expect(expanded.replace(/\s+/g, "")).toContain(bounded.replace(/\s+/g, "").slice(0, 120));
     expect(expanded).not.toContain(longMessage.slice(-200));
   });

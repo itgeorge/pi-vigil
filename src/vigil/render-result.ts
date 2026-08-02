@@ -63,6 +63,9 @@ function hasExpandableDetail(
   args: VigilCallArgs,
   details: VigilSnapshot | undefined,
 ): boolean {
+  if (action === "launch") {
+    return typeof args.message === "string" && args.message.length > 0;
+  }
   if (action === "send") {
     return typeof args.message === "string" && args.message.length > 0;
   }
@@ -77,6 +80,9 @@ function formatExpandableDetailBlock(
   args: VigilCallArgs,
   details: VigilSnapshot | undefined,
 ): string | undefined {
+  if (action === "launch" && typeof args.message === "string" && args.message.length > 0) {
+    return `launch message:\n${sanitizeDisplayMultiline(args.message, MAX_ENTRY_DETAIL_CHARS)}`;
+  }
   if (action === "send" && typeof args.message === "string" && args.message.length > 0) {
     return `sent message:\n${sanitizeDisplayMultiline(args.message, MAX_ENTRY_DETAIL_CHARS)}`;
   }
