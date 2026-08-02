@@ -43,7 +43,7 @@ Add a Vigil custom `renderResult`:
 - The context-saving contract applies to final tool `content`, not merely a visually collapsed renderer. A renderer alone cannot reduce provider context because Pi sends `content` to the model.
 - `details` is retained in parent session JSONL, available to extensions/TUI/export, and should therefore be treated as bounded/sensitive metadata even though provider adapters do not serialize it as tool-result text. Do not introduce a new raw/unbounded copy of child output.
 - Keeping the current full `VigilSnapshot` in `details` preserves programmatic compatibility. `latestResponse` is therefore hidden from normal mutation **content**, not removed from the structured metadata contract.
-- `send`’s message already occurs in the assistant tool-call arguments. The renderer must use `context.args.message` on expansion rather than store/repeat it in `details` or normal result content.
+- `send`'s message already occurs in the assistant tool-call arguments. The renderer must use `context.args.message` on expansion rather than store/repeat it in `details` or normal result content.
 - The 4,000-character renderer detail cap matches Slice 5's bounded diagnostic entry detail. Existing output-safety helpers should be reused where compatible; exact helper/module names may improve during implementation.
 - Result renderers are visual only: they must not append entries, refresh child sessions, perform I/O, mutate display caches, or change action execution/results.
 - The compact content remains line-oriented, safe, and sufficiently self-contained to identify the affected child and resulting state. Exact receipt wording may improve, but field presence/omissions above are contractual.
@@ -54,17 +54,17 @@ Add a Vigil custom `renderResult`:
 
 ## Todos
 
-- [ ] Read current adapter result dispatch, `VigilSnapshot`/formatters, call renderer, transcript/terminal-safety helpers, Pi custom-tool `renderResult` API, and all launch/send/complete adapter/service/render tests before editing production code.
-- [ ] Add focused failing unit tests for a pure compact mutation formatter (or equivalent) proving successful launch/send/complete content contains only ID, name, state, and optional completion timestamp; it excludes `sessionId`, `cwd`, and `latestResponse`, including a very long latest response.
-- [ ] Add failing adapter tests proving successful mutation actions return compact `content` while preserving the existing full `VigilSnapshot` in `details`; errors retain current controlled text/isError behavior.
-- [ ] Add failing renderer tests proving:
+- [x] Read current adapter result dispatch, `VigilSnapshot`/formatters, call renderer, transcript/terminal-safety helpers, Pi custom-tool `renderResult` API, and all launch/send/complete adapter/service/render tests before editing production code.
+- [x] Add focused failing unit tests for a pure compact mutation formatter (or equivalent) proving successful launch/send/complete content contains only ID, name, state, and optional completion timestamp; it excludes `sessionId`, `cwd`, and `latestResponse`, including a very long latest response.
+- [x] Add failing adapter tests proving successful mutation actions return compact `content` while preserving the existing full `VigilSnapshot` in `details`; errors retain current controlled text/isError behavior.
+- [x] Add failing renderer tests proving:
   - collapsed successful mutation output is compact and uses the configured `app.tools.expand` hint only where detail is available;
   - expanded send renders the original message from `context.args`, not a duplicated details field;
   - expanded complete renders details `latestResponse` only on demand;
   - launch has no expanded launch-message preview;
   - control/ANSI/C1 payloads, long names/messages/responses, missing/malformed details, and partial/error results are safe and cannot throw or leak controls;
   - expanded detail is visibly capped at 4,000 characters with a clear truncation marker.
-- [ ] Run the focused red tests and record the expected failures in progress notes.
+- [x] Run the focused red tests and record the expected failures in progress notes.
 
 ## Agent notes / assumptions
 
@@ -77,16 +77,16 @@ Add a Vigil custom `renderResult`:
 
 ## Todos
 
-- [ ] Add a focused formatter/DTO seam, e.g. `formatMutationSnapshotText(snapshot)`, that produces compact safe success content without changing `formatSnapshotText` used by `poll` and settled `wait`.
-- [ ] Route only successful `launch`, `send`, and `complete` adapter results through that compact formatter. Preserve their `details` as the current full snapshot and preserve cache refresh behavior for launch/complete.
-- [ ] Ensure `complete` includes its immutable `completedAt` when present; launch/send do not invent it.
-- [ ] Preserve all existing action validation, service lifecycle/reaping ordering, schema, and structured result semantics. Do not alter `VigilSnapshot`, `poll`, `wait`, `list`, `search`, `read`, or error formatting to achieve compaction.
-- [ ] Refactor only after focused and full deterministic tests are green.
+- [x] Add a focused formatter/DTO seam, e.g. `formatMutationSnapshotText(snapshot)`, that produces compact safe success content without changing `formatSnapshotText` used by `poll` and settled `wait`.
+- [x] Route only successful `launch`, `send`, and `complete` adapter results through that compact formatter. Preserve their `details` as the current full snapshot and preserve cache refresh behavior for launch/complete.
+- [x] Ensure `complete` includes its immutable `completedAt` when present; launch/send do not invent it.
+- [x] Preserve all existing action validation, service lifecycle/reaping ordering, schema, and structured result semantics. Do not alter `VigilSnapshot`, `poll`, `wait`, `list`, `search`, `read`, or error formatting to achieve compaction.
+- [x] Refactor only after focused and full deterministic tests are green.
 
 ## Agent notes / assumptions
 
-- A mutation receipt does not need `sessionId` because current Vigil launch IDs/session IDs are canonically paired and the action’s ID remains sufficient for subsequent `poll`, `wait({ id })`, `send`, or `complete` calls.
-- Do not put `latestResponse` into mutation text “just in case”; callers that need an observation must explicitly `poll` or use `wait`.
+- A mutation receipt does not need `sessionId` because current Vigil launch IDs/session IDs are canonically paired and the action's ID remains sufficient for subsequent `poll`, `wait({ id })`, `send`, or `complete` calls.
+- Do not put `latestResponse` into mutation text "just in case"; callers that need an observation must explicitly `poll` or use `wait`.
 
 ---
 
@@ -94,15 +94,15 @@ Add a Vigil custom `renderResult`:
 
 ## Todos
 
-- [ ] Add `renderResult` to the registered Vigil tool alongside the existing compact `renderCall`, using Pi's renderer API and `keyHint("app.tools.expand", ...)`.
-- [ ] Render successful mutation results compactly by default. On expansion:
+- [x] Add `renderResult` to the registered Vigil tool alongside the existing compact `renderCall`, using Pi's renderer API and `keyHint("app.tools.expand", ...)`.
+- [x] Render successful mutation results compactly by default. On expansion:
   - for `send`, render a labeled, safe, bounded sent-message view from `context.args.message`;
   - for `complete`, render a labeled, safe, bounded latest-response view from `result.details.latestResponse` only when it is a nonempty string;
   - for `launch`, do not surface a launch message preview;
   - never show irrelevant details for a different action.
-- [ ] Use existing terminal-safety conventions for all expansion surfaces and enforce the 4,000-visible-character cap plus a clear truncation suffix. Preserve deliberate line breaks only where safe/readable.
-- [ ] Handle errors, malformed/missing results/details/args, partial updates, and fallback rendering safely. A renderer failure must degrade to normal `content`, not prevent tool execution.
-- [ ] Do not copy sent messages or response text into parent custom entries, new public fields, or result content. Do not perform session/process I/O from rendering.
+- [x] Use existing terminal-safety conventions for all expansion surfaces and enforce the 4,000-visible-character cap plus a clear truncation suffix. Preserve deliberate line breaks only where safe/readable.
+- [x] Handle errors, malformed/missing results/details/args, partial updates, and fallback rendering safely. A renderer failure must degrade to normal `content`, not prevent tool execution.
+- [x] Do not copy sent messages or response text into parent custom entries, new public fields, or result content. Do not perform session/process I/O from rendering.
 
 ## Agent notes / assumptions
 
@@ -115,12 +115,12 @@ Add a Vigil custom `renderResult`:
 
 ## Todos
 
-- [ ] Update README to distinguish compact mutation acknowledgements from observation output: `poll` and settled `wait` return latest response; mutation detail is available only in interactive expandable UI and is bounded/sanitized.
-- [ ] Update existing unit expectations for launch/send/complete output intentionally changed by this slice; preserve assertions for their structured details and all unrelated actions.
-- [ ] Add or update opt-in live acceptance through the registered adapter to assert at least one mutation receipt omits a unique child latest-response marker while a subsequent `poll` or settled `wait` exposes it. Keep unique values, isolated session directory, and existing cleanup.
-- [ ] Run and record `npm test`, `npm run typecheck`, `npm run test:acceptance` without opt-in (expected prerequisite guard), and `PI_VIGIL_LIVE=1 npm run test:acceptance` when authenticated.
-- [ ] Confirm non-goals: no action/schema expansion, no mutation service behavior change, no output change for poll/wait/list/search/read, no LLM summary, no automatic rendering-side read, no raw/unbounded UI transcript view, no extra parent persistence.
-- [ ] Update this plan’s checkboxes/notes/results and commit plan changes with implementation/tests.
+- [x] Update README to distinguish compact mutation acknowledgements from observation output: `poll` and settled `wait` return latest response; mutation detail is available only in interactive expandable UI and is bounded/sanitized.
+- [x] Update existing unit expectations for launch/send/complete output intentionally changed by this slice; preserve assertions for their structured details and all unrelated actions.
+- [x] Add or update opt-in live acceptance through the registered adapter to assert at least one mutation receipt omits a unique child latest-response marker while a subsequent `poll` or settled `wait` exposes it. Keep unique values, isolated session directory, and existing cleanup.
+- [x] Run and record `npm test`, `npm run typecheck`, `npm run test:acceptance` without opt-in (expected prerequisite guard), and `PI_VIGIL_LIVE=1 npm run test:acceptance` when authenticated.
+- [x] Confirm non-goals: no action/schema expansion, no mutation service behavior change, no output change for poll/wait/list/search/read, no LLM summary, no automatic rendering-side read, no raw/unbounded UI transcript view, no extra parent persistence.
+- [x] Update this plan's checkboxes/notes/results and commit plan changes with implementation/tests.
 
 ---
 
@@ -144,3 +144,10 @@ Add a Vigil custom `renderResult`:
 ## Progress notes
 
 - 2026-08-02: User approved compact successful launch/send/complete content; full snapshots remain in `details` for compatibility. Poll and settled wait remain model-facing latest-response observation surfaces. Expanded `send` uses `context.args.message`; expanded `complete` may show `details.latestResponse`; launch has no expanded message. All expanded text is terminal-safe and capped at 4,000 visible characters. No implementation has started.
+- 2026-08-02 Phase 0 red evidence: `npm test -- test/unit/vigil/mutation-content.test.ts test/unit/vigil/render-result.test.ts test/unit/vigil/extension-adapter.test.ts` failed as expected — `formatMutationSnapshotText is not a function`, missing `render-result` module, launch adapter still returned full snapshot text in `content`.
+- 2026-08-02 Phase 1–2 green: added `formatMutationSnapshotText` in `src/vigil/types.ts`, routed launch/send/complete through `mutationSnapshotResult` in `src/index.ts`, added `src/vigil/render-result.ts` with bounded `renderResult` using `sanitizeDisplayMultiline` + `keyHint("app.tools.expand", "to expand")` (fallback to `keyText` + passed theme when Pi global theme is uninitialized in tests).
+- 2026-08-02 Phase 3 validation: `npm test` → 231/231 passed; `npm run typecheck` → passed; `npm run test:acceptance` without opt-in → expected guard error; `PI_VIGIL_LIVE=1 npm run test:acceptance` → 2/2 passed (includes launch/send compact-content assertions omitting `sessionId`/`latestResponse` while settled `wait` still exposes markers).
+- Final provider-facing mutation content contract: `id`, `name`, `state`, optional `completedAt` only; omits `sessionId`, `cwd`, `latestResponse`. Full `VigilSnapshot` preserved in `details`.
+- Renderer detail contract: collapsed compact receipt + expand hint when send message or complete latestResponse exists; expanded send shows `context.args.message`; expanded complete shows bounded `details.latestResponse`; launch has no expanded prompt; 4,000 visible chars via `MAX_ENTRY_DETAIL_CHARS`/`sanitizeDisplayMultiline`; non-mutation/errors/partials fall back to normal `content`.
+- Deviation: `keyHint` throws outside initialized Pi TUI theme; renderer uses try/catch with `keyText("app.tools.expand")` + caller theme as safe fallback while preserving configured binding lookup (no hardcoded keys).
+- Remaining risks: Phase 4 independent smoke/review pending; expand-hint appearance depends on Pi keybinding config at runtime.

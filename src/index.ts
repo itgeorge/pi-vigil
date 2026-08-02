@@ -13,8 +13,10 @@ import {
   renderVigilCallText,
   type VigilCallArgs,
 } from "./vigil/render-call";
+import { renderVigilResultText } from "./vigil/render-result";
 import {
   formatListText,
+  formatMutationSnapshotText,
   formatReadText,
   formatSearchText,
   formatSnapshotText,
@@ -156,6 +158,20 @@ export const vigilTool = defineTool({
     );
   },
 
+  renderResult(result, options, theme, context) {
+    return renderVigilResultText(
+      result,
+      context.args as VigilCallArgs,
+      theme,
+      {
+        lastComponent: context.lastComponent,
+        expanded: options.expanded,
+        isPartial: options.isPartial,
+        isError: context.isError,
+      },
+    );
+  },
+
   async execute(_toolCallId, params, signal, onUpdate, ctx) {
     const service = createService(ctx);
 
@@ -193,7 +209,7 @@ export const vigilTool = defineTool({
       }
 
       refreshVigilDisplayNameCache(ctx);
-      return snapshotResult(result);
+      return mutationSnapshotResult(result);
     }
 
     if (params.action === "wait") {
@@ -270,7 +286,7 @@ export const vigilTool = defineTool({
       }
 
       refreshVigilDisplayNameCache(ctx);
-      return snapshotResult(result);
+      return mutationSnapshotResult(result);
     }
 
     if (params.action === "send") {
@@ -305,7 +321,7 @@ export const vigilTool = defineTool({
         };
       }
 
-      return snapshotResult(result);
+      return mutationSnapshotResult(result);
     }
 
     if (params.action === "search") {
@@ -384,6 +400,13 @@ export const vigilTool = defineTool({
     return snapshotResult(result);
   },
 });
+
+function mutationSnapshotResult(snapshot: VigilSnapshot) {
+  return {
+    content: [{ type: "text" as const, text: formatMutationSnapshotText(snapshot) }],
+    details: snapshot,
+  };
+}
 
 function snapshotResult(snapshot: VigilSnapshot) {
   return {

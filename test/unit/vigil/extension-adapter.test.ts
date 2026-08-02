@@ -5,7 +5,15 @@ import { createZeroDescendantInspector } from "../../../src/vigil/descendant-ins
 import { resetVigilRuntimeOverrides, setVigilRuntimeOverrides } from "../../../src/vigil/runtime-overrides";
 import type { ChildSessionNamer, ChildSessionReader, ChildSessionTranscriptReader, ProcessRunner, VigilSessionActivity, WaitScheduler } from "../../../src/vigil/ports";
 import { readLatestAssistantTextFromFile, readChildSessionStateFromFile } from "../../../src/vigil/node-runtime";
-import type { VigilLaunchRecord, VigilListResult, VigilReadResult, VigilSearchResult, VigilSnapshot } from "../../../src/vigil/types";
+import {
+  formatMutationSnapshotText,
+  formatSnapshotText,
+  type VigilLaunchRecord,
+  type VigilListResult,
+  type VigilReadResult,
+  type VigilSearchResult,
+  type VigilSnapshot,
+} from "../../../src/vigil/types";
 import { formatVigilShortId } from "../../../src/vigil/render-call";
 import { createInMemoryTranscriptReader, transcriptFromEntries } from "../../helpers/transcript-fake";
 import { createDeterministicTestTheme } from "../../helpers/test-theme";
@@ -98,8 +106,10 @@ describe("vigil extension adapter", () => {
     expect(snapshot.latestResponse).toBeNull();
     expect(result.content[0]).toEqual({
       type: "text",
-      text: expect.stringContaining(`state: running`),
+      text: formatMutationSnapshotText(snapshot),
     });
+    expect((result.content[0] as { text?: string }).text).not.toContain("sessionId:");
+    expect((result.content[0] as { text?: string }).text).not.toContain("latestResponse:");
 
     expect(harness.capturedEntries).toHaveLength(1);
     expect(harness.capturedEntries[0]).toEqual({
@@ -770,6 +780,115 @@ describe("vigil extension adapter", () => {
     expect(result.content[0]).toEqual({
       type: "text",
       text: "Unknown vigil id: vigil-missing",
+    });
+  });
+
+  describe("compact mutation receipts", () => {
+    const uniqueLatestResponse = `UNIQUE_LATEST_${"z".repeat(5000)}`;
+
+    it("returns compact launch/send/complete content while preserving full snapshots in details", async () => {
+      const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+
+      setVigilRuntimeOverrides({
+        processRunner: {
+          spawnDetached: async () => ({ pid: 5150 }),
+          isAlive: () => true,
+          terminateAndWait: async () => undefined,
+        },
+        childSessionReader: {
+          readChildSessionState: async () => ({
+            latestResponse: uniqueLatestResponse,
+            turnComplete: true,
+            lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+            activity: emptyActivity,
+          }),
+        },
+        childSessionNamer: {
+          markCompleted: async () => ({ completedName: "[completed] Compact child" }),
+        },
+      });
+
+      const launchResult = await harness.execute({
+        action: "launch",
+        name: "Compact child",
+        message: "Start work",
+      });
+      expect((launchResult as { isError?: boolean }).isError).toBeFalsy();
+      const launched = launchResult.details as VigilSnapshot;
+      expect(launchResult.content[0]).toEqual({
+        type: "text",
+        text: formatMutationSnapshotText(launched),
+      });
+      expect(launchResult.content[0]).not.toEqual({
+        type: "text",
+        text: formatSnapshotText(launched),
+      });
+
+      const sendResult = await harness.execute({
+        action: "send",
+        id: launched.id,
+        message: "Continue work",
+      });
+      expect((sendResult as { isError?: boolean }).isError).toBeFalsy();
+      const sent = sendResult.details as VigilSnapshot;
+      expect(sendResult.content[0]).toEqual({
+        type: "text",
+        text: formatMutationSnapshotText(sent),
+      });
+      expect((sendResult.content[0] as { text?: string }).text).not.toContain(uniqueLatestResponse.slice(0, 80));
+      expect(sent.latestResponse).toBe(uniqueLatestResponse);
+
+      const completeResult = await harness.execute({
+        action: "complete",
+        id: launched.id,
+      });
+      expect((completeResult as { isError?: boolean }).isError).toBeFalsy();
+      const completed = completeResult.details as VigilSnapshot;
+      expect(completeResult.content[0]).toEqual({
+        type: "text",
+        text: formatMutationSnapshotText(completed),
+      });
+      expect((completeResult.content[0] as { text?: string }).text).toContain("completedAt:");
+      expect((completeResult.content[0] as { text?: string }).text).not.toContain("latestResponse:");
+      expect(completed.latestResponse).toBe(uniqueLatestResponse);
+    });
+
+    it("keeps poll observation content unchanged", async () => {
+      const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+      const record: VigilLaunchRecord = {
+        id: "vigil-compact-poll",
+        sessionId: "vigil-compact-poll",
+        name: "Poll child",
+        pid: 6060,
+        cwd: "/parent/project",
+        launchedAt: "2026-08-01T12:00:00.000Z",
+      };
+      harness.sessionManager.appendCustomEntry("vigil-launch", record);
+
+      setVigilRuntimeOverrides({
+        processRunner: {
+          spawnDetached: async () => ({ pid: 0 }),
+          isAlive: () => false,
+          terminateAndWait: async () => undefined,
+        },
+        childSessionReader: {
+          readChildSessionState: async () => ({
+            latestResponse: uniqueLatestResponse,
+            turnComplete: true,
+            lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+            activity: emptyActivity,
+          }),
+        },
+      });
+
+      const pollResult = await harness.execute({ action: "poll", id: record.id });
+      expect((pollResult as { isError?: boolean }).isError).toBeFalsy();
+      const snapshot = pollResult.details as VigilSnapshot;
+      expect(pollResult.content[0]).toEqual({
+        type: "text",
+        text: formatSnapshotText(snapshot),
+      });
+      expect((pollResult.content[0] as { text?: string }).text).toContain("latestResponse:");
     });
   });
 });

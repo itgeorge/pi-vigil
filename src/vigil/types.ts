@@ -153,6 +153,14 @@ export function normalizeVigilName(name: string): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+export function formatMutationSnapshotText(snapshot: VigilSnapshot): string {
+  const lines = [`id: ${snapshot.id}`, `name: ${snapshot.name}`, `state: ${snapshot.state}`];
+  if (snapshot.completedAt) {
+    lines.push(`completedAt: ${snapshot.completedAt}`);
+  }
+  return lines.join("\n");
+}
+
 export function formatSnapshotText(snapshot: VigilSnapshot): string {
   const lines = [
     `id: ${snapshot.id}`,

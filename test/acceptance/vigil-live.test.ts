@@ -86,6 +86,10 @@ describe("live vigil acceptance", () => {
     expect(launched.id).toMatch(/^vigil-/);
     expect(launched.name).toBe(launchName);
     expect(launched.state).toBe("running");
+    const launchText = launchResult.content[0]?.type === "text" ? launchResult.content[0].text : "";
+    expect(launchText).toContain(`id: ${launched.id}`);
+    expect(launchText).not.toContain("sessionId:");
+    expect(launchText).not.toContain("latestResponse:");
 
     const launchRecord = harness.capturedEntries[0]?.data as VigilLaunchRecord;
     expect(launchRecord.sessionDir).toBe(sessionDir);
@@ -134,6 +138,10 @@ describe("live vigil acceptance", () => {
     expect(sent.state).toBe("running");
     expect(sent.id).toBe(launched.id);
     expect(sent.sessionId).toBe(launched.sessionId);
+    const sendText = sendResult.content[0]?.type === "text" ? sendResult.content[0].text : "";
+    expect(sendText).not.toContain(secondMarker);
+    expect(sendText).not.toContain("latestResponse:");
+    expect(sendText).not.toContain("sessionId:");
     if (wasAliveBeforeSend) {
       expect(isProcessAlive(launchPid)).toBe(false);
     }
