@@ -81,23 +81,23 @@ Exact DTO/format names can improve during implementation, but result identity, b
 
 ## Todos
 
-- [ ] Read accepted Slice 1–4.6 plans, current service/ports/session-text/adapter/rendering code, Pi session-format/tree documentation, fixtures, and live acceptance setup before implementation.
-- [ ] Add failing schema/adapter tests for both actions:
+- [x] Read accepted Slice 1–4.6 plans, current service/ports/session-text/adapter/rendering code, Pi session-format/tree documentation, fixtures, and live acceptance setup before implementation.
+- [x] Add failing schema/adapter tests for both actions:
   - `search` requires nonblank `query`; `read` requires nonblank `id` and `entryId`;
   - all proposed optional parameters are Pi-compatible and forwarding preserves omitted/default semantics;
   - `search` and `read` return structured details plus self-sufficient bounded text;
   - malformed values/ranges produce concise errors before file access;
   - unknown child/session entry IDs and an excluded completed child report clear errors.
-- [ ] Add failing service tests for corpus selection and lifecycle integrity:
+- [x] Add failing service tests for corpus selection and lifecycle integrity:
   - default search sees active running/waiting children only;
   - `includeCompleted: true` adds retained completed children;
   - explicit `id` restricts search deterministically;
   - completed direct read requires `includeCompleted: true`;
   - duplicate/malformed/tampered parent ledger records cannot redirect a diagnostic operation to a noncanonical child session;
   - no ledger append, spawning, reaping, rename, child process state check/mutation, or session-tree leaf mutation occurs.
-- [ ] Add failing transcript-parser/search tests for case-insensitive literal behavior, all searchable surfaces, excluded thinking/opaque custom data/images, deterministic ordering, single-result-per-entry behavior, correct match excerpts, and global max-result truncation.
-- [ ] Add failing exact-read tests for stable child `entryId`, parent ID/type/role/timestamp metadata, append-order before/after window, tree branches, missing anchor, per-entry truncation, and numeric bounds.
-- [ ] Add failing renderer tests for compact safe summaries of `search` and `read` calls (query/child identity/entry identity as appropriate), including unknown IDs and long/newline query/ID values.
+- [x] Add failing transcript-parser/search tests for case-insensitive literal behavior, all searchable surfaces, excluded thinking/opaque custom data/images, deterministic ordering, single-result-per-entry behavior, correct match excerpts, and global max-result truncation.
+- [x] Add failing exact-read tests for stable child `entryId`, parent ID/type/role/timestamp metadata, append-order before/after window, tree branches, missing anchor, per-entry truncation, and numeric bounds.
+- [x] Add failing renderer tests for compact safe summaries of `search` and `read` calls (query/child identity/entry identity as appropriate), including unknown IDs and long/newline query/ID values.
 
 ## Agent notes / assumptions
 
@@ -110,8 +110,8 @@ Exact DTO/format names can improve during implementation, but result identity, b
 
 ## Todos
 
-- [ ] Add narrowly scoped internal/domain types, preferably in a new module such as `src/vigil/transcript.ts`, for parsed searchable child entries and safe renderable details. Keep them separate from parent lifecycle records and `ChildSessionState` used by poll/wait.
-- [ ] Introduce a read-only `ChildSessionTranscriptReader` port, separate from the lightweight state reader, along the lines of:
+- [x] Add narrowly scoped internal/domain types, preferably in a new module such as `src/vigil/transcript.ts`, for parsed searchable child entries and safe renderable details. Keep them separate from parent lifecycle records and `ChildSessionState` used by poll/wait.
+- [x] Introduce a read-only `ChildSessionTranscriptReader` port, separate from the lightweight state reader, along the lines of:
 
   ```ts
   interface ChildSessionTranscriptReader {
@@ -124,8 +124,8 @@ Exact DTO/format names can improve during implementation, but result identity, b
   ```
 
   It may return entries in persisted JSONL order, each retaining only needed stable metadata/content projections. Exact names may change; it must not expose writable `SessionManager` or raw file paths through public results.
-- [ ] Implement the node adapter by resolving only the canonical child session through the existing `findChildSessionPath`/session-dir policy, parsing Pi JSONL with Pi’s parser, excluding the header, and retaining entry `id`, `parentId`, timestamp, type, role (where applicable), and safe textual projections.
-- [ ] Define a pure entry projector for each supported Pi session entry/message role:
+- [x] Implement the node adapter by resolving only the canonical child session through the existing `findChildSessionPath`/session-dir policy, parsing Pi JSONL with Pi’s parser, excluding the header, and retaining entry `id`, `parentId`, timestamp, type, role (where applicable), and safe textual projections.
+- [x] Define a pure entry projector for each supported Pi session entry/message role:
   - user/assistant visible text;
   - assistant tool-call name and safe deterministic argument serialization;
   - tool-result textual content and tool name;
@@ -133,9 +133,9 @@ Exact DTO/format names can improve during implementation, but result identity, b
   - custom-message text (not opaque custom entry data);
   - compaction/branch summary text, model/thinking metadata, labels;
   - safe type-only metadata for otherwise non-textual entries.
-- [ ] Exclude assistant `thinking` blocks, image/base64 data, raw `details`, and opaque extension custom data from search/detail projection. Add defensive handling for malformed/unknown records without throwing or leaking raw JSON.
-- [ ] Create pure helpers for safe single-line/multiline truncation and literal case folding. Ensure serialized tool arguments and text details have deterministic key ordering and bounded output.
-- [ ] Wire the new reader through `VigilServiceDeps`, context factory, and test-only runtime overrides without changing `poll`/`wait` behavior or making their existing fakes read full transcripts.
+- [x] Exclude assistant `thinking` blocks, image/base64 data, raw `details`, and opaque extension custom data from search/detail projection. Add defensive handling for malformed/unknown records without throwing or leaking raw JSON.
+- [x] Create pure helpers for safe single-line/multiline truncation and literal case folding. Ensure serialized tool arguments and text details have deterministic key ordering and bounded output.
+- [x] Wire the new reader through `VigilServiceDeps`, context factory, and test-only runtime overrides without changing `poll`/`wait` behavior or making their existing fakes read full transcripts.
 
 ## Agent notes / assumptions
 
@@ -148,26 +148,26 @@ Exact DTO/format names can improve during implementation, but result identity, b
 
 ## Todos
 
-- [ ] Add public types and policy validation in `types.ts` (or an equally focused module), including `SearchInput`, a bounded `VigilSearchResult`, result item DTO, and error union. Validate:
+- [x] Add public types and policy validation in `types.ts` (or an equally focused module), including `SearchInput`, a bounded `VigilSearchResult`, result item DTO, and error union. Validate:
   - `query.trim()` is nonblank;
   - optional `id` is nonblank when supplied;
   - `includeCompleted` defaults false;
   - `maxResults` is a positive safe integer in the documented maximum range.
-- [ ] Add pure `searchTranscript(...)` behavior:
+- [x] Add pure `searchTranscript(...)` behavior:
   - case-fold query and projected searchable text for literal matching—never construct/evaluate a regular expression;
   - use first match position to produce a bounded contextual excerpt with ellipses when text is omitted;
   - carry exact entry ID, parent ID, type/role/timestamp, child identity/state, and a clear `match`/detail field;
   - never include hidden thinking, image data, custom data, or unbounded argument/detail payloads;
   - deterministic entry order and one result per matching entry.
-- [ ] Implement `VigilService.search`:
+- [x] Implement `VigilService.search`:
   1. resolve canonical lifecycle candidates from current parent ledger, using existing active/completed semantics and explicit-ID filtering;
   2. reject unknown/excluded explicit IDs clearly;
   3. scan only the fixed candidate set with the transcript-reader port;
   4. collect in deterministic child then entry order, globally stop at `maxResults`;
   5. return successful zero matches as `{ matches: [] }` rather than an error;
   6. make no process/lifecycle/ledger/session mutation.
-- [ ] Decide/document controlled behavior if one candidate’s retained file is missing/unreadable. Recommended v1 behavior: return a clear error naming the affected canonical Vigil ID rather than silently presenting incomplete results; preserve this in tests.
-- [ ] Add self-sufficient `formatSearchText` with a match count, child name/short ID, entry/parent identity, metadata, and bounded excerpt. Do not require a parent to inspect only structured details to use it.
+- [x] Decide/document controlled behavior if one candidate’s retained file is missing/unreadable. Recommended v1 behavior: return a clear error naming the affected canonical Vigil ID rather than silently presenting incomplete results; preserve this in tests.
+- [x] Add self-sufficient `formatSearchText` with a match count, child name/short ID, entry/parent identity, metadata, and bounded excerpt. Do not require a parent to inspect only structured details to use it.
 
 ## Agent notes / assumptions
 
@@ -180,12 +180,12 @@ Exact DTO/format names can improve during implementation, but result identity, b
 
 ## Todos
 
-- [ ] Add public `ReadInput`, `VigilReadResult`, and context-entry DTOs plus validation/default constants:
+- [x] Add public `ReadInput`, `VigilReadResult`, and context-entry DTOs plus validation/default constants:
   - required canonical Vigil `id` and stable `entryId`;
   - `before`/`after` default to 1 and each are nonnegative safe integers no greater than the documented maximum;
   - reject a requested window exceeding the total allowed context window rather than silently expanding output;
   - `includeCompleted` default false and explicit completed-child gating.
-- [ ] Implement `VigilService.read`:
+- [x] Implement `VigilService.read`:
   1. resolve canonical lifecycle for `id`, reject unknown/excluded completed child;
   2. load only that child transcript via the new port;
   3. find exact `entryId`, returning a clear unknown-entry error if absent;
@@ -193,9 +193,9 @@ Exact DTO/format names can improve during implementation, but result identity, b
   5. return child identity/state, anchor identity, requested/effective context counts, order explanation, and bounded projected entry details;
   6. preserve exact stable IDs/parent IDs to allow branch-aware follow-up reads;
   7. make no mutation or child-process operation.
-- [ ] Implement self-sufficient `formatReadText`, including the append-order/branch caveat and the anchor/window metadata. Format text safely without unbounded raw tool results or opaque JSON.
-- [ ] Add unit tests for tree branching that prove the window is append order, not an invented linear branch; use exact IDs in follow-up reads and ensure indexes never appear as public anchors.
-- [ ] Add unit tests proving a `read` result after search can be used directly with its returned `id`/`entryId` and does not depend on caller-visible child session paths.
+- [x] Implement self-sufficient `formatReadText`, including the append-order/branch caveat and the anchor/window metadata. Format text safely without unbounded raw tool results or opaque JSON.
+- [x] Add unit tests for tree branching that prove the window is append order, not an invented linear branch; use exact IDs in follow-up reads and ensure indexes never appear as public anchors.
+- [x] Add unit tests proving a `read` result after search can be used directly with its returned `id`/`entryId` and does not depend on caller-visible child session paths.
 
 ## Agent notes / assumptions
 
@@ -208,14 +208,14 @@ Exact DTO/format names can improve during implementation, but result identity, b
 
 ## Todos
 
-- [ ] Add `search` and `read` to the Pi `StringEnum` action schema with required/optional parameter descriptions and dispatch branches. Preserve launch/send/poll/list/complete/wait validation and output behavior.
-- [ ] Return normal non-error structured `details` and `formatSearchText`/`formatReadText` content; route validation/service failures through existing concise `isError` behavior.
-- [ ] Extend `renderVigilCall` formatting/cache lookups as needed:
+- [x] Add `search` and `read` to the Pi `StringEnum` action schema with required/optional parameter descriptions and dispatch branches. Preserve launch/send/poll/list/complete/wait validation and output behavior.
+- [x] Return normal non-error structured `details` and `formatSearchText`/`formatReadText` content; route validation/service failures through existing concise `isError` behavior.
+- [x] Extend `renderVigilCall` formatting/cache lookups as needed:
   - `search`: show bounded quoted query, active versus completed-inclusive scope, and restricted child name/short ID when `id` is supplied;
   - `read`: show child identity plus safely shortened entry ID and requested nearby context;
   - unknown/partial parameters must safely fall back with no renderer side effect.
-- [ ] Update README public API, examples, default completed-child policy, exact ID semantics, literal case-insensitive behavior, all bounds, searchable/excluded content classes, entry/parent tree metadata, and append-order read caveat.
-- [ ] Document recommended troubleshooting flow:
+- [x] Update README public API, examples, default completed-child policy, exact ID semantics, literal case-insensitive behavior, all bounds, searchable/excluded content classes, entry/parent tree metadata, and append-order read caveat.
+- [x] Document recommended troubleshooting flow:
 
   ```text
   vigil search(query: "failure", id?: child)
@@ -224,8 +224,8 @@ Exact DTO/format names can improve during implementation, but result identity, b
   → poll/send/complete as normal
   ```
 
-- [ ] State explicitly that fuzzy/semantic search is possible future work but is not in v1, and that direct `read` is diagnostic-only and does not move/rewrite the child Pi tree.
-- [ ] Update all test harness overrides/fakes/types necessary for the new port. Confirm existing non-search action tests remain focused and unchanged in behavior.
+- [x] State explicitly that fuzzy/semantic search is possible future work but is not in v1, and that direct `read` is diagnostic-only and does not move/rewrite the child Pi tree.
+- [x] Update all test harness overrides/fakes/types necessary for the new port. Confirm existing non-search action tests remain focused and unchanged in behavior.
 
 ## Agent notes / assumptions
 
@@ -238,21 +238,21 @@ Exact DTO/format names can improve during implementation, but result identity, b
 
 ## Todos
 
-- [ ] Extend authenticated opt-in live acceptance through the registered adapter:
+- [x] Extend authenticated opt-in live acceptance through the registered adapter:
   1. launch a uniquely named real child instructed to emit two unique, searchable markers in visible answer/tool-safe text;
   2. wait for it and prove default active-only literal search finds a marker with the launched Vigil ID and stable entry ID;
   3. use that exact search result in `read` and assert bounded context returns its anchor/metadata/marker;
   4. complete the child, then prove default search/direct read excludes it while `includeCompleted: true` permits retained-session search/read;
   5. retain existing launch/send/wait/list/rename/completion/session-retention assertions;
   6. keep test session-dir isolation, unique values, opt-in/auth preflight, and deterministic cleanup.
-- [ ] Run and record:
+- [x] Run and record:
   - `npm test`;
   - `npm run typecheck`;
   - `npm run test:acceptance` without opt-in, expecting the documented helpful prerequisite failure;
   - `PI_VIGIL_LIVE=1 npm run test:acceptance` when authenticated.
-- [ ] Verify no parent/child custom ledger entries are appended by `search` or `read`, no child JSONL is modified, no tracked PID is queried/reaped/spawned, and no work persists after tool return.
-- [ ] Update this plan’s checkboxes/assumptions/deviations/test notes. Commit plan updates with code/tests.
-- [ ] Prepare implementation-review handoff for an independent reviewer: commit SHA(s), final action signatures/defaults/bounds, exact search corpus and exclusions, ordering/tree semantics, direct-completed gating, sample structured/text result, test/live status, and explicit non-goals.
+- [x] Verify no parent/child custom ledger entries are appended by `search` or `read`, no child JSONL is modified, no tracked PID is queried/reaped/spawned, and no work persists after tool return.
+- [x] Update this plan’s checkboxes/assumptions/deviations/test notes. Commit plan updates with code/tests.
+- [x] Prepare implementation-review handoff for an independent reviewer: commit SHA(s), final action signatures/defaults/bounds, exact search corpus and exclusions, ordering/tree semantics, direct-completed gating, sample structured/text result, test/live status, and explicit non-goals.
 
 ## Future work (not implementation work for this handoff)
 
@@ -263,3 +263,7 @@ Exact DTO/format names can improve during implementation, but result identity, b
 ## Progress notes
 
 - 2026-08-02: Plan created after accepted Slice 4.6. User approved case-insensitive literal matching; default active (`running`/`waiting`) corpus with explicit `includeCompleted`; stable Pi entry IDs rather than array indices; and a separate bounded `read` action rather than changing `poll`. No Slice 5 implementation has started.
+- 2026-08-02: Slice 5 implemented. Added `src/vigil/transcript.ts`, `ChildSessionTranscriptReader` port/node adapter, `VigilService.search`/`read`, extension adapter dispatch, compact `renderCall` rows, README docs, unit + live acceptance coverage.
+- **Tests (2026-08-02):** `npm test` 150/150 pass; `npm run typecheck` pass; `npm run test:acceptance` without `PI_VIGIL_LIVE=1` fails fast with opt-in instructions (expected); `PI_VIGIL_LIVE=1 npm run test:acceptance` pass (~15s).
+- **Deviations:** `custom` and `session_info` child entries are omitted from search/read projection (opaque/non-troubleshooting metadata). Per-field `before`/`after` max of 10 makes the global 21-entry window check unreachable at current constants; validation remains for forward compatibility.
+- **Live note:** acceptance reuses the two existing turn markers (`VIGIL_READY_*`, `VIGIL_FOLLOW_*`) for search/read rather than adding a third child turn.

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, SpawnChildInput } from "../../../src/vigil/ports";
-import { createSessionParentLedger, VigilService } from "../../../src/vigil/node-runtime";
+import { createEmptyChildSessionTranscriptReader, createSessionParentLedger, VigilService } from "../../../src/vigil/node-runtime";
 import {
   isVigilError,
   type VigilLaunchRecord,
@@ -95,6 +95,7 @@ function createFakeDeps(options?: {
   const service = new VigilService({
     processRunner,
     childSessionReader,
+    childSessionTranscriptReader: createEmptyChildSessionTranscriptReader(),
     childSessionNamer,
     parentLedger,
     createId: options?.createId,
@@ -361,6 +362,7 @@ describe("VigilService.poll", () => {
     const service = new VigilService({
       processRunner,
       childSessionReader,
+      childSessionTranscriptReader: createEmptyChildSessionTranscriptReader(),
       childSessionNamer: {
         async markCompleted() {
           return { completedName: "[completed] Test vigil" };

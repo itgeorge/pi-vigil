@@ -15,6 +15,8 @@ vigil({ action: "send", id, message, model? })
 vigil({ action: "list", includeCompleted? })
 vigil({ action: "complete", id })
 vigil({ action: "wait", timeoutMs?, initialDelayMs?, maxDelayMs?, progress?, progressIntervalMs? })
+vigil({ action: "search", query, id?, includeCompleted?, maxResults? })
+vigil({ action: "read", id, entryId, before?, after?, includeCompleted? })
 ```
 
 `launch` requires a nonblank human-readable `name`, starts a detached Pi child (`pi --mode json -p --session-id <id> --name <name>`), appends a parent `vigil-launch` custom entry, and returns a `running` snapshot.
@@ -42,6 +44,21 @@ Timing defaults are `timeoutMs: 60000`, `initialDelayMs: 500`, and `maxDelayMs: 
 A typical orchestration loop is `list` → `wait` (use TUI partial progress while it runs) → inspect the settled snapshot or `poll` → `send` or `complete` → repeat. A `waiting` child is settled for orchestration but is not retired; only explicit `complete` retires it.
 
 `complete` retires a waiting Vigil child without deleting its child session JSONL. It reaps a still-live settled tracked PID if needed, prefixes the child session's current Pi-native display name with `[completed]`, appends one parent `vigil-complete` record, and returns a `completed` snapshot. Repeating `complete` is idempotent. After completion, `send` rejects the id.
+
+`search` performs a synchronous, read-only, case-insensitive **literal substring** search over persisted child-session JSONL. It requires a nonblank `query`. By default it scans active (`running` / `waiting`) Vigil children from the current parent ledger, in most-recent-first lifecycle order; within each child it scans the complete retained session file in JSONL append order and stops at the global result limit. Pass `includeCompleted: true` to include completed children. Pass an exact Vigil `id` to restrict the corpus to one canonical child. Each match returns the Vigil `id`, child name/state, stable Pi `entryId`, `parentId`, entry type/role/timestamp, and a bounded excerpt around the first match. Zero matches is a normal `{ matches: [] }` result, not an error. Defaults/bounds: `maxResults` default `20`, maximum `50`; excerpt maximum `500` visible characters.
+
+Searchable persisted text includes user/assistant visible text, assistant tool-call names plus safely serialized arguments, tool-result text, bash command/output, custom-message text, compaction and branch summaries, model/thinking-level metadata, and labels. It excludes assistant thinking blocks, image/base64 data, opaque extension `custom.data`, and raw session file paths. Fuzzy/semantic/regex search is not implemented in v1.
+
+`read` resolves one canonical Vigil child and one stable Pi `entryId` (typically from `search`), then returns a bounded window of nearby entries in **JSONL append order** (not conversational branch order). Required: exact `id` and `entryId`. Optional `before` / `after` default to `1` and are capped at `10` each; the total returned window is at most `21` entries (`before + anchor + after`). Each returned entry includes stable ids, parent id, type/role/timestamp, and bounded detail text (maximum `4000` visible characters per entry). Completed children require `includeCompleted: true`. `read` is diagnostic-only: it does not move or rewrite the child Pi tree, append ledger records, or mutate process state.
+
+Recommended troubleshooting flow:
+
+```text
+vigil search(query: "failure", id?: child)
+→ select result.id + result.entryId
+→ vigil read(id, entryId, before: 1, after: 2)
+→ poll/send/complete as normal
+```
 
 In the interactive TUI, compact Vigil tool rows show the action, human-readable child name, and a shortened id (for example `vigil launch · Slice 4.5 implementation · model Pi default` or `vigil poll · Slice 4.5 implementation [vigil-bd02f54]`). Names are reconstructed from the current parent session branch; full arguments and results remain expandable. Launch rows always include a model indicator (`model <value>` when supplied, otherwise the honest fallback `model Pi default`). Send rows include a bounded message excerpt and show `model <value>` only when a continuation model was supplied. The launch `name` is the visual task identity; launch prompt text is deliberately not echoed in the compact row.
 
@@ -91,7 +108,8 @@ For automated TUI drivers, put each task in an atomic task file rather than rely
 
 ## v1 limitations
 
-- No live token streaming, LLM-generated progress summaries, retry, search, or background watchers.
+- No live token streaming, LLM-generated progress summaries, retry, fuzzy/semantic search, or background watchers.
+- `search` is literal case-insensitive substring matching over persisted child JSONL only; `read` returns append-order context and does not traverse branches implicitly.
 - Foreground `wait` partial updates are persisted-session activity reports only; they are transport/UI ephemera and do not change child or ledger state.
 - A parent crash between child rename and `vigil-complete` append can leave a child renamed but still active in the parent ledger.
 - A parent crash between child spawn and parent `vigil-launch` / `vigil-turn` append can lose the turn record.

@@ -407,6 +407,86 @@ describe("vigil renderCall integration", () => {
 
     expect(harness.capturedEntries).toHaveLength(appendCount);
   });
+  it("renders search with bounded quoted query and scope", () => {
+    expect(
+      plainSummary({
+        action: "search",
+        query: "failure\nline",
+        includeCompleted: true,
+      }),
+    ).toBe('search · "failure line" · including completed');
+
+    const entries = [
+      {
+        type: "custom" as const,
+        id: "launch",
+        parentId: null,
+        timestamp: "t",
+        customType: "vigil-launch",
+        data: {
+          id: "vigil-search-child",
+          sessionId: "vigil-search-child",
+          name: "Diagnostics child",
+          pid: 1,
+          cwd: "/t",
+          launchedAt: "t",
+        },
+      },
+    ];
+    expect(
+      plainSummary({ action: "search", query: "needle", id: "vigil-search-child" }, entries),
+    ).toContain("Diagnostics child");
+  });
+
+  it("renders read with child identity and shortened entry id", () => {
+    const entries = [
+      {
+        type: "custom" as const,
+        id: "launch",
+        parentId: null,
+        timestamp: "t",
+        customType: "vigil-launch",
+        data: {
+          id: SAMPLE_UUID,
+          sessionId: SAMPLE_UUID,
+          name: "Diagnostics read",
+          pid: 1,
+          cwd: "/t",
+          launchedAt: "t",
+        },
+      },
+    ];
+
+    expect(
+      plainSummary(
+        {
+          action: "read",
+          id: SAMPLE_UUID,
+          entryId: "entry-0123456789abcdef",
+          before: 2,
+          after: 3,
+        },
+        entries,
+      ),
+    ).toContain("Diagnostics read");
+    expect(
+      plainSummary(
+        {
+          action: "read",
+          id: SAMPLE_UUID,
+          entryId: "entry-0123456789abcdef",
+          before: 2,
+          after: 3,
+        },
+        entries,
+      ),
+    ).toContain("context 2/3");
+  });
+
+  it("falls back safely for unknown search/read parameters", () => {
+    expect(plainSummary({ action: "search" })).toContain('search · ""');
+    expect(plainSummary({ action: "read" })).toContain("entry entry");
+  });
 });
 
 describe("buildVigilDisplayNameIndex", () => {

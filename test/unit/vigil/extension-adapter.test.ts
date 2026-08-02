@@ -2,10 +2,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { resetVigilRuntimeOverrides, setVigilRuntimeOverrides } from "../../../src/vigil/runtime-overrides";
-import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, VigilSessionActivity, WaitScheduler } from "../../../src/vigil/ports";
+import type { ChildSessionNamer, ChildSessionReader, ChildSessionTranscriptReader, ProcessRunner, VigilSessionActivity, WaitScheduler } from "../../../src/vigil/ports";
 import { readLatestAssistantTextFromFile, readChildSessionStateFromFile } from "../../../src/vigil/node-runtime";
-import type { VigilLaunchRecord, VigilListResult, VigilSnapshot } from "../../../src/vigil/types";
+import type { VigilLaunchRecord, VigilListResult, VigilReadResult, VigilSearchResult, VigilSnapshot } from "../../../src/vigil/types";
 import { formatVigilShortId } from "../../../src/vigil/render-call";
+import { createInMemoryTranscriptReader, transcriptFromEntries } from "../../helpers/transcript-fake";
 import { createDeterministicTestTheme } from "../../helpers/test-theme";
 import { createVigilTestHarness } from "../../helpers/vigil-test-harness";
 
@@ -557,6 +558,141 @@ describe("vigil extension adapter", () => {
       type: "text",
       text: "Unknown vigil id: vigil-missing",
     });
+  });
+
+  it("search requires a nonblank query and returns structured matches with bounded text", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+    const record: VigilLaunchRecord = {
+      id: "vigil-adapter-search",
+      sessionId: "vigil-adapter-search",
+      name: "Adapter search",
+      pid: 7070,
+      cwd: "/parent/project",
+      launchedAt: "2026-08-01T12:00:00.000Z",
+    };
+    harness.sessionManager.appendCustomEntry("vigil-launch", record);
+
+    const transcriptReader: ChildSessionTranscriptReader = createInMemoryTranscriptReader({
+      "vigil-adapter-search": transcriptFromEntries([
+        {
+          type: "message",
+          id: "entry-search-1",
+          parentId: null,
+          timestamp: "2026-08-01T12:00:02.000Z",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "Adapter SEARCH marker" }],
+            api: "openai-codex-responses",
+            provider: "openai-codex",
+            model: "gpt-5.5",
+            usage: {
+              input: 1,
+              output: 1,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 2,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            stopReason: "stop",
+            timestamp: 1722513602000,
+          },
+        },
+      ]),
+    });
+
+    setVigilRuntimeOverrides({
+      processRunner: {
+        spawnDetached: async () => ({ pid: 0 }),
+        isAlive: () => false,
+        terminateAndWait: async () => undefined,
+      },
+      childSessionTranscriptReader: transcriptReader,
+    });
+
+    const missingQuery = await harness.execute({ action: "search", query: "   " });
+    expect((missingQuery as { isError?: boolean }).isError).toBe(true);
+    expect(missingQuery.content[0]).toEqual({ type: "text", text: "search requires query" });
+
+    const result = await harness.execute({ action: "search", query: "search marker", id: record.id });
+    expect((result as { isError?: boolean }).isError).toBeFalsy();
+    const details = result.details as VigilSearchResult;
+    expect(details.matches[0]?.id).toBe(record.id);
+    expect(details.matches[0]?.entryId).toBe("entry-search-1");
+    expect((result.content[0] as { text?: string }).text).toContain("matches: 1");
+    expect((result.content[0] as { text?: string }).text).toContain("SEARCH marker");
+  });
+
+  it("read requires id and entryId and returns bounded context from search output", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+    const record: VigilLaunchRecord = {
+      id: "vigil-adapter-read",
+      sessionId: "vigil-adapter-read",
+      name: "Adapter read",
+      pid: 8080,
+      cwd: "/parent/project",
+      launchedAt: "2026-08-01T12:00:00.000Z",
+    };
+    harness.sessionManager.appendCustomEntry("vigil-launch", record);
+
+    setVigilRuntimeOverrides({
+      processRunner: {
+        spawnDetached: async () => ({ pid: 0 }),
+        isAlive: () => false,
+        terminateAndWait: async () => undefined,
+      },
+      childSessionTranscriptReader: createInMemoryTranscriptReader({
+        "vigil-adapter-read": transcriptFromEntries([
+          {
+            type: "message",
+            id: "entry-before",
+            parentId: null,
+            timestamp: "2026-08-01T12:00:01.000Z",
+            message: { role: "user", content: [{ type: "text", text: "before" }], timestamp: 1 },
+          },
+          {
+            type: "message",
+            id: "entry-anchor",
+            parentId: "entry-before",
+            timestamp: "2026-08-01T12:00:02.000Z",
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: "READ anchor marker" }],
+              api: "openai-codex-responses",
+              provider: "openai-codex",
+              model: "gpt-5.5",
+              usage: {
+                input: 1,
+                output: 1,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 2,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              },
+              stopReason: "stop",
+              timestamp: 1722513602000,
+            },
+          },
+        ]),
+      }),
+    });
+
+    const missingId = await harness.execute({ action: "read", entryId: "entry-anchor" });
+    expect((missingId as { isError?: boolean }).isError).toBe(true);
+
+    const search = await harness.execute({ action: "search", query: "anchor", id: record.id });
+    const match = (search.details as VigilSearchResult).matches[0]!;
+
+    const read = await harness.execute({
+      action: "read",
+      id: match.id,
+      entryId: match.entryId,
+      before: 1,
+      after: 0,
+    });
+    expect((read as { isError?: boolean }).isError).toBeFalsy();
+    const details = read.details as VigilReadResult;
+    expect(details.entries.map((entry) => entry.entryId)).toEqual(["entry-before", "entry-anchor"]);
+    expect((read.content[0] as { text?: string }).text).toContain("JSONL append order");
   });
 
   it("send returns an error for an unknown vigil id", async () => {

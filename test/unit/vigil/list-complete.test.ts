@@ -8,6 +8,7 @@ import type {
   SpawnChildInput,
 } from "../../../src/vigil/ports";
 import {
+  createEmptyChildSessionTranscriptReader,
   createSessionParentLedger,
   VigilService,
 } from "../../../src/vigil/node-runtime";
@@ -100,6 +101,7 @@ function createHarness(options?: {
   const service = new VigilService({
     processRunner,
     childSessionReader,
+    childSessionTranscriptReader: createEmptyChildSessionTranscriptReader(),
     childSessionNamer,
     parentLedger,
     createId: options?.createId,

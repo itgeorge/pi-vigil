@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, VigilSessionActivity, WaitScheduler } from "../../../src/vigil/ports";
-import { createSessionParentLedger, VigilService } from "../../../src/vigil/node-runtime";
+import { createEmptyChildSessionTranscriptReader, createSessionParentLedger, VigilService } from "../../../src/vigil/node-runtime";
 import type { VigilWaitProgress } from "../../../src/vigil/wait-progress";
 import { isVigilError, type VigilCompletionRecord, type VigilLaunchRecord, type VigilWaitResult } from "../../../src/vigil/types";
 
@@ -89,6 +89,7 @@ function createHarness(options?: {
   const service = new VigilService({
     processRunner: runner,
     childSessionReader: reader,
+    childSessionTranscriptReader: createEmptyChildSessionTranscriptReader(),
     childSessionNamer: namer,
     parentLedger: createSessionParentLedger(sessionManager, appendEntry),
     waitScheduler: scheduler,

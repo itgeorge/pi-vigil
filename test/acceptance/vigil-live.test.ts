@@ -8,6 +8,8 @@ import { findChildSessionPath, readLatestAssistantTextFromFile } from "../../src
 import type {
   VigilLaunchRecord,
   VigilListResult,
+  VigilReadResult,
+  VigilSearchResult,
   VigilSnapshot,
   VigilTurnRecord,
   VigilWaitResult,
@@ -171,6 +173,31 @@ describe("live vigil acceptance", () => {
     expect(persistedText).toContain(firstMarker);
     expect(persistedText).toContain(secondMarker);
 
+    const activeSearch = await harness.execute({
+      action: "search",
+      query: secondMarker,
+      id: launched.id,
+    });
+    expect((activeSearch as { isError?: boolean }).isError).toBeFalsy();
+    const searchDetails = activeSearch.details as VigilSearchResult;
+    expect(searchDetails.matches.length).toBeGreaterThan(0);
+    const diagnosticMatch = searchDetails.matches.find((match) => match.id === launched.id);
+    expect(diagnosticMatch?.entryId).toBeTruthy();
+    expect((activeSearch.content[0] as { text?: string }).text).toContain(secondMarker);
+
+    const readActive = await harness.execute({
+      action: "read",
+      id: diagnosticMatch!.id,
+      entryId: diagnosticMatch!.entryId,
+      before: 1,
+      after: 1,
+    });
+    expect((readActive as { isError?: boolean }).isError).toBeFalsy();
+    const readDetails = readActive.details as VigilReadResult;
+    expect(readDetails.anchorEntryId).toBe(diagnosticMatch!.entryId);
+    expect(readDetails.order).toBe("jsonl-append-order");
+    expect((readActive.content[0] as { text?: string }).text).toContain(secondMarker);
+
     const listResult = await harness.execute({ action: "list" });
     expect((listResult as { isError?: boolean }).isError).toBeFalsy();
     const listed = listResult.details as VigilListResult;
@@ -208,6 +235,41 @@ describe("live vigil acceptance", () => {
       message: "Should fail",
     });
     expect((sendAfterComplete as { isError?: boolean }).isError).toBe(true);
+
+    const excludedSearch = await harness.execute({
+      action: "search",
+      query: secondMarker,
+      id: launched.id,
+    });
+    expect((excludedSearch as { isError?: boolean }).isError).toBe(true);
+
+    const retainedSearch = await harness.execute({
+      action: "search",
+      query: secondMarker,
+      id: launched.id,
+      includeCompleted: true,
+    });
+    expect((retainedSearch as { isError?: boolean }).isError).toBeFalsy();
+    expect((retainedSearch.details as VigilSearchResult).matches.some((match) => match.id === launched.id)).toBe(
+      true,
+    );
+
+    expect(
+      await harness.execute({
+        action: "read",
+        id: launched.id,
+        entryId: diagnosticMatch!.entryId,
+      }),
+    ).toMatchObject({ isError: true });
+
+    const readCompleted = await harness.execute({
+      action: "read",
+      id: launched.id,
+      entryId: diagnosticMatch!.entryId,
+      includeCompleted: true,
+    });
+    expect((readCompleted as { isError?: boolean }).isError).toBeFalsy();
+    expect((readCompleted.content[0] as { text?: string }).text).toContain(secondMarker);
 
     const defaultList = await harness.execute({ action: "list" });
     expect((defaultList.details as VigilListResult).vigils.some((item) => item.id === launched.id)).toBe(false);
