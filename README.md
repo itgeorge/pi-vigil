@@ -2,7 +2,44 @@
 
 Minimal Pi extension for asynchronous, turn-based subagents.
 
-Vigil launches and observes resumable Pi child sessions. Its v1 state model is session-only: parent-session custom entries record launches, follow-up turns, and explicit completions, while each child Pi session retains its full conversation and model history.
+# Why Vigil?
+
+To paraphrase *(and steal Pi's original tagline)*:
+> This is my subagents extension. There are many like it, but this one is **mine**.
+
+Vigil allows Pi agents to launch and observe resumable Pi subagent (child) sessions. 
+It is simple and worklfow-agnostic, like Pi.
+
+With Vigil, each of your Pi sessions can:
+- Launch a "subagent" (or several), monitor it, and send follow-ups
+- List running/waiting/completed subagents, search, and read through their sessions
+- And, yes, each launched subagent can launch it's own subagents
+
+Each launched agent gets its own Pi session *(unless you say otherwise)*. 
+You can use Pi `/resume` to manually review or continue any of those agent sessions.
+All orchestration data lives inside the sessions.
+
+That's it.
+
+It **does not** force your agents to use git worktrees, or git for that matter, or plans, or specs, or any other workflow.
+It doesn't limit permissions, doesn't require configuration, doesn't pollute your TUI or your file system.
+It doesn't have personas, or roles, or multi-step interfaces.
+It doesn't require you to read a bunch of documentation to understand how to use it or how it works.
+
+The harness handles the commands, lifecycle, wiring and bookkeeping - you and your skills handle the workflow by prompting your agents. 
+
+## But why "Vigil"?
+
+Ah, it was available (no pi package) and I like Mass Effect, needed a name, also the VI term is more apt than AI for where we are with LLMs.
+
+I should go.
+
+---
+END OF HUMAN-WRITTEN (allegedly) TEXT. HERE BE DRAGONS.
+
+---
+
+V1 state model is session-only: parent-session custom entries record launches, follow-up turns, and explicit completions, while each child Pi session retains its full conversation and model history.
 
 ## Public API
 
