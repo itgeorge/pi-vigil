@@ -1,3 +1,4 @@
+import type { ChildSessionDescendantInspector } from "./descendant-inspector";
 import type { VigilLifecycleState } from "./lifecycle";
 import type { ChildSessionTranscript } from "./transcript";
 import type { VigilSessionActivity } from "./session-text";
@@ -78,6 +79,7 @@ export interface VigilServiceDeps {
   childSessionTranscriptReader: ChildSessionTranscriptReader;
   childSessionNamer: ChildSessionNamer;
   parentLedger: ParentLedger;
+  descendantInspector: ChildSessionDescendantInspector;
   createId?: () => string;
   sessionDir?: string;
   reapTimeoutMs?: number;

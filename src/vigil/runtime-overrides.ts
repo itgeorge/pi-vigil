@@ -1,3 +1,4 @@
+import type { ChildSessionDescendantInspector } from "./descendant-inspector.ts";
 import type {
   ChildSessionNamer,
   ChildSessionReader,
@@ -11,6 +12,7 @@ export interface VigilRuntimeOverrides {
   childSessionReader?: ChildSessionReader;
   childSessionTranscriptReader?: ChildSessionTranscriptReader;
   childSessionNamer?: ChildSessionNamer;
+  descendantInspector?: ChildSessionDescendantInspector;
   waitScheduler?: WaitScheduler;
   sessionDir?: string;
 }
@@ -18,7 +20,7 @@ export interface VigilRuntimeOverrides {
 let runtimeOverrides: VigilRuntimeOverrides = {};
 
 export function setVigilRuntimeOverrides(overrides: VigilRuntimeOverrides): void {
-  runtimeOverrides = overrides;
+  runtimeOverrides = { ...runtimeOverrides, ...overrides };
 }
 
 export function resetVigilRuntimeOverrides(): void {

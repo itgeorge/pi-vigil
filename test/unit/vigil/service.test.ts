@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { createZeroDescendantInspector } from "../../../src/vigil/descendant-inspector";
 import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, SpawnChildInput } from "../../../src/vigil/ports";
 import { createEmptyChildSessionTranscriptReader, createSessionParentLedger, VigilService } from "../../../src/vigil/node-runtime";
 import {
@@ -97,6 +98,7 @@ function createFakeDeps(options?: {
     childSessionReader,
     childSessionTranscriptReader: createEmptyChildSessionTranscriptReader(),
     childSessionNamer,
+    descendantInspector: createZeroDescendantInspector(),
     parentLedger,
     createId: options?.createId,
     sessionDir: options?.sessionDir,
@@ -368,6 +370,7 @@ describe("VigilService.poll", () => {
           return { completedName: "[completed] Test vigil" };
         },
       },
+      descendantInspector: createZeroDescendantInspector(),
       parentLedger,
       createId: () => "vigil-fast-turn",
     });

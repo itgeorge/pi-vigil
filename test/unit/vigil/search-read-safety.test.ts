@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { createZeroDescendantInspector } from "../../../src/vigil/descendant-inspector";
 import type {
   ChildSessionNamer,
   ChildSessionReader,
@@ -90,6 +91,7 @@ function createHarness(options: {
     childSessionReader,
     childSessionTranscriptReader,
     childSessionNamer,
+    descendantInspector: createZeroDescendantInspector(),
     parentLedger: createSessionParentLedger(sessionManager, appendEntry),
   });
 

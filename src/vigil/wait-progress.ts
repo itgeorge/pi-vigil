@@ -1,4 +1,6 @@
 import { truncateLine } from "@earendil-works/pi-coding-agent";
+import type { VigilDirectSubagentInspection } from "./descendant-inspector";
+import { formatDirectSubagentsSummaryText, toDirectSubagentFingerprint } from "./descendant-inspector";
 import type { VigilMessagePreview } from "./session-text";
 import type { VigilState } from "./types";
 
@@ -16,6 +18,7 @@ export interface VigilWaitProgressItem {
   lastActivity: string | null;
   lastActivityTimestamp: string | null;
   recentMessages: VigilMessagePreview[];
+  directSubagents?: VigilDirectSubagentInspection;
 }
 
 export interface VigilWaitProgress {
@@ -33,6 +36,7 @@ export interface VigilWaitProgressFingerprintItem {
   lastActivity: string | null;
   lastActivityTimestamp: string | null;
   recentMessages: VigilMessagePreview[];
+  directSubagents?: VigilDirectSubagentInspection;
 }
 
 function sanitizeSingleLine(value: string): string {
@@ -116,15 +120,22 @@ export function formatWaitProgressItemLine(
 export function formatWaitProgressItemLines(
   item: VigilWaitProgressItem,
   referenceMs: number,
+  directSubagents?: VigilDirectSubagentInspection,
 ): string[] {
-  return [formatWaitProgressItemLine(item, referenceMs), ...formatRecentMessagePreviewLines(item.recentMessages)];
+  const lines = [formatWaitProgressItemLine(item, referenceMs), ...formatRecentMessagePreviewLines(item.recentMessages)];
+  if (directSubagents) {
+    lines.push(...formatDirectSubagentsSummaryText(directSubagents));
+  }
+  return lines;
 }
 
 export function formatWaitProgressText(progress: VigilWaitProgress, referenceMs: number): string {
   const elapsedSeconds = Math.floor(progress.waitedMs / 1_000);
   const nextPollSeconds = Math.ceil(progress.nextPollInMs / 1_000);
   const header = `elapsed ${elapsedSeconds}s · next poll ≤${nextPollSeconds}s`;
-  const lines = progress.items.flatMap((item) => formatWaitProgressItemLines(item, referenceMs));
+  const lines = progress.items.flatMap((item) =>
+    formatWaitProgressItemLines(item, referenceMs, item.directSubagents),
+  );
   if (progress.omittedItemCount > 0) {
     lines.push(`… and ${progress.omittedItemCount} more child${progress.omittedItemCount === 1 ? "" : "ren"} omitted`);
   }
@@ -135,13 +146,24 @@ function fingerprintRecentMessages(recentMessages: VigilMessagePreview[]): strin
   return recentMessages.map((preview) => `${preview.label}:${preview.excerpt}`).join(";");
 }
 
+function fingerprintDirectSubagents(summary: VigilDirectSubagentInspection | undefined): string {
+  const fingerprint = toDirectSubagentFingerprint(summary);
+  if (!fingerprint) {
+    return "";
+  }
+  if (fingerprint.inspection === "unavailable") {
+    return "unavailable";
+  }
+  return `${fingerprint.incomplete ?? 0}|${fingerprint.running ?? 0}|${fingerprint.waiting ?? 0}|${fingerprint.completed ?? 0}|${fingerprint.unknown ?? 0}`;
+}
+
 export function fingerprintWaitProgress(items: VigilWaitProgressFingerprintItem[]): string {
   return items
     .slice()
     .sort((left, right) => left.id.localeCompare(right.id))
     .map(
       (item) =>
-        `${item.id}|${item.state}|${item.steps}|${item.messages}|${item.lastActivity ?? ""}|${item.lastActivityTimestamp ?? ""}|${fingerprintRecentMessages(item.recentMessages)}`,
+        `${item.id}|${item.state}|${item.steps}|${item.messages}|${item.lastActivity ?? ""}|${item.lastActivityTimestamp ?? ""}|${fingerprintRecentMessages(item.recentMessages)}|${fingerprintDirectSubagents(item.directSubagents)}`,
     )
     .join("\n");
 }

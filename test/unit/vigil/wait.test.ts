@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, VigilSessionActivity, WaitScheduler } from "../../../src/vigil/ports";
+import { createZeroDescendantInspector } from "../../../src/vigil/descendant-inspector";
 import { createEmptyChildSessionTranscriptReader, createSessionParentLedger, VigilService } from "../../../src/vigil/node-runtime";
-import type { VigilWaitProgress } from "../../../src/vigil/wait-progress";
+import { createInMemoryDescendantInspector } from "../../../src/vigil/descendant-inspector";
+import { fingerprintWaitProgress, formatWaitProgressText, type VigilWaitProgress } from "../../../src/vigil/wait-progress";
 import { isVigilError, type VigilCompletionRecord, type VigilLaunchRecord, type VigilWaitResult } from "../../../src/vigil/types";
 
 class FakeScheduler implements WaitScheduler {
@@ -92,6 +94,7 @@ function createHarness(options?: {
     childSessionReader: reader,
     childSessionTranscriptReader: createEmptyChildSessionTranscriptReader(),
     childSessionNamer: namer,
+    descendantInspector: createZeroDescendantInspector(),
     parentLedger: createSessionParentLedger(sessionManager, appendEntry),
     waitScheduler: scheduler,
   });
@@ -468,5 +471,125 @@ describe("VigilService.wait progress", () => {
     expect(updates.length).toBeGreaterThanOrEqual(2);
     expect(updates[0]?.items[0]?.recentMessages).toEqual([{ label: "user", excerpt: "first prompt" }]);
     expect(updates[1]?.items[0]?.recentMessages).toEqual([{ label: "assistant", excerpt: "working on it" }]);
+  });
+});
+
+describe("VigilService.wait shallow descendant visibility", () => {
+  function createSubagentHarness(options?: {
+    summaries?: Map<string, import("../../../src/vigil/descendant-inspector").VigilDirectSubagentInspection>;
+  }) {
+    const sessionManager = SessionManager.inMemory("/parent");
+    const record = launchRecord("vigil-parent", 1);
+    sessionManager.appendCustomEntry("vigil-launch", record);
+    const appendEntry = (customType: string, data: unknown) => {
+      sessionManager.appendCustomEntry(customType, data);
+    };
+    const scheduler = new FakeScheduler();
+    const reader: ChildSessionReader = {
+      async readChildSessionState() {
+        return {
+          latestResponse: "Done.",
+          turnComplete: true,
+          lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+          activity: defaultActivity(),
+        };
+      },
+    };
+    const runner: ProcessRunner = {
+      spawnDetached: async () => ({ pid: 9999 }),
+      isAlive: () => false,
+      terminateAndWait: async () => undefined,
+    };
+    const namer: ChildSessionNamer = {
+      markCompleted: async () => ({ completedName: "[completed] unused" }),
+    };
+    const service = new VigilService({
+      processRunner: runner,
+      childSessionReader: reader,
+      childSessionTranscriptReader: createEmptyChildSessionTranscriptReader(),
+      childSessionNamer: namer,
+      parentLedger: createSessionParentLedger(sessionManager, appendEntry),
+      waitScheduler: scheduler,
+      descendantInspector: createInMemoryDescendantInspector({
+        summaries:
+          options?.summaries ??
+          new Map([
+            [
+              "vigil-parent",
+              {
+                inspection: "available",
+                total: 1,
+                incomplete: 1,
+                running: 0,
+                waiting: 1,
+                completed: 0,
+                unknown: 0,
+                items: [{ id: "vigil-a1", sessionId: "vigil-a1", name: "Nested task", state: "waiting" }],
+                omittedCount: 0,
+              },
+            ],
+          ]),
+      }),
+    });
+    return { service, scheduler };
+  }
+
+  it("includes direct-subagent summaries in wait progress and final pending/settled output without changing settlement", async () => {
+    const { service } = createSubagentHarness();
+    const updates: VigilWaitProgress[] = [];
+
+    const result = await service.wait({ progress: "status" }, undefined, (progress) => updates.push(progress));
+
+    expectWait(result);
+    expect(result.outcome).toBe("settled");
+    expect(updates[0]?.items[0]?.directSubagents).toEqual(
+      expect.objectContaining({ inspection: "available", incomplete: 1, waiting: 1 }),
+    );
+
+    const progressText = formatWaitProgressText(updates[0]!, 0);
+    expect(progressText).toContain("direct subagents: 1 incomplete (1 waiting)");
+    expect(progressText).toContain("Nested task");
+  });
+
+  it("changes wait progress fingerprint when direct-subagent summary changes without a heartbeat", () => {
+    const base = [
+      {
+        id: "vigil-a",
+        state: "waiting" as const,
+        steps: 1,
+        messages: 1,
+        lastActivity: null,
+        lastActivityTimestamp: null,
+        recentMessages: [],
+        directSubagents: {
+          inspection: "available" as const,
+          total: 1,
+          incomplete: 1,
+          running: 1,
+          waiting: 0,
+          completed: 0,
+          unknown: 0,
+          items: [],
+          omittedCount: 0,
+        },
+      },
+    ];
+    const changed = [
+      {
+        ...base[0]!,
+        directSubagents: {
+          inspection: "available" as const,
+          total: 1,
+          incomplete: 0,
+          running: 0,
+          waiting: 0,
+          completed: 1,
+          unknown: 0,
+          items: [],
+          omittedCount: 0,
+        },
+      },
+    ];
+    expect(fingerprintWaitProgress(base)).not.toBe(fingerprintWaitProgress(changed));
   });
 });

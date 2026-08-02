@@ -1,3 +1,6 @@
+import type { VigilDirectSubagentInspection } from "./descendant-inspector";
+import { formatDirectSubagentsSummaryText } from "./descendant-inspector";
+
 export type VigilState = "running" | "waiting" | "completed";
 
 export interface VigilSnapshot {
@@ -49,6 +52,7 @@ export interface VigilListItem {
   cwd: string;
   state: VigilState;
   completedAt?: string;
+  directSubagents?: VigilDirectSubagentInspection;
 }
 
 export interface VigilListResult {
@@ -95,6 +99,7 @@ export interface SendInput {
 export interface CompleteInput {
   vigilId: string;
   parentCwd: string;
+  allowIncompleteSubagents?: boolean;
 }
 
 export interface SearchInput {
@@ -165,7 +170,11 @@ function formatWaitPendingItemText(item: VigilListItem): string {
   if (item.completedAt) {
     parts.push(`completedAt: ${item.completedAt}`);
   }
-  return parts.join(", ");
+  const lines = [parts.join(", ")];
+  if (item.directSubagents) {
+    lines.push(...formatDirectSubagentsSummaryText(item.directSubagents));
+  }
+  return lines.join("\n");
 }
 
 export function formatWaitText(result: VigilWaitResult): string {
@@ -205,7 +214,11 @@ export function formatListText(result: VigilListResult): string {
       if (item.completedAt) {
         parts.push(`completedAt: ${item.completedAt}`);
       }
-      return parts.join(", ");
+      const lines = [parts.join(", ")];
+      if (item.directSubagents) {
+        lines.push(...formatDirectSubagentsSummaryText(item.directSubagents));
+      }
+      return lines.join("\n");
     })
-    .join("\n");
+    .join("\n\n");
 }

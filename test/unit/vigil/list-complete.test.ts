@@ -7,6 +7,7 @@ import type {
   ProcessRunner,
   SpawnChildInput,
 } from "../../../src/vigil/ports";
+import { createZeroDescendantInspector } from "../../../src/vigil/descendant-inspector";
 import {
   createEmptyChildSessionTranscriptReader,
   createSessionParentLedger,
@@ -103,6 +104,7 @@ function createHarness(options?: {
     childSessionReader,
     childSessionTranscriptReader: createEmptyChildSessionTranscriptReader(),
     childSessionNamer,
+    descendantInspector: createZeroDescendantInspector(),
     parentLedger,
     createId: options?.createId,
     sessionDir: options?.sessionDir,
@@ -256,6 +258,7 @@ describe("VigilService.list", () => {
       cwd: "/parent/default",
       state: "completed",
       completedAt: expect.any(String),
+      directSubagents: expect.objectContaining({ inspection: "available", total: 0 }),
     });
   });
 });

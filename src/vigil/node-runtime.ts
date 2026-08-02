@@ -7,6 +7,12 @@ import {
   type SessionManager as SessionManagerType,
 } from "@earendil-works/pi-coding-agent";
 import {
+  createNodeChildSessionDescendantInspector,
+  createZeroDescendantInspector,
+  formatIncompleteSubagentCompleteError,
+  type VigilDirectSubagentInspection,
+} from "./descendant-inspector";
+import {
   lifecycleStateToListItem,
   reconstructVigilLifecycleFromEntries,
   sortLifecycleStatesMostRecentFirst,
@@ -84,6 +90,13 @@ export const DEFAULT_WAIT_MAX_DELAY_MS = 5_000;
 export const MAX_WAIT_TIMEOUT_MS = 300_000;
 export const MAX_WAIT_DELAY_MS = 30_000;
 const REAP_POLL_INTERVAL_MS = 50;
+
+type WaitCohortScan = {
+  lifecycle: VigilLifecycleState;
+  snapshot: VigilSnapshot;
+  activity: VigilSessionActivity;
+  directSubagents: VigilDirectSubagentInspection;
+};
 
 export class VigilService {
   private readonly deps: VigilServiceDeps;
@@ -353,7 +366,7 @@ export class VigilService {
     let afterCompletedSleep = false;
 
     const emitProgressIfNeeded = (
-      scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[],
+      scan: WaitCohortScan[],
       options?: { force?: boolean },
     ) => {
       if (policy.progress !== "status" || !onProgress) {
@@ -371,8 +384,8 @@ export class VigilService {
         afterCompletedSleep,
         willPollAgain,
       });
-      const progressItems = scan.map(({ snapshot, activity }) =>
-        this.toWaitProgressItem(snapshot, activity),
+      const progressItems = scan.map(({ snapshot, activity, directSubagents }) =>
+        this.toWaitProgressItem(snapshot, activity, directSubagents),
       );
       const fingerprint = fingerprintWaitProgress(progressItems);
       const heartbeatDue = waitedMs > 0 && scheduler.now() - lastProgressAt >= policy.progressIntervalMs;
@@ -454,6 +467,15 @@ export class VigilService {
 
     if (activeSnapshot.state === "running") {
       return { error: `Vigil child is still running: ${input.vigilId}` };
+    }
+
+    const descendantInspection = await this.inspectDirectSubagentsForLifecycle(lifecycle);
+    if (descendantInspection.inspection === "unavailable") {
+      return { error: descendantInspection.error };
+    }
+
+    if (descendantInspection.incomplete > 0 && !input.allowIncompleteSubagents) {
+      return { error: formatIncompleteSubagentCompleteError(input.vigilId, descendantInspection) };
     }
 
     if (this.deps.processRunner.isAlive(record.pid)) {
@@ -539,16 +561,21 @@ export class VigilService {
     }
   }
 
+  private async inspectDirectSubagentsForLifecycle(
+    lifecycle: VigilLifecycleState,
+  ): Promise<VigilDirectSubagentInspection> {
+    const record = lifecycle.runtimeRecord;
+    return this.deps.descendantInspector.inspectDirectSubagents({
+      sessionId: record.sessionId,
+      cwd: record.cwd,
+      sessionDir: record.sessionDir ?? this.deps.sessionDir,
+    });
+  }
+
   private async scanWaitCohort(
     cohortIds: string[],
-  ): Promise<
-    | { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[]
-    | { error: string }
-  > {
-    const scans: Array<
-      | { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }
-      | { error: string }
-    > = await Promise.all(
+  ): Promise<WaitCohortScan[] | { error: string }> {
+    const scans: Array<WaitCohortScan | { error: string }> = await Promise.all(
       cohortIds.map(async (vigilId) => {
         const lifecycle = this.getLifecycleState(vigilId);
         if (!lifecycle) {
@@ -563,7 +590,8 @@ export class VigilService {
         const snapshot = lifecycle.completionRecord
           ? await this.buildCompletedSnapshot(lifecycle, childState)
           : await this.buildActiveSnapshot(lifecycle, childState);
-        return { lifecycle, snapshot, activity: childState.activity };
+        const directSubagents = await this.inspectDirectSubagentsForLifecycle(lifecycle);
+        return { lifecycle, snapshot, activity: childState.activity, directSubagents };
       }),
     );
 
@@ -571,10 +599,14 @@ export class VigilService {
     if (failure) {
       return failure;
     }
-    return scans as { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[];
+    return scans as WaitCohortScan[];
   }
 
-  private toWaitProgressItem(snapshot: VigilSnapshot, activity: VigilSessionActivity): VigilWaitProgressItem {
+  private toWaitProgressItem(
+    snapshot: VigilSnapshot,
+    activity: VigilSessionActivity,
+    directSubagents: VigilDirectSubagentInspection,
+  ): VigilWaitProgressItem {
     return {
       id: snapshot.id,
       name: snapshot.name,
@@ -584,13 +616,14 @@ export class VigilService {
       lastActivity: activity.lastActivity,
       lastActivityTimestamp: activity.lastActivityTimestamp,
       recentMessages: activity.recentMessages,
+      directSubagents,
     };
   }
 
   private settledWaitResult(
     startedAt: number,
     scheduler: WaitScheduler,
-    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[],
+    scan: WaitCohortScan[],
   ): VigilWaitResult {
     return {
       outcome: "settled",
@@ -602,7 +635,7 @@ export class VigilService {
   private timeoutWaitResult(
     startedAt: number,
     scheduler: WaitScheduler,
-    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[],
+    scan: WaitCohortScan[],
   ): VigilWaitResult {
     return {
       outcome: "timeout",
@@ -614,7 +647,7 @@ export class VigilService {
   private cancelledWaitResult(
     startedAt: number,
     scheduler: WaitScheduler,
-    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[],
+    scan: WaitCohortScan[],
   ): VigilWaitResult {
     return {
       outcome: "cancelled",
@@ -623,15 +656,14 @@ export class VigilService {
     };
   }
 
-  private waitPendingItems(
-    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[],
-  ): VigilListItem[] {
-    return scan.map(({ snapshot }) => ({
+  private waitPendingItems(scan: WaitCohortScan[]): VigilListItem[] {
+    return scan.map(({ snapshot, directSubagents }) => ({
       id: snapshot.id,
       sessionId: snapshot.sessionId,
       name: snapshot.name,
       cwd: snapshot.cwd,
       state: snapshot.state,
+      directSubagents,
       ...(snapshot.completedAt ? { completedAt: snapshot.completedAt } : {}),
     }));
   }
@@ -649,15 +681,17 @@ export class VigilService {
     const items: VigilListItem[] = [];
 
     for (const lifecycle of states) {
+      const directSubagents = await this.inspectDirectSubagentsForLifecycle(lifecycle);
       if (lifecycle.completionRecord) {
-        items.push(lifecycleStateToListItem(lifecycle, "completed"));
+        items.push({ ...lifecycleStateToListItem(lifecycle, "completed"), directSubagents });
         continue;
       }
 
       const activeSnapshot = await this.buildActiveSnapshot(lifecycle);
-      items.push(
-        lifecycleStateToListItem(lifecycle, activeSnapshot.state === "running" ? "running" : "waiting"),
-      );
+      items.push({
+        ...lifecycleStateToListItem(lifecycle, activeSnapshot.state === "running" ? "running" : "waiting"),
+        directSubagents,
+      });
     }
 
     return items;
@@ -1061,15 +1095,21 @@ export function createVigilServiceForContext(options: {
   childSessionReader?: ChildSessionReader;
   childSessionTranscriptReader?: ChildSessionTranscriptReader;
   childSessionNamer?: ChildSessionNamer;
+  descendantInspector?: import("./descendant-inspector").ChildSessionDescendantInspector;
   reapTimeoutMs?: number;
   waitScheduler?: WaitScheduler;
 }): VigilService {
+  const processRunner = options.processRunner ?? createNodeProcessRunner();
+  const childSessionReader = options.childSessionReader ?? createNodeChildSessionReader();
   return new VigilService({
-    processRunner: options.processRunner ?? createNodeProcessRunner(),
-    childSessionReader: options.childSessionReader ?? createNodeChildSessionReader(),
+    processRunner,
+    childSessionReader,
     childSessionTranscriptReader:
       options.childSessionTranscriptReader ?? createNodeChildSessionTranscriptReader(),
     childSessionNamer: options.childSessionNamer ?? createNodeChildSessionNamer(),
+    descendantInspector:
+      options.descendantInspector ??
+      createNodeChildSessionDescendantInspector({ childSessionReader, processRunner }),
     parentLedger: createSessionParentLedger(options.sessionManager, options.appendEntry),
     sessionDir: options.sessionDir,
     reapTimeoutMs: options.reapTimeoutMs,
