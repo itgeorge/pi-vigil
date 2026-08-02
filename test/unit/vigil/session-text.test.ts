@@ -191,6 +191,68 @@ describe("extractSessionActivity", () => {
       lastActivityTimestamp: null,
     });
   });
+
+  it("describes the newest persisted entry even when it is not a message or model change", () => {
+    const entries: SessionEntry[] = [
+      {
+        type: "message",
+        id: "user-001",
+        parentId: null,
+        timestamp: "2026-08-01T12:00:01.000Z",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Hello" }],
+          timestamp: 1722513601000,
+        },
+      },
+      {
+        type: "compaction",
+        id: "compact-001",
+        parentId: "user-001",
+        timestamp: "2026-08-01T12:00:04.000Z",
+        summary: "summarized context",
+        firstKeptEntryId: "user-001",
+        tokensBefore: 100,
+      },
+    ];
+
+    expect(extractSessionActivity(entries)).toEqual({
+      steps: 2,
+      messages: 1,
+      lastActivity: "compaction",
+      lastActivityTimestamp: "2026-08-01T12:00:04.000Z",
+    });
+  });
+
+  it("uses a safe generic label for custom entries without exposing custom data", () => {
+    const entries: SessionEntry[] = [
+      {
+        type: "message",
+        id: "user-001",
+        parentId: null,
+        timestamp: "2026-08-01T12:00:01.000Z",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Hello" }],
+          timestamp: 1722513601000,
+        },
+      },
+      {
+        type: "custom",
+        id: "custom-001",
+        parentId: "user-001",
+        timestamp: "2026-08-01T12:00:05.000Z",
+        customType: "untrusted-extension",
+        data: { secret: "do-not-leak" },
+      },
+    ];
+
+    const activity = extractSessionActivity(entries);
+    expect(activity.lastActivity).toBe("custom entry");
+    expect(activity.lastActivityTimestamp).toBe("2026-08-01T12:00:05.000Z");
+    expect(JSON.stringify(activity)).not.toContain("untrusted-extension");
+    expect(JSON.stringify(activity)).not.toContain("do-not-leak");
+  });
 });
 
 describe("deriveVigilState", () => {

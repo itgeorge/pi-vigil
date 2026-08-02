@@ -29,7 +29,7 @@ const EMPTY_SESSION_ACTIVITY: VigilSessionActivity = {
   lastActivityTimestamp: null,
 };
 
-function describePersistedEntryActivity(entry: SessionEntry): string | null {
+function describePersistedEntryActivity(entry: SessionEntry): string {
   if (entry.type === "message") {
     if (entry.message.role === "user") {
       return "user message";
@@ -47,14 +47,42 @@ function describePersistedEntryActivity(entry: SessionEntry): string | null {
       }
       return "assistant response";
     }
-    return null;
+    return "message";
   }
 
   if (entry.type === "model_change") {
     return "model change";
   }
 
-  return null;
+  if (entry.type === "thinking_level_change") {
+    return "thinking level change";
+  }
+
+  if (entry.type === "compaction") {
+    return "compaction";
+  }
+
+  if (entry.type === "branch_summary") {
+    return "branch summary";
+  }
+
+  if (entry.type === "custom") {
+    return "custom entry";
+  }
+
+  if (entry.type === "custom_message") {
+    return "custom message";
+  }
+
+  if (entry.type === "label") {
+    return "label";
+  }
+
+  if (entry.type === "session_info") {
+    return "session info";
+  }
+
+  return "session entry";
 }
 
 export function extractSessionActivity(entries: SessionEntry[]): VigilSessionActivity {
@@ -64,8 +92,6 @@ export function extractSessionActivity(entries: SessionEntry[]): VigilSessionAct
 
   let steps = 0;
   let messages = 0;
-  let lastActivity: string | null = null;
-  let lastActivityTimestamp: string | null = null;
 
   for (const entry of entries) {
     steps += 1;
@@ -74,18 +100,9 @@ export function extractSessionActivity(entries: SessionEntry[]): VigilSessionAct
     }
   }
 
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index];
-    if (!entry) {
-      continue;
-    }
-    const description = describePersistedEntryActivity(entry);
-    if (description) {
-      lastActivity = description;
-      lastActivityTimestamp = entry.timestamp;
-      break;
-    }
-  }
+  const newestEntry = entries[entries.length - 1];
+  const lastActivity = newestEntry ? describePersistedEntryActivity(newestEntry) : null;
+  const lastActivityTimestamp = newestEntry?.timestamp ?? null;
 
   return {
     steps,

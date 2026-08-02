@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, VigilSessionActivity, WaitScheduler } from "../../../src/vigil/ports";
 import { createSessionParentLedger, VigilService } from "../../../src/vigil/node-runtime";
+import type { VigilWaitProgress } from "../../../src/vigil/wait-progress";
 import { isVigilError, type VigilCompletionRecord, type VigilLaunchRecord, type VigilWaitResult } from "../../../src/vigil/types";
 
 class FakeScheduler implements WaitScheduler {
@@ -387,7 +388,36 @@ describe("VigilService.wait progress", () => {
     expectWait(result);
     expect(result.outcome).toBe("timeout");
     expect(updates.map((update) => (update as { waitedMs: number }).waitedMs)).toEqual([0, 200]);
+    expect(updates.map((update) => (update as { nextPollInMs: number }).nextPollInMs)).toEqual([200, 50]);
     expect(scheduler.sleeps).toEqual([200, 50]);
+  });
+
+  it("reports nextPollInMs for initial, post-scan backoff, and terminal settlement hints", async () => {
+    const { service, scheduler } = createHarness({
+      records: [launchRecord("vigil-backoff-hint", 1)],
+      stateFor: () => ({
+        latestResponse: scheduler.sleeps.length >= 2 ? "Done" : null,
+        turnComplete: scheduler.sleeps.length >= 2,
+        activity: defaultActivity({
+          steps: scheduler.sleeps.length + 1,
+          messages: 1,
+          lastActivity: scheduler.sleeps.length >= 2 ? "assistant response" : "user message",
+          lastActivityTimestamp: `2026-08-01T12:00:0${scheduler.sleeps.length}.000Z`,
+        }),
+      }),
+    });
+    const updates: VigilWaitProgress[] = [];
+
+    const result = await service.wait(
+      { timeoutMs: 5_000, initialDelayMs: 500, maxDelayMs: 700, progressIntervalMs: 10_000 },
+      undefined,
+      (progress) => updates.push(progress),
+    );
+
+    expectWait(result);
+    expect(result.outcome).toBe("settled");
+    expect(updates.map((update) => update.nextPollInMs)).toEqual([500, 700, 0]);
+    expect(updates.map((update) => update.waitedMs)).toEqual([0, 500, 1_200]);
   });
 
   it("does not emit progress after timeout or cancellation returns", async () => {

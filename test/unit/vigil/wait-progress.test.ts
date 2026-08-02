@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   boundWaitProgressItems,
+  computeNextPollInMs,
   fingerprintWaitProgress,
   formatWaitProgressText,
   MAX_WAIT_PROGRESS_ITEMS,
@@ -32,15 +33,16 @@ describe("wait progress formatting", () => {
     expect(text).toContain("last: tool result: bash (3s ago)");
   });
 
-  it("truncates unusually long names and activity metadata to a single safe line", () => {
+  it("truncates unusually long names, ids, and activity metadata to a single safe line", () => {
     const longName = `${"N".repeat(200)}\nhidden`;
+    const longId = `${"I".repeat(200)}\nhidden-id`;
     const longActivity = `${"A".repeat(200)}\nhidden`;
     const progress = {
       waitedMs: 0,
       nextPollInMs: 500,
       items: [
         {
-          id: "vigil-long",
+          id: longId,
           name: longName,
           state: "running" as const,
           steps: 1,
@@ -54,6 +56,7 @@ describe("wait progress formatting", () => {
 
     const line = formatWaitProgressText(progress, Date.now());
     expect(line).not.toContain("\nhidden");
+    expect(line).not.toContain("\nhidden-id");
     expect(line).toContain("[truncated]");
   });
 
@@ -76,6 +79,56 @@ describe("wait progress formatting", () => {
       Date.now(),
     );
     expect(text).toContain("… and 3 more children omitted");
+  });
+});
+
+describe("computeNextPollInMs", () => {
+  it("uses the initial delay before the first sleep", () => {
+    expect(
+      computeNextPollInMs({
+        delayMs: 500,
+        maxDelayMs: 5_000,
+        remainingMs: 10_000,
+        afterCompletedSleep: false,
+        willPollAgain: true,
+      }),
+    ).toBe(500);
+  });
+
+  it("uses the doubled capped delay after a completed sleep", () => {
+    expect(
+      computeNextPollInMs({
+        delayMs: 500,
+        maxDelayMs: 700,
+        remainingMs: 1_300,
+        afterCompletedSleep: true,
+        willPollAgain: true,
+      }),
+    ).toBe(700);
+  });
+
+  it("truncates the forthcoming delay to remaining timeout budget", () => {
+    expect(
+      computeNextPollInMs({
+        delayMs: 200,
+        maxDelayMs: 200,
+        remainingMs: 50,
+        afterCompletedSleep: true,
+        willPollAgain: true,
+      }),
+    ).toBe(50);
+  });
+
+  it("returns zero when no subsequent poll will occur", () => {
+    expect(
+      computeNextPollInMs({
+        delayMs: 500,
+        maxDelayMs: 5_000,
+        remainingMs: 10_000,
+        afterCompletedSleep: true,
+        willPollAgain: false,
+      }),
+    ).toBe(0);
   });
 });
 

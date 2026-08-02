@@ -40,6 +40,23 @@ function sanitizeSingleLine(value: string): string {
   return truncateLine(normalized, MAX_PROGRESS_FIELD_CHARS).text;
 }
 
+export function computeNextPollInMs(input: {
+  delayMs: number;
+  maxDelayMs: number;
+  remainingMs: number;
+  afterCompletedSleep: boolean;
+  willPollAgain: boolean;
+}): number {
+  if (!input.willPollAgain || input.remainingMs <= 0) {
+    return 0;
+  }
+
+  const forthcomingDelayMs = input.afterCompletedSleep
+    ? Math.min(input.delayMs * 2, input.maxDelayMs)
+    : input.delayMs;
+  return Math.min(forthcomingDelayMs, input.remainingMs);
+}
+
 export function formatRelativeAge(referenceMs: number, timestamp: string | null): string | null {
   if (!timestamp) {
     return null;
@@ -68,14 +85,15 @@ export function formatWaitProgressItemLine(
   item: VigilWaitProgressItem,
   referenceMs: number,
 ): string {
-  const name = sanitizeSingleLine(item.name) || item.id;
+  const id = sanitizeSingleLine(item.id) || item.id;
+  const name = sanitizeSingleLine(item.name) || id;
   const lastPart = item.lastActivity
     ? `last: ${sanitizeSingleLine(item.lastActivity)}${(() => {
         const age = formatRelativeAge(referenceMs, item.lastActivityTimestamp);
         return age ? ` (${age})` : "";
       })()}`
     : "last: none";
-  return `${name} [${item.id}] — ${item.state} · steps: ${item.steps} · messages: ${item.messages} · ${lastPart}`;
+  return `${name} [${id}] — ${item.state} · steps: ${item.steps} · messages: ${item.messages} · ${lastPart}`;
 }
 
 export function formatWaitProgressText(progress: VigilWaitProgress, referenceMs: number): string {

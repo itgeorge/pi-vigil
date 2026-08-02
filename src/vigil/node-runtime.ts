@@ -27,6 +27,7 @@ import type {
 import { extractLatestAssistantState, deriveVigilState, getTurnStartedAt, extractSessionActivity } from "./session-text";
 import {
   boundWaitProgressItems,
+  computeNextPollInMs,
   DEFAULT_WAIT_PROGRESS_INTERVAL_MS,
   fingerprintWaitProgress,
   MAX_WAIT_PROGRESS_INTERVAL_MS,
@@ -235,6 +236,7 @@ export class VigilService {
     let delayMs = policy.initialDelayMs;
     let lastFingerprint: string | null = null;
     let lastProgressAt = startedAt;
+    let afterCompletedSleep = false;
 
     const emitProgressIfNeeded = (
       scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[],
@@ -246,7 +248,15 @@ export class VigilService {
 
       const waitedMs = this.waitedMs(startedAt, scheduler);
       const remainingMs = policy.timeoutMs - waitedMs;
-      const nextPollInMs = remainingMs <= 0 ? 0 : Math.min(delayMs, remainingMs);
+      const allStillRunning = scan.every(({ snapshot }) => snapshot.state === "running");
+      const willPollAgain = allStillRunning && remainingMs > 0 && !signal?.aborted;
+      const nextPollInMs = computeNextPollInMs({
+        delayMs,
+        maxDelayMs: policy.maxDelayMs,
+        remainingMs,
+        afterCompletedSleep,
+        willPollAgain,
+      });
       const progressItems = scan.map(({ snapshot, activity }) =>
         this.toWaitProgressItem(snapshot, activity),
       );
@@ -298,6 +308,7 @@ export class VigilService {
         return this.cancelledWaitResult(startedAt, scheduler, scan);
       }
 
+      afterCompletedSleep = true;
       scan = await this.scanWaitCohort(cohort.map((lifecycle) => lifecycle.id));
       if ("error" in scan) {
         return scan;

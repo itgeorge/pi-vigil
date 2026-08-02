@@ -236,11 +236,12 @@ elapsed 15s · next poll ≤4s · Slice 4 implementation [vigil-abcd] — runnin
 
 - 2026-08-02: Plan created after accepted Slice 4. User approved deterministic live progress/status updates plus persisted session step/message counters, while deferring LLM-generated summaries to a later dedicated design. No Slice 4.5 implementation has started.
 - 2026-08-02: Slice 4.5 implemented. Added persisted `VigilSessionActivity`, bounded `VigilWaitProgress` DTOs/formatting, service-level wait progress emissions with fingerprint/heartbeat gating, and Pi adapter `onUpdate` wiring for `progress` / `progressIntervalMs`. Deterministic unit coverage uses fake schedulers/readers; live acceptance extended to collect initial partial updates when `PI_VIGIL_LIVE=1`.
+- 2026-08-02: Pre-acceptance corrections. `nextPollInMs` now reflects the forthcoming bounded sleep (doubled/capped delay after a completed poll, zero when no subsequent poll). `extractSessionActivity` reports the newest persisted non-header entry with safe generic labels for unrecognized/custom types. Progress display text truncates long IDs as well as names/activity.
 
 ## Test notes
 
-- `npm test`: 92/92 unit tests passed (2026-08-02).
-- `npm run typecheck`: passed (2026-08-02).
+- `npm test`: 99/99 unit tests passed (2026-08-02, post-correction).
+- `npm run typecheck`: passed (2026-08-02, post-correction).
 - `npm run test:acceptance` without `PI_VIGIL_LIVE=1`: fails fast with opt-in instructions (expected).
 - `PI_VIGIL_LIVE=1 npm run test:acceptance`: not run in this environment (`PI_VIGIL_LIVE` unset).
 
