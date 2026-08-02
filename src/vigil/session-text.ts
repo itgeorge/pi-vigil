@@ -1,4 +1,5 @@
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import { sanitizeDisplayField } from "./transcript";
 
 export interface AssistantTurnState {
   latestResponse: string | null;
@@ -6,11 +7,17 @@ export interface AssistantTurnState {
   lastConversationTimestamp: string | null;
 }
 
+export interface VigilMessagePreview {
+  label: string;
+  excerpt: string;
+}
+
 export interface VigilSessionActivity {
   steps: number;
   messages: number;
   lastActivity: string | null;
   lastActivityTimestamp: string | null;
+  recentMessages: VigilMessagePreview[];
 }
 
 export interface ChildSessionState {
@@ -20,6 +27,9 @@ export interface ChildSessionState {
   activity: VigilSessionActivity;
 }
 
+export const MAX_RECENT_MESSAGE_PREVIEWS = 3;
+export const MAX_MESSAGE_PREVIEW_CHARS = 50;
+
 const TERMINAL_STOP_REASONS = new Set(["stop", "length", "error", "aborted"]);
 
 const EMPTY_SESSION_ACTIVITY: VigilSessionActivity = {
@@ -27,7 +37,125 @@ const EMPTY_SESSION_ACTIVITY: VigilSessionActivity = {
   messages: 0,
   lastActivity: null,
   lastActivityTimestamp: null,
+  recentMessages: [],
 };
+
+function extractVisibleTextParts(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+
+  let text = "";
+  for (const part of content) {
+    if (typeof part !== "object" || part === null) {
+      continue;
+    }
+    const typed = part as { type?: string; text?: string };
+    if (typed.type === "text" && typeof typed.text === "string") {
+      text += typed.text;
+    }
+  }
+  return text;
+}
+
+function describeAssistantToolUse(content: unknown): string | null {
+  if (!Array.isArray(content)) {
+    return null;
+  }
+
+  const names: string[] = [];
+  for (const part of content) {
+    if (typeof part !== "object" || part === null) {
+      continue;
+    }
+    const typed = part as { type?: string; name?: string };
+    if (typed.type === "toolCall" && typeof typed.name === "string" && typed.name.trim()) {
+      names.push(typed.name.trim());
+    }
+  }
+
+  if (names.length === 0) {
+    return null;
+  }
+  return names.length === 1 ? `tool use: ${names[0]}` : `tool use: ${names.join(", ")}`;
+}
+
+function labelForMessageRole(role: string): string {
+  switch (role) {
+    case "user":
+      return "user";
+    case "assistant":
+      return "assistant";
+    case "toolResult":
+      return "tool result";
+    case "bashExecution":
+      return "bash execution";
+    case "custom":
+      return "custom";
+    case "branchSummary":
+      return "branch summary";
+    case "compactionSummary":
+      return "compaction summary";
+    default:
+      return role.trim() || "message";
+  }
+}
+
+function buildMessagePreviewExcerpt(entry: SessionEntry & { type: "message" }): string {
+  const role = entry.message?.role;
+  if (typeof role !== "string" || !role) {
+    return "";
+  }
+
+  if (role === "user" || role === "custom") {
+    return extractVisibleTextParts(entry.message.content);
+  }
+
+  if (role === "assistant") {
+    const text = extractVisibleTextParts(entry.message.content).trim();
+    if (text) {
+      return text;
+    }
+    return describeAssistantToolUse(entry.message.content) ?? "";
+  }
+
+  if (role === "toolResult") {
+    return extractVisibleTextParts(entry.message.content);
+  }
+
+  if (role === "bashExecution") {
+    const command = entry.message.command?.trim() ?? "";
+    const output = entry.message.output?.trim() ?? "";
+    return command || output;
+  }
+
+  if (role === "branchSummary" || role === "compactionSummary") {
+    return entry.message.summary?.trim() ?? "";
+  }
+
+  return extractVisibleTextParts((entry.message as { content?: unknown }).content);
+}
+
+function formatMessagePreviewExcerpt(raw: string): string {
+  return sanitizeDisplayField(raw, MAX_MESSAGE_PREVIEW_CHARS);
+}
+
+export function extractRecentMessagePreviews(entries: SessionEntry[]): VigilMessagePreview[] {
+  const messageEntries = entries.filter(
+    (entry): entry is SessionEntry & { type: "message" } => entry.type === "message",
+  );
+  const selected = messageEntries.slice(-MAX_RECENT_MESSAGE_PREVIEWS);
+
+  return selected.map((entry) => {
+    const role = entry.message?.role;
+    const label = typeof role === "string" && role ? labelForMessageRole(role) : "message";
+    const excerpt = formatMessagePreviewExcerpt(buildMessagePreviewExcerpt(entry));
+    return { label, excerpt };
+  });
+}
 
 function describePersistedEntryActivity(entry: SessionEntry): string {
   if (entry.type === "message") {
@@ -109,6 +237,7 @@ export function extractSessionActivity(entries: SessionEntry[]): VigilSessionAct
     messages,
     lastActivity,
     lastActivityTimestamp,
+    recentMessages: extractRecentMessagePreviews(entries),
   };
 }
 
