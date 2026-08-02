@@ -8,6 +8,7 @@ import {
   DEFAULT_WAIT_PROGRESS_MODE,
   DEFAULT_WAIT_TIMEOUT_MS,
 } from "./node-runtime";
+import { escapeTerminalControls } from "./transcript";
 
 export const MAX_CALL_FIELD_CHARS = 120;
 export const VIGIL_SHORT_ID_HEX_LENGTH = 7;
@@ -35,11 +36,13 @@ export interface VigilCallArgs {
 export type VigilDisplayNameLookup = ReadonlyMap<string, string>;
 
 export function sanitizeCallField(value: string): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  if (!normalized) {
+  const lineBroken = value.replace(/\n/g, " ");
+  const escaped = escapeTerminalControls(lineBroken, false);
+  const collapsed = escaped.replace(/ +/g, " ").trim();
+  if (!collapsed) {
     return "";
   }
-  return truncateLine(normalized, MAX_CALL_FIELD_CHARS).text;
+  return truncateLine(collapsed, MAX_CALL_FIELD_CHARS).text;
 }
 
 export function formatVigilShortId(id: string): string {
@@ -48,13 +51,12 @@ export function formatVigilShortId(id: string): string {
     return sanitizeCallField(trimmed) || trimmed;
   }
 
-  const suffix = trimmed.slice("vigil-".length);
-  const compact = suffix.replace(/-/g, "");
-  if (!compact) {
+  const suffix = escapeTerminalControls(trimmed.slice("vigil-".length).replace(/-/g, ""), false);
+  if (!suffix) {
     return "vigil-?";
   }
 
-  return `vigil-${compact.slice(0, VIGIL_SHORT_ID_HEX_LENGTH)}`;
+  return `vigil-${suffix.slice(0, VIGIL_SHORT_ID_HEX_LENGTH)}`;
 }
 
 export function buildVigilDisplayNameIndex(entries: SessionEntry[]): VigilDisplayNameLookup {

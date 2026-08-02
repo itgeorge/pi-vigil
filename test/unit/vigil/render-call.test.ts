@@ -527,4 +527,48 @@ describe("sanitizeCallField", () => {
     expect(sanitizeCallField("  hello\nworld  ")).toBe("hello world");
     expect(sanitizeCallField("x".repeat(200))).toContain("[truncated]");
   });
+
+  it("escapes terminal controls in compact call fields", () => {
+    expect(sanitizeCallField("query\u001b[31mRED\u0007")).not.toMatch(/\u001b|\u0007/);
+    expect(sanitizeCallField("query\u001b[31mRED\u0007")).toContain("\\u0007");
+    expect(sanitizeCallField("a\tb\rc")).toBe("a\\tb\\rc");
+  });
+});
+
+describe("terminal control rendering for search/read", () => {
+  it("neutralizes controls in compact search and read summaries", () => {
+    const searchSummary = plainSummary({
+      action: "search",
+      query: "fail\u0007\u001b[31mRED\ttab",
+      id: "vigil-\u0001evil",
+    });
+    expect(searchSummary).not.toMatch(/\u0007|\u001b|\t/);
+    expect(searchSummary).toContain("\\u0007");
+    expect(searchSummary).toContain("\\t");
+
+    const readSummary = plainSummary({
+      action: "read",
+      id: "vigil-\u0002child",
+      entryId: "entry\u0003\ttab",
+    });
+    expect(readSummary).not.toMatch(/\u0002|\u0003|\t/);
+    expect(readSummary).toContain("\\t");
+  });
+
+  it("keeps expanded argument rendering safe via JSON escaping", () => {
+    const args: VigilCallArgs = {
+      action: "search",
+      query: "fail\u0007\ttab",
+      id: "vigil-\u0001child",
+    };
+
+    const expanded = formatVigilCallExpandedArgs(args);
+    expect(expanded).toContain('"query": "fail\\u0007\\ttab"');
+    expect(expanded).toContain('"id": "vigil-\\u0001child"');
+    expect(() => JSON.parse(expanded)).not.toThrow();
+
+    const rendered = renderPlainText(args, [], { expanded: true });
+    expect(rendered).not.toMatch(/\u0007|\t/);
+    expect(rendered).toContain('"query": "fail\\u0007\\ttab"');
+  });
 });

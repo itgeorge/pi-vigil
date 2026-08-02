@@ -256,12 +256,19 @@ Exact DTO/format names can improve during implementation, but result identity, b
 
 ## Slice 5 review remediation (2026-08-02)
 
-- [x] Safe/bounded output: raw transcript text retained for matching only; `formatSearchText`/`formatReadText` and structured match/detail projections strip C0/C1/ANSI/OSC controls, cap transcript-derived display fields, preserve read-detail newlines, and serialize tool arguments as deterministic valid JSON.
+- [x] Safe/bounded output: raw transcript text retained for matching only; `formatSearchText`/`formatReadText` and structured match/detail projections escape C0/C1/ANSI/OSC controls visibly (only LF preserved in read detail), cap transcript-derived display fields, and use separate bounded display excerpts for tool arguments (`formatToolArgumentsDisplay`) distinct from the full valid JSON match corpus (`serializeToolArgumentsMatchCorpus`).
 - [x] Lifecycle-only diagnostics: `search`/`read` no longer invoke `processRunner.isAlive`, child state reader, snapshot builders, PID operations, or session-tree mutation; `deriveDiagnosticChildIdentity` supplies lifecycle-derived state (`completed` or lifecycle-active `running`).
 - [x] Controlled transcript errors: service and node transcript reader catch reader/path/file failures and rejected promises, returning canonical diagnostic errors.
 - [x] Exact ID semantics: reject `id`/`entryId`/`search.id` with leading/trailing whitespace; preserve raw ids after validation; `query` continues trim behavior.
 - [x] Entry metadata validation: skip malformed session entries before projection (nonblank `entryId`, `parentId` string|null, nonblank timestamp); defensive role projections.
 - [x] Coverage gaps filled: control/oversized output, JSON args, isAlive/state-reader non-use, rejected reader, whitespace IDs, all searchable/excluded surfaces, malformed records.
+- [x] Run `npm test`, `npm run typecheck`, opt-out and live acceptance.
+
+## Slice 5 Terra review final corrections (2026-08-02)
+
+- [x] Tool arguments: full deterministic valid JSON match corpus preserved for transcript matching (including markers beyond 2,000 characters); bounded display excerpts are separately truncated and not claimed as valid JSON.
+- [x] Terminal safety: diagnostic output escapes tabs, CR, DEL/C1, and ESC visibly; only LF newlines are preserved deliberately in multiline read detail.
+- [x] Compact call rendering: `sanitizeCallField`/`formatVigilShortId` neutralize terminal controls for search/read query/IDs and other user-controlled compact fields; expanded argument rendering relies on JSON serialization.
 - [x] Run `npm test`, `npm run typecheck`, opt-out and live acceptance.
 
 ## Future work (not implementation work for this handoff)

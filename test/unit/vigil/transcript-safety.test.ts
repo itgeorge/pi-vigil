@@ -2,10 +2,13 @@ import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import {
   buildMatchExcerpt,
+  escapeTerminalControls,
   formatReadText,
   formatSearchText,
+  formatToolArgumentsDisplay,
   MAX_ENTRY_DETAIL_CHARS,
   MAX_SEARCH_EXCERPT_CHARS,
+  MAX_TOOL_ARGUMENTS_DISPLAY_CHARS,
   parseChildSessionTranscript,
   projectTranscriptEntry,
   resolveReadPolicy,
@@ -13,14 +16,22 @@ import {
   sanitizeDisplayField,
   sanitizeDisplayMultiline,
   searchTranscriptEntries,
-  serializeToolArguments,
+  serializeToolArgumentsMatchCorpus,
 } from "../../../src/vigil/transcript";
 
 describe("safe display projections", () => {
-  it("strips C0/C1 control sequences and ANSI/OSC escapes from display fields", () => {
+  it("escapes C0/C1 control sequences and ANSI/OSC escapes visibly in display fields", () => {
     const injected = "before\u001b[31mRED\u001b[0m\u0007after\u001b]0;Title\u0007";
     expect(sanitizeDisplayField(injected, 200)).not.toMatch(/\u001b|\u0007/);
-    expect(sanitizeDisplayMultiline("line1\nline2\u000b", 200)).toBe("line1\nline2");
+    expect(sanitizeDisplayField(injected, 200)).toContain("\\u0007");
+    expect(sanitizeDisplayMultiline("line1\nline2\u000b", 200)).toBe("line1\nline2\\u000b");
+  });
+
+  it("escapes tabs and carriage returns while preserving only LF in multiline read detail", () => {
+    expect(escapeTerminalControls("a\tb", true)).toBe("a\\tb");
+    expect(escapeTerminalControls("a\rb", true)).toBe("a\\rb");
+    expect(escapeTerminalControls("line1\nline2", true)).toBe("line1\nline2");
+    expect(escapeTerminalControls("\u007fDEL", false)).toContain("\\u007f");
   });
 
   it("caps oversized display fields", () => {
@@ -29,15 +40,77 @@ describe("safe display projections", () => {
     expect(sanitizeDisplayMultiline(`${long}\n${long}`, 100).length).toBeLessThanOrEqual(100);
   });
 
-  it("escapes tool arguments as valid deterministic JSON with quoting", () => {
-    expect(serializeToolArguments({ b: 2, a: 1 })).toBe('{"a":1,"b":2}');
-    expect(serializeToolArguments({ cmd: 'say "hi"\nline2' })).toBe('{"cmd":"say \\"hi\\"\\nline2"}');
-    expect(serializeToolArguments({ nested: { z: true, a: "x" } })).toBe('{"nested":{"a":"x","z":true}}');
+  it("serializes tool arguments as full valid JSON for matching and separately truncates display excerpts", () => {
+    expect(serializeToolArgumentsMatchCorpus({ b: 2, a: 1 })).toBe('{"a":1,"b":2}');
+    expect(serializeToolArgumentsMatchCorpus({ cmd: 'say "hi"\nline2' })).toBe('{"cmd":"say \\"hi\\"\\nline2"}');
+    expect(serializeToolArgumentsMatchCorpus({ nested: { z: true, a: "x" } })).toBe('{"nested":{"a":"x","z":true}}');
+
+    const oversizedArgs = { payload: `${"p".repeat(2_500)}DEEP_MARKER` };
+    const matchCorpus = serializeToolArgumentsMatchCorpus(oversizedArgs);
+    expect(matchCorpus).toContain("DEEP_MARKER");
+    expect(matchCorpus.length).toBeGreaterThan(2_000);
+
+    const display = formatToolArgumentsDisplay(oversizedArgs);
+    expect(display.length).toBeLessThanOrEqual(MAX_TOOL_ARGUMENTS_DISPLAY_CHARS);
+    expect(display).not.toContain("DEEP_MARKER");
+    expect(() => JSON.parse(display)).toThrow();
   });
 
-  it("formatSearchText and formatReadText use safe bounded projections", () => {
+  it("finds markers beyond 2,000 characters in tool arguments while keeping emitted output bounded", () => {
+    const padding = "z".repeat(2_100);
+    const entry: SessionEntry = {
+      type: "message",
+      id: "deep-tool-call",
+      parentId: null,
+      timestamp: "2026-08-01T12:00:01.000Z",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call-deep",
+            name: "bash",
+            arguments: { command: `${padding}FAR_MARKER` },
+          },
+        ],
+        api: "openai-codex-responses",
+        provider: "openai-codex",
+        model: "gpt-5.5",
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "toolUse",
+        timestamp: 1722513602000,
+      },
+    };
+
+    const projected = projectTranscriptEntry(entry);
+    expect(projected?.searchableText).toContain("FAR_MARKER");
+    expect(projected?.detailText.length ?? 0).toBeLessThanOrEqual(MAX_ENTRY_DETAIL_CHARS);
+
+    const matches = searchTranscriptEntries(
+      parseChildSessionTranscript([entry]),
+      "far_marker",
+      { id: "vigil-a", sessionId: "vigil-a", name: "Task", state: "running" },
+      5,
+    );
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.match.length ?? 0).toBeLessThanOrEqual(MAX_SEARCH_EXCERPT_CHARS);
+    expect(matches[0]?.match.toLowerCase()).toContain("far_marker");
+
+    const searchText = formatSearchText({ matches });
+    expect(searchText.length).toBeLessThan(10_000);
+    expect(searchText).not.toMatch(/\u001b|\u0007|\t/);
+  });
+
+  it("formatSearchText and formatReadText use safe bounded projections without literal controls", () => {
     const controlName = "Task\u001b[2J";
-    const controlMatch = "fail\u0007ure";
+    const controlMatch = "fail\u0007ure\ttab\rcr";
     const searchText = formatSearchText({
       matches: [
         {
@@ -54,7 +127,9 @@ describe("safe display projections", () => {
         },
       ],
     });
-    expect(searchText).not.toMatch(/\u001b|\u0001|\u0002|\u0007/);
+    expect(searchText).not.toMatch(/\u001b|\u0001|\u0002|\u0007|\t|\r/);
+    expect(searchText).toContain("\\u0007");
+    expect(searchText).toContain("\\t");
     expect(searchText).toContain("matches: 1");
 
     const readText = formatReadText({
@@ -76,13 +151,15 @@ describe("safe display projections", () => {
           entryType: "message",
           role: "assistant",
           timestamp: "2026-08-02T00:12:00.000Z",
-          detail: "line-one\nline-two\u0007",
+          detail: "line-one\nline-two\u0007\ttab\rcr",
           isAnchor: true,
         },
       ],
     });
     expect(readText).toContain("line-one\nline-two");
-    expect(readText).not.toMatch(/\u0007|\u001b/);
+    expect(readText).not.toMatch(/\u0007|\u001b|\t|\r/);
+    expect(readText).toContain("\\u0007");
+    expect(readText).toContain("\\t");
   });
 
   it("retains raw searchable text for matching while projecting safe match excerpts", () => {

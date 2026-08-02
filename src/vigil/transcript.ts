@@ -11,33 +11,74 @@ export const MAX_ENTRY_DETAIL_CHARS = 4_000;
 export const MAX_DISPLAY_NAME_CHARS = 120;
 export const MAX_DISPLAY_ID_CHARS = 128;
 export const MAX_DISPLAY_METADATA_CHARS = 120;
+export const MAX_TOOL_ARGUMENTS_DISPLAY_CHARS = 2_000;
 
-const C0_C1_CONTROL =
-  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u0085\u2028\u2029]/g;
 const ANSI_SEQUENCE = /\u001B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
 const OSC_SEQUENCE = /\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g;
 
-export function stripTerminalControls(text: string, preserveNewlines = false): string {
+function isC0C1Control(code: number): boolean {
+  return (
+    (code >= 0x00 && code <= 0x08) ||
+    code === 0x0b ||
+    code === 0x0c ||
+    (code >= 0x0e && code <= 0x1f) ||
+    code === 0x7f ||
+    (code >= 0x80 && code <= 0x9f) ||
+    code === 0x85 ||
+    code === 0x2028 ||
+    code === 0x2029
+  );
+}
+
+function escapeControlCodePoint(code: number): string {
+  return `\\u${code.toString(16).padStart(4, "0")}`;
+}
+
+/** Escape C0/C1/ANSI/OSC controls for bounded diagnostic display. Only LF may remain literal when preserveLf is true. */
+export function escapeTerminalControls(text: string, preserveLf = false): string {
   let cleaned = text.replace(OSC_SEQUENCE, "").replace(ANSI_SEQUENCE, "");
-  cleaned = cleaned.replace(C0_C1_CONTROL, (character) => {
-    if (preserveNewlines && (character === "\n" || character === "\r" || character === "\t")) {
-      return character;
+  let result = "";
+
+  for (const character of cleaned) {
+    const code = character.charCodeAt(0);
+    if (code === 0x1b) {
+      result += "\\u001b";
+      continue;
     }
-    return "";
-  });
-  return cleaned;
+    if (preserveLf && code === 0x0a) {
+      result += "\n";
+      continue;
+    }
+    if (code === 0x09) {
+      result += "\\t";
+      continue;
+    }
+    if (code === 0x0d) {
+      result += "\\r";
+      continue;
+    }
+    if (code === 0x0a) {
+      result += "\\n";
+      continue;
+    }
+    if (isC0C1Control(code)) {
+      result += escapeControlCodePoint(code);
+      continue;
+    }
+    result += character;
+  }
+
+  return result;
 }
 
 export function sanitizeDisplayField(text: string, maxChars: number): string {
-  const cleaned = stripTerminalControls(text).replace(/\s+/g, " ").trim();
+  const lineBroken = text.replace(/\n/g, " ");
+  const cleaned = escapeTerminalControls(lineBroken, false).replace(/ +/g, " ").trim();
   return truncateVisible(cleaned, maxChars);
 }
 
 export function sanitizeDisplayMultiline(text: string, maxChars: number): string {
-  const cleaned = stripTerminalControls(text, true)
-    .split("\n")
-    .map((line) => line.replace(/\r/g, ""))
-    .join("\n");
+  const cleaned = escapeTerminalControls(text, true);
   return truncateVisible(cleaned, maxChars);
 }
 
@@ -155,9 +196,18 @@ export function truncateVisible(text: string, maxChars: number): string {
   return `${text.slice(0, maxChars - 1)}…`;
 }
 
-export function serializeToolArguments(args: unknown, maxChars = 2_000): string {
+/** Full deterministic valid JSON for transcript matching only; never truncated. */
+export function serializeToolArgumentsMatchCorpus(args: unknown): string {
+  return serializeValue(args);
+}
+
+/** Bounded safe display excerpt for tool arguments; not valid JSON when truncated. */
+export function formatToolArgumentsDisplay(
+  args: unknown,
+  maxChars = MAX_TOOL_ARGUMENTS_DISPLAY_CHARS,
+): string {
   const serialized = serializeValue(args);
-  return sanitizeDisplayField(serialized, maxChars);
+  return truncateVisible(escapeTerminalControls(serialized, false), maxChars);
 }
 
 function serializeValue(value: unknown): string {
@@ -349,9 +399,10 @@ function projectMessageSearchable(entry: SessionEntry & { type: "message" }): {
         parts.push(content.text);
         detailParts.push(content.text);
       } else if (content.type === "toolCall") {
-        const toolLine = `${content.name} ${serializeToolArguments(content.arguments)}`.trim();
-        parts.push(toolLine);
-        detailParts.push(toolLine);
+        const matchLine = `${content.name} ${serializeToolArgumentsMatchCorpus(content.arguments)}`.trim();
+        const displayLine = `${content.name} ${formatToolArgumentsDisplay(content.arguments)}`.trim();
+        parts.push(matchLine);
+        detailParts.push(displayLine);
       }
     }
     const searchable = parts.join("\n");

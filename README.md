@@ -49,7 +49,7 @@ A typical orchestration loop is `list` → `wait` (use TUI partial progress whil
 
 Diagnostic `state` in search/read results is lifecycle-derived, not live poll state: `completed` when tombstoned; otherwise `running` means lifecycle-active (eligible for the default active corpus), distinct from poll's live `running`/`waiting` semantics. Search/read never query tracked PIDs, child state readers, or session-tree mutation.
 
-Formatted search/read text strips C0/C1/ANSI/OSC control sequences and caps transcript-derived names, metadata, and excerpts. Structured results keep exact stable ids; detail/match fields use safe bounded projections. Tool-call arguments serialize as deterministic valid JSON.
+Formatted search/read text escapes C0/C1/ANSI/OSC controls visibly (tabs, CR, DEL/C1, ESC sequences; only LF preserved in read detail) and caps transcript-derived names, metadata, and excerpts. Structured results keep exact stable ids; detail/match fields use safe bounded display projections. Transcript matching retains full raw searchable text internally, including complete deterministic valid JSON for tool-call arguments; bounded display excerpts for tool arguments are separately truncated and are not valid JSON when truncated.
 
 Searchable persisted text includes user/assistant visible text, assistant tool-call names plus safely serialized arguments, tool-result text, bash command/output, custom-message text, compaction and branch summaries, model/thinking-level metadata, and labels. It excludes assistant thinking blocks, image/base64 data, opaque extension `custom.data`, and raw session file paths. Fuzzy/semantic/regex search is not implemented in v1.
 

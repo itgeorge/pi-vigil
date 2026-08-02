@@ -19,7 +19,7 @@ import {
   resolveReadPolicy,
   resolveSearchPolicy,
   searchTranscriptEntries,
-  serializeToolArguments,
+  serializeToolArgumentsMatchCorpus,
   truncateVisible,
 } from "../../../src/vigil/transcript";
 
@@ -208,8 +208,8 @@ describe("transcript projection and literal search", () => {
     expect(excerpt.startsWith("…") || excerpt.endsWith("…")).toBe(true);
   });
 
-  it("serializes tool arguments with deterministic key ordering", () => {
-    expect(serializeToolArguments({ b: 2, a: 1 })).toBe('{"a":1,"b":2}');
+  it("serializes tool arguments with deterministic key ordering for match corpus", () => {
+    expect(serializeToolArgumentsMatchCorpus({ b: 2, a: 1 })).toBe('{"a":1,"b":2}');
   });
 
   it("truncates rendered entry detail", () => {
