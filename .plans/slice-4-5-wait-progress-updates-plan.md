@@ -59,24 +59,24 @@ elapsed 15s · next poll ≤4s · Slice 4 implementation [vigil-abcd] — runnin
 
 ## Todos
 
-- [ ] Read the fully accepted Slice 1–4 plans, current `wait` implementation/tests, Pi extension `onUpdate` documentation, README, and dogfood lessons before changing code.
-- [ ] Add failing adapter tests demonstrating that one registered-tool `wait` invocation can capture partial updates before its final result:
+- [x] Read the fully accepted Slice 1–4 plans, current `wait` implementation/tests, Pi extension `onUpdate` documentation, README, and dogfood lessons before changing code.
+- [x] Add failing adapter tests demonstrating that one registered-tool `wait` invocation can capture partial updates before its final result:
   - default `progress` emits an initial status update for an active cohort;
   - `progress: "none"` emits no updates but returns the identical final wait outcome;
   - an update contains child ID/name/state, persisted `steps`, `messages`, and a factual latest-activity field;
   - tool final `content`/`details` remain the Slice 4 result shape rather than a progress transcript.
-- [ ] Add failing service tests for update timing:
+- [x] Add failing service tests for update timing:
   - initial scan emits immediately;
   - a changed child progress fingerprint emits on the next scan even before heartbeat expiry;
   - unchanged state does not emit repeatedly before `progressIntervalMs`;
   - unchanged state emits a heartbeat at/after the interval;
   - no update occurs after timeout/cancellation/return.
-- [ ] Add failing session-text/reader tests for activity facts:
+- [x] Add failing session-text/reader tests for activity facts:
   - step count excludes the session header and counts all persisted entry types;
   - message count counts only `message` entries;
   - latest activity describes the newest persisted entry without pretending it is live thought;
   - assistant tool-use/tool-result, user message, model change, and no-session/no-entry cases produce stable safe descriptions.
-- [ ] Add failing validation tests:
+- [x] Add failing validation tests:
   - `progress` accepts only `status`/`none` through Pi-compatible schema;
   - `progressIntervalMs` defaults correctly and rejects non-integer/zero/oversized values;
   - `progressIntervalMs` has no effect when `progress: "none"`.
@@ -92,7 +92,7 @@ elapsed 15s · next poll ≤4s · Slice 4 implementation [vigil-abcd] — runnin
 
 ## Todos
 
-- [ ] Extend child-session parsing/reader state with a small, explicit persisted-activity DTO, for example:
+- [x] Extend child-session parsing/reader state with a small, explicit persisted-activity DTO, for example:
 
   ```ts
   interface VigilSessionActivity {
@@ -104,8 +104,8 @@ elapsed 15s · next poll ≤4s · Slice 4 implementation [vigil-abcd] — runnin
   ```
 
   Keep existing latest-response/current-turn state behavior unchanged.
-- [ ] Derive `lastActivity` only from persisted entry type/role and safe metadata, such as `user message`, `assistant tool use: bash`, `tool result: bash`, `assistant response`, or `model change`. Never fabricate a claim about current hidden reasoning or work.
-- [ ] Add wait-progress domain types independent of Pi UI, for example:
+- [x] Derive `lastActivity` only from persisted entry type/role and safe metadata, such as `user message`, `assistant tool use: bash`, `tool result: bash`, `assistant response`, or `model change`. Never fabricate a claim about current hidden reasoning or work.
+- [x] Add wait-progress domain types independent of Pi UI, for example:
 
   ```ts
   interface VigilWaitProgressItem {
@@ -127,9 +127,9 @@ elapsed 15s · next poll ≤4s · Slice 4 implementation [vigil-abcd] — runnin
   ```
 
   Exact names may evolve, but no `latestResponse` body should be repeated in progress updates.
-- [ ] Define a pure progress fingerprint from all facts that should cause an early update (state, counts, latest activity/timestamp). Keep it distinct from the final wait outcome.
-- [ ] Implement bounded single-line formatting for each item and a concise update header. Use an exported Pi truncation helper or a small tested local function to avoid newline injection or unbounded names/tool metadata.
-- [ ] Add a documented constant for maximum update items and for default/maximum heartbeat interval.
+- [x] Define a pure progress fingerprint from all facts that should cause an early update (state, counts, latest activity/timestamp). Keep it distinct from the final wait outcome.
+- [x] Implement bounded single-line formatting for each item and a concise update header. Use an exported Pi truncation helper or a small tested local function to avoid newline injection or unbounded names/tool metadata.
+- [x] Add a documented constant for maximum update items and for default/maximum heartbeat interval.
 
 ## Agent notes / assumptions
 
@@ -142,9 +142,9 @@ elapsed 15s · next poll ≤4s · Slice 4 implementation [vigil-abcd] — runnin
 
 ## Todos
 
-- [ ] Extend `WaitInput` and policy validation/defaulting with `progress` and `progressIntervalMs`, preserving existing timing defaults/bounds.
-- [ ] Add an optional service-level progress callback, for example `onProgress?: (progress: VigilWaitProgress) => void`, so `VigilService.wait` stays independent of Pi tool-result block types.
-- [ ] Implement wait-loop emission in this order:
+- [x] Extend `WaitInput` and policy validation/defaulting with `progress` and `progressIntervalMs`, preserving existing timing defaults/bounds.
+- [x] Add an optional service-level progress callback, for example `onProgress?: (progress: VigilWaitProgress) => void`, so `VigilService.wait` stays independent of Pi tool-result block types.
+- [x] Implement wait-loop emission in this order:
   1. validate policy and capture start time;
   2. resolve fixed active cohort and run the existing initial scan;
   3. construct and emit initial progress when mode is `status` (including an immediate waiting/settled child);
@@ -153,9 +153,9 @@ elapsed 15s · next poll ≤4s · Slice 4 implementation [vigil-abcd] — runnin
   6. emit only when the fingerprint changed or heartbeat time elapsed;
   7. use the next bounded polling delay in the progress hint, never schedule a separate timer;
   8. return existing timeout/cancelled/settled result normally and make no subsequent callback.
-- [ ] Ensure update callbacks are synchronous/non-blocking from the wait loop’s perspective or handle callback failure defensively so a rendering/consumer exception does not leave wait running or mutate child state.
-- [ ] Preserve concurrent read-only cohort scanning. Do not add extra child-session file reads solely for progress if the existing reader state can carry activity data.
-- [ ] Verify no progress callback/adapter path starts a child, reaps a PID, renames/completes a session, appends ledger entries, or persists a transcript.
+- [x] Ensure update callbacks are synchronous/non-blocking from the wait loop’s perspective or handle callback failure defensively so a rendering/consumer exception does not leave wait running or mutate child state.
+- [x] Preserve concurrent read-only cohort scanning. Do not add extra child-session file reads solely for progress if the existing reader state can carry activity data.
+- [x] Verify no progress callback/adapter path starts a child, reaps a PID, renames/completes a session, appends ledger entries, or persists a transcript.
 
 ## Agent notes / assumptions
 
@@ -168,20 +168,20 @@ elapsed 15s · next poll ≤4s · Slice 4 implementation [vigil-abcd] — runnin
 
 ## Todos
 
-- [ ] Add Pi-compatible `progress` string enum and optional `progressIntervalMs` number parameters to the tool schema.
-- [ ] In the extension adapter, pass a progress callback to `service.wait` that calls the supplied `onUpdate` with:
+- [x] Add Pi-compatible `progress` string enum and optional `progressIntervalMs` number parameters to the tool schema.
+- [x] In the extension adapter, pass a progress callback to `service.wait` that calls the supplied `onUpdate` with:
   - concise text content suitable for partial tool-result display;
   - structured `VigilWaitProgress` details for UI/RPC/JSON consumers;
   - no error flag and no final-result replacement semantics.
-- [ ] Retain the existing final `formatWaitText` response and structured `VigilWaitResult` details unchanged.
-- [ ] Add adapter tests that collect emitted partial results, assert their content/details, and confirm `progress: "none"` is silent.
-- [ ] Update README:
+- [x] Retain the existing final `formatWaitText` response and structured `VigilWaitResult` details unchanged.
+- [x] Add adapter tests that collect emitted partial results, assert their content/details, and confirm `progress: "none"` is silent.
+- [x] Update README:
   - explain foreground partial updates and that one wait invocation stays active;
   - document `progress` defaults, heartbeat/bounds, step/message definitions, and output caps;
   - distinguish persisted activity reporting from live token streaming and LLM-generated summaries;
   - state that updates are transport/UI events and do not change child/ledger state.
-- [ ] Add a concise orchestration note: use TUI progress while wait is active, then use the final settled result to `poll`, `send`, or `complete`; keep atomic task-file delivery for external TUI automation.
-- [ ] Run deterministic tests and typecheck before live acceptance work.
+- [x] Add a concise orchestration note: use TUI progress while wait is active, then use the final settled result to `poll`, `send`, or `complete`; keep atomic task-file delivery for external TUI automation.
+- [x] Run deterministic tests and typecheck before live acceptance work.
 
 ## Agent notes / assumptions
 
@@ -194,15 +194,15 @@ elapsed 15s · next poll ≤4s · Slice 4 implementation [vigil-abcd] — runnin
 
 ## Todos
 
-- [ ] Extend the existing opt-in acceptance test through the registered adapter:
+- [x] Extend the existing opt-in acceptance test through the registered adapter:
   1. launch the existing uniquely named real child;
   2. call `wait` with default/explicit `progress: "status"` and collect its partial `onUpdate` results;
   3. assert at least one partial update arrives before final settlement and includes the real child ID, state, and persisted step/message indicators;
   4. assert final wait result still settles with the expected marker;
   5. retain the existing send → wait → list → rename → complete/session-retention assertions;
   6. add a deterministic-only test for silence under `progress: "none"` rather than extending live runtime unnecessarily.
-- [ ] Retain existing test-only session isolation, temporary directory teardown, opt-in/auth preflight, and timeout handling.
-- [ ] Run and record:
+- [x] Retain existing test-only session isolation, temporary directory teardown, opt-in/auth preflight, and timeout handling.
+- [x] Run and record:
   - `npm test`;
   - `npm run typecheck`;
   - `npm run test:acceptance` without opt-in for helpful failure;
@@ -219,13 +219,13 @@ elapsed 15s · next poll ≤4s · Slice 4 implementation [vigil-abcd] — runnin
 
 ## Todos
 
-- [ ] Confirm default tests use fake clock/scheduler/session data and do not sleep in real time.
-- [ ] Confirm one `wait` invocation emits partial updates while foreground-running, with no need for reinvocation and no background work after return.
-- [ ] Confirm all progress facts are persisted-session observations, output is bounded, and no LLM/process is spawned for progress.
-- [ ] Confirm cancellation/timeout stop future updates and preserve the existing non-mutating wait lifecycle.
-- [ ] Confirm no LLM summary parameters/model selection, search, streaming tokens, file watcher, registry, or other future capability was added.
-- [ ] Update this plan’s checkboxes, assumptions, deviations, progress notes, and test notes; commit plan updates with code/tests.
-- [ ] Provide the reviewer: commit SHA, public API/defaults/bounds, sample progress update semantics, tests, live acceptance status, cancellation behavior, and deviations.
+- [x] Confirm default tests use fake clock/scheduler/session data and do not sleep in real time.
+- [x] Confirm one `wait` invocation emits partial updates while foreground-running, with no need for reinvocation and no background work after return.
+- [x] Confirm all progress facts are persisted-session observations, output is bounded, and no LLM/process is spawned for progress.
+- [x] Confirm cancellation/timeout stop future updates and preserve the existing non-mutating wait lifecycle.
+- [x] Confirm no LLM summary parameters/model selection, search, streaming tokens, file watcher, registry, or other future capability was added.
+- [x] Update this plan’s checkboxes, assumptions, deviations, progress notes, and test notes; commit plan updates with code/tests.
+- [x] Provide the reviewer: commit SHA, public API/defaults/bounds, sample progress update semantics, tests, live acceptance status, cancellation behavior, and deviations.
 
 ## Future slices (not implementation work for this handoff)
 
@@ -235,3 +235,16 @@ elapsed 15s · next poll ≤4s · Slice 4 implementation [vigil-abcd] — runnin
 ## Progress notes
 
 - 2026-08-02: Plan created after accepted Slice 4. User approved deterministic live progress/status updates plus persisted session step/message counters, while deferring LLM-generated summaries to a later dedicated design. No Slice 4.5 implementation has started.
+- 2026-08-02: Slice 4.5 implemented. Added persisted `VigilSessionActivity`, bounded `VigilWaitProgress` DTOs/formatting, service-level wait progress emissions with fingerprint/heartbeat gating, and Pi adapter `onUpdate` wiring for `progress` / `progressIntervalMs`. Deterministic unit coverage uses fake schedulers/readers; live acceptance extended to collect initial partial updates when `PI_VIGIL_LIVE=1`.
+
+## Test notes
+
+- `npm test`: 92/92 unit tests passed (2026-08-02).
+- `npm run typecheck`: passed (2026-08-02).
+- `npm run test:acceptance` without `PI_VIGIL_LIVE=1`: fails fast with opt-in instructions (expected).
+- `PI_VIGIL_LIVE=1 npm run test:acceptance`: not run in this environment (`PI_VIGIL_LIVE` unset).
+
+## Deviations
+
+- `extractLatestAssistantState` remains turn/response-only; activity is composed in the child-session reader path so existing assistant-state tests stay focused.
+- Invalid non-enum `progress` strings are rejected by `resolveWaitPolicy` when passed through the service; the Pi schema enum prevents them at the tool boundary.

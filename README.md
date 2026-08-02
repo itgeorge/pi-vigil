@@ -14,7 +14,7 @@ vigil({ action: "poll", id })
 vigil({ action: "send", id, message, model? })
 vigil({ action: "list", includeCompleted? })
 vigil({ action: "complete", id })
-vigil({ action: "wait", timeoutMs?, initialDelayMs?, maxDelayMs? })
+vigil({ action: "wait", timeoutMs?, initialDelayMs?, maxDelayMs?, progress?, progressIntervalMs? })
 ```
 
 `launch` requires a nonblank human-readable `name`, starts a detached Pi child (`pi --mode json -p --session-id <id> --name <name>`), appends a parent `vigil-launch` custom entry, and returns a `running` snapshot.
@@ -33,9 +33,13 @@ vigil({ action: "wait", timeoutMs?, initialDelayMs?, maxDelayMs? })
 
 `wait` is a foreground, bounded convenience loop over the fixed active (`running` / `waiting`) child cohort from the current parent session. It scans immediately, then polls with capped exponential backoff until any watched child is `waiting` or is observed `completed`. It returns structured details with one normal outcome: `settled` (full snapshots, including `latestResponse`), `timeout` (concise pending list items), `empty`, or `cancelled` (concise pending list items). It never calls `send`, `complete`, reaping, spawning, renaming, or ledger append operations.
 
+While a `wait` invocation remains active, Pi renders optional foreground partial tool results when `progress` is `"status"` (default). These updates report persisted child-session facts—state, step/message counts, and the latest persisted activity line—and are visible in the TUI/RPC partial tool-result stream and JSON `tool_execution_update` events. They do not append parent ledger records, mutate child sessions, or replace the final wait result. Pass `progress: "none"` to suppress partial updates while preserving normal wait behavior.
+
+Progress defaults are `progress: "status"` and `progressIntervalMs: 30000` (maximum `60000`). Updates emit immediately after the initial scan, then when a watched child's progress fingerprint changes or after the heartbeat interval while state is unchanged. `steps` counts persisted non-header session entries; `messages` counts persisted `message` entries. These are persisted-session observations, not live token streaming or inferred reasoning summaries. Output is capped at 20 child lines per update plus an omitted-count line, with safe single-line truncation for untrusted names/metadata.
+
 Timing defaults are `timeoutMs: 60000`, `initialDelayMs: 500`, and `maxDelayMs: 5000`. All values must be positive safe integer milliseconds; `timeoutMs` is capped at `300000`, each delay is capped at `30000`, and `maxDelayMs >= initialDelayMs`. Final sleeps are clamped to the remaining timeout. Tool cancellation is passed to an abortable sleep: cancellation promptly returns the normal `cancelled` result, clears its timer/listener, and leaves children untouched. `wait` has no background watcher behavior after it returns, and children launched after the initial scan are not added to its cohort.
 
-A typical orchestration loop is `list` → `wait` → inspect the settled snapshot or `poll` → `send` or `complete` → repeat. A `waiting` child is settled for orchestration but is not retired; only explicit `complete` retires it.
+A typical orchestration loop is `list` → `wait` (use TUI partial progress while it runs) → inspect the settled snapshot or `poll` → `send` or `complete` → repeat. A `waiting` child is settled for orchestration but is not retired; only explicit `complete` retires it.
 
 `complete` retires a waiting Vigil child without deleting its child session JSONL. It reaps a still-live settled tracked PID if needed, prefixes the child session's current Pi-native display name with `[completed]`, appends one parent `vigil-complete` record, and returns a `completed` snapshot. Repeating `complete` is idempotent. After completion, `send` rejects the id.
 
@@ -81,11 +85,12 @@ Test-only child session isolation uses `PI_VIGIL_SESSION_DIR` (read at tool exec
 
 ## Runbook note
 
-For automated TUI drivers, put each task in an atomic task file rather than relying on incremental terminal typing, and keep a small ID/role worklog alongside it. This makes resumed child-session orchestration auditable without adding controller or tmux automation.
+For automated TUI drivers, put each task in an atomic task file rather than relying on incremental terminal typing, and keep a small ID/role worklog alongside it. While a `wait` call is active, use its partial progress for controller visibility; after it settles, use the final result to `poll`, `send`, or `complete`. This makes resumed child-session orchestration auditable without adding controller or tmux automation.
 
 ## v1 limitations
 
-- No live partial-output streaming, retry, search, or background watchers.
+- No live token streaming, LLM-generated progress summaries, retry, search, or background watchers.
+- Foreground `wait` partial updates are persisted-session activity reports only; they are transport/UI ephemera and do not change child or ledger state.
 - A parent crash between child rename and `vigil-complete` append can leave a child renamed but still active in the parent ledger.
 - A parent crash between child spawn and parent `vigil-launch` / `vigil-turn` append can lose the turn record.
 - Detached Pi print-mode children may need explicit cleanup if you spawn many of them outside Vigil's lifecycle.
