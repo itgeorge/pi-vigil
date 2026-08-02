@@ -90,13 +90,27 @@ describe("live vigil acceptance", () => {
     expect(launchRecord.name).toBe(launchName);
     launchedChildPids.push(launchRecord.pid);
 
-    const firstWaitResult = await harness.execute({
-      action: "wait",
-      timeoutMs: getAcceptanceTimeoutMs(),
-      initialDelayMs: 250,
-      maxDelayMs: 5_000,
-    });
+    const firstWaitUpdates: Array<{ details?: unknown }> = [];
+    const firstWaitResult = await harness.execute(
+      {
+        action: "wait",
+        timeoutMs: getAcceptanceTimeoutMs(),
+        initialDelayMs: 250,
+        maxDelayMs: 5_000,
+        progress: "status",
+      },
+      undefined,
+      (update) => firstWaitUpdates.push(update),
+    );
     expect((firstWaitResult as { isError?: boolean }).isError).toBeFalsy();
+    expect(firstWaitUpdates.length).toBeGreaterThanOrEqual(1);
+    const initialProgress = firstWaitUpdates[0]?.details as {
+      items?: Array<{ id: string; state: string; steps: number; messages: number }>;
+    };
+    expect(initialProgress?.items?.some((item) => item.id === launched.id)).toBe(true);
+    expect(initialProgress?.items?.find((item) => item.id === launched.id)).toEqual(
+      expect.objectContaining({ state: expect.stringMatching(/running|waiting/), steps: expect.any(Number), messages: expect.any(Number) }),
+    );
     const firstWait = firstWaitResult.details as VigilWaitResult;
     expect(firstWait.outcome).toBe("settled");
     const firstWaiting = firstWait.outcome === "settled" ? firstWait.settled.find((snapshot) => snapshot.id === launched.id) : undefined;

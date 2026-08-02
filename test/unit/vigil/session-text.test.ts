@@ -8,6 +8,7 @@ import {
   deriveVigilState,
   extractLatestAssistantState,
   extractLatestAssistantText,
+  extractSessionActivity,
 } from "../../../src/vigil/session-text";
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../fixtures");
@@ -76,6 +77,12 @@ describe("child session text extraction", () => {
       latestResponse: null,
       turnComplete: false,
       lastConversationTimestamp: "2026-08-01T12:00:01.000Z",
+      activity: {
+        steps: 1,
+        messages: 1,
+        lastActivity: "user message",
+        lastActivityTimestamp: "2026-08-01T12:00:01.000Z",
+      },
     });
   });
 
@@ -141,6 +148,47 @@ describe("child session text extraction", () => {
       latestResponse: "First answer.",
       turnComplete: false,
       lastConversationTimestamp: "2026-08-01T12:00:03.000Z",
+    });
+  });
+});
+
+describe("extractSessionActivity", () => {
+  it("counts persisted steps excluding the session header and message entries separately", () => {
+    const entries = loadFixture("child-session-with-assistant.jsonl");
+    expect(extractSessionActivity(entries)).toEqual({
+      steps: 2,
+      messages: 2,
+      lastActivity: "assistant response",
+      lastActivityTimestamp: "2026-08-01T12:00:02.000Z",
+    });
+  });
+
+  it("describes assistant tool use and tool results from persisted entries", () => {
+    const entries = loadFixture("child-session-tool-use-incomplete.jsonl");
+    expect(extractSessionActivity(entries)).toEqual({
+      steps: 3,
+      messages: 3,
+      lastActivity: "tool result: read",
+      lastActivityTimestamp: "2026-08-01T12:00:03.000Z",
+    });
+  });
+
+  it("describes model change and user message cases without inventing live reasoning", () => {
+    const entries = loadFixture("child-session-user-after-model-change.jsonl");
+    expect(extractSessionActivity(entries)).toEqual({
+      steps: 4,
+      messages: 3,
+      lastActivity: "user message",
+      lastActivityTimestamp: "2026-08-01T12:00:03.000Z",
+    });
+  });
+
+  it("returns zero counts and null activity for an empty entry list", () => {
+    expect(extractSessionActivity([])).toEqual({
+      steps: 0,
+      messages: 0,
+      lastActivity: null,
+      lastActivityTimestamp: null,
     });
   });
 });

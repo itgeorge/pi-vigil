@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, WaitScheduler } from "../../../src/vigil/ports";
+import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, VigilSessionActivity, WaitScheduler } from "../../../src/vigil/ports";
 import { createSessionParentLedger, VigilService } from "../../../src/vigil/node-runtime";
 import { isVigilError, type VigilCompletionRecord, type VigilLaunchRecord, type VigilWaitResult } from "../../../src/vigil/types";
 
@@ -21,13 +21,27 @@ class FakeScheduler implements WaitScheduler {
   }
 }
 
+const defaultActivity = (
+  overrides?: Partial<VigilSessionActivity>,
+): VigilSessionActivity => ({
+  steps: 0,
+  messages: 0,
+  lastActivity: null,
+  lastActivityTimestamp: null,
+  ...overrides,
+});
+
 function launchRecord(id: string, pid: number, launchedAt = "2026-08-01T10:00:00.000Z"): VigilLaunchRecord {
   return { id, sessionId: id, name: `Task ${id}`, pid, cwd: "/parent", launchedAt };
 }
 
 function createHarness(options?: {
   records?: VigilLaunchRecord[];
-  stateFor?: (id: string) => { latestResponse: string | null; turnComplete: boolean };
+  stateFor?: (id: string) => {
+    latestResponse: string | null;
+    turnComplete: boolean;
+    activity?: VigilSessionActivity;
+  };
   aliveFor?: (pid: number) => boolean;
 }) {
   const sessionManager = SessionManager.inMemory("/parent");
@@ -47,7 +61,12 @@ function createHarness(options?: {
   const reader: ChildSessionReader = {
     async readChildSessionState({ sessionId }) {
       const state = options?.stateFor?.(sessionId) ?? { latestResponse: null, turnComplete: false };
-      return { ...state, lastConversationTimestamp: "2099-01-01T00:00:00.000Z" };
+      return {
+        latestResponse: state.latestResponse,
+        turnComplete: state.turnComplete,
+        lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+        activity: state.activity ?? defaultActivity(),
+      };
     },
   };
   const runner: ProcessRunner = {
@@ -261,9 +280,128 @@ describe("VigilService.wait", () => {
       { initialDelayMs: 1.5 },
       { maxDelayMs: 30_001 },
       { initialDelayMs: 500, maxDelayMs: 499 },
+      { progress: "verbose" as never },
+      { progressIntervalMs: 0 },
+      { progressIntervalMs: 60_001 },
     ]) {
       const result = await service.wait(input);
       expect(isVigilError(result)).toBe(true);
     }
+  });
+});
+
+describe("VigilService.wait progress", () => {
+  it("emits an initial status update for an active cohort by default", async () => {
+    const { service } = createHarness({
+      records: [launchRecord("vigil-progress", 1)],
+      stateFor: () => ({
+        latestResponse: null,
+        turnComplete: false,
+        activity: defaultActivity({ steps: 2, messages: 1, lastActivity: "user message", lastActivityTimestamp: "2026-08-01T12:00:01.000Z" }),
+      }),
+    });
+    const updates: unknown[] = [];
+
+    const result = await service.wait({ timeoutMs: 100, initialDelayMs: 100, maxDelayMs: 100 }, undefined, (progress) => {
+      updates.push(progress);
+    });
+
+    expectWait(result);
+    expect(result.outcome).toBe("timeout");
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toEqual(
+      expect.objectContaining({
+        waitedMs: 0,
+        nextPollInMs: 100,
+        items: [
+          expect.objectContaining({
+            id: "vigil-progress",
+            state: "running",
+            steps: 2,
+            messages: 1,
+            lastActivity: "user message",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("is silent under progress none but returns the same final outcome", async () => {
+    const { service, scheduler } = createHarness({
+      records: [launchRecord("vigil-silent", 1)],
+      stateFor: () => ({ latestResponse: "Done", turnComplete: true }),
+    });
+    const updates: unknown[] = [];
+
+    const result = await service.wait({ progress: "none" }, undefined, (progress) => updates.push(progress));
+
+    expectWait(result);
+    expect(result).toEqual({
+      outcome: "settled",
+      waitedMs: 0,
+      settled: [expect.objectContaining({ id: "vigil-silent", state: "waiting", latestResponse: "Done" })],
+    });
+    expect(updates).toEqual([]);
+    expect(scheduler.sleeps).toEqual([]);
+  });
+
+  it("emits on fingerprint change before heartbeat expiry and suppresses duplicate unchanged scans", async () => {
+    const { service, scheduler } = createHarness({
+      records: [launchRecord("vigil-fingerprint", 1)],
+      stateFor: () => ({
+        latestResponse: null,
+        turnComplete: false,
+        activity: defaultActivity({
+          steps: scheduler.sleeps.length + 1,
+          messages: 1,
+          lastActivity: scheduler.sleeps.length === 0 ? "user message" : "assistant response",
+          lastActivityTimestamp: `2026-08-01T12:00:0${scheduler.sleeps.length}.000Z`,
+        }),
+      }),
+    });
+    const updates: unknown[] = [];
+
+    const result = await service.wait(
+      { timeoutMs: 500, initialDelayMs: 100, maxDelayMs: 100, progressIntervalMs: 10_000 },
+      undefined,
+      (progress) => updates.push(progress),
+    );
+
+    expectWait(result);
+    expect(result.outcome).toBe("timeout");
+    expect(updates.length).toBeGreaterThanOrEqual(2);
+    expect(updates[0]).toEqual(expect.objectContaining({ waitedMs: 0 }));
+    expect(updates[1]).toEqual(expect.objectContaining({ waitedMs: 100 }));
+  });
+
+  it("emits a heartbeat when state is unchanged after progressIntervalMs", async () => {
+    const { service, scheduler } = createHarness({ records: [launchRecord("vigil-heartbeat", 1)] });
+    const updates: unknown[] = [];
+
+    const result = await service.wait(
+      { timeoutMs: 250, initialDelayMs: 200, maxDelayMs: 200, progressIntervalMs: 200 },
+      undefined,
+      (progress) => updates.push(progress),
+    );
+
+    expectWait(result);
+    expect(result.outcome).toBe("timeout");
+    expect(updates.map((update) => (update as { waitedMs: number }).waitedMs)).toEqual([0, 200]);
+    expect(scheduler.sleeps).toEqual([200, 50]);
+  });
+
+  it("does not emit progress after timeout or cancellation returns", async () => {
+    const controller = new AbortController();
+    const { service, scheduler } = createHarness({ records: [launchRecord("vigil-after-return", 1)] });
+    scheduler.onSleep = () => controller.abort();
+    const updates: unknown[] = [];
+
+    await service.wait(
+      { timeoutMs: 1_000, initialDelayMs: 100, maxDelayMs: 100 },
+      controller.signal,
+      (progress) => updates.push(progress),
+    );
+
+    expect(updates).toHaveLength(1);
   });
 });

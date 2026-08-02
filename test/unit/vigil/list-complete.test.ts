@@ -79,7 +79,12 @@ function createHarness(options?: {
 
   const childSessionReader: ChildSessionReader = {
     async readChildSessionState() {
-      return { latestResponse, turnComplete, lastConversationTimestamp };
+      return {
+        latestResponse,
+        turnComplete,
+        lastConversationTimestamp,
+        activity: { steps: 0, messages: 0, lastActivity: null, lastActivityTimestamp: null },
+      };
     },
   };
 

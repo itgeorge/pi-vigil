@@ -2,10 +2,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { resetVigilRuntimeOverrides, setVigilRuntimeOverrides } from "../../../src/vigil/runtime-overrides";
-import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, WaitScheduler } from "../../../src/vigil/ports";
+import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, VigilSessionActivity, WaitScheduler } from "../../../src/vigil/ports";
 import { readLatestAssistantTextFromFile, readChildSessionStateFromFile } from "../../../src/vigil/node-runtime";
 import type { VigilLaunchRecord, VigilListResult, VigilSnapshot } from "../../../src/vigil/types";
 import { createVigilTestHarness } from "../../helpers/vigil-test-harness";
+
+const emptyActivity: VigilSessionActivity = {
+  steps: 0,
+  messages: 0,
+  lastActivity: null,
+  lastActivityTimestamp: null,
+};
 
 const fixturesDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -143,6 +150,7 @@ describe("vigil extension adapter", () => {
           latestResponse: "First answer.",
           turnComplete: true,
           lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+          activity: emptyActivity,
         }),
       },
     });
@@ -201,6 +209,7 @@ describe("vigil extension adapter", () => {
           latestResponse: "Large response body",
           turnComplete: true,
           lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+          activity: emptyActivity,
         }),
       },
     });
@@ -242,6 +251,7 @@ describe("vigil extension adapter", () => {
           latestResponse: "Done.",
           turnComplete: true,
           lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+          activity: emptyActivity,
         }),
       },
       childSessionNamer: namer,
@@ -301,6 +311,7 @@ describe("vigil extension adapter", () => {
           latestResponse: sleeps.length > 0 ? "Waited response." : null,
           turnComplete: sleeps.length > 0,
           lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+          activity: emptyActivity,
         }),
       },
     });
@@ -348,6 +359,7 @@ describe("vigil extension adapter", () => {
           latestResponse: null,
           turnComplete: false,
           lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+          activity: emptyActivity,
         }),
       },
     });
@@ -400,6 +412,95 @@ describe("vigil extension adapter", () => {
       type: "text",
       text: "maxDelayMs must be greater than or equal to initialDelayMs",
     });
+  });
+
+  it("captures partial wait progress updates before the final settled result", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+    let time = 0;
+    const sleeps: number[] = [];
+    const scheduler: WaitScheduler = {
+      now: () => time,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        time += ms;
+        return "elapsed";
+      },
+    };
+    let readCount = 0;
+
+    setVigilRuntimeOverrides({
+      waitScheduler: scheduler,
+      processRunner: {
+        spawnDetached: async () => ({ pid: 9400 }),
+        isAlive: () => true,
+        terminateAndWait: async () => undefined,
+      },
+      childSessionReader: {
+        readChildSessionState: async () => {
+          readCount += 1;
+          return {
+            latestResponse: sleeps.length > 0 ? "Waited response." : null,
+            turnComplete: sleeps.length > 0,
+            lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+            activity: {
+              steps: readCount === 1 ? 1 : 2,
+              messages: 1,
+              lastActivity: "user message",
+              lastActivityTimestamp: "2026-08-01T12:00:01.000Z",
+            },
+          };
+        },
+      },
+    });
+
+    const launch = await harness.execute({ action: "launch", name: "Progress adapter", message: "Work" });
+    const launched = launch.details as VigilSnapshot;
+    const updates: Array<{ content: Array<{ type: string; text?: string }>; details?: unknown }> = [];
+    readCount = 0;
+    const result = await harness.execute({ action: "wait" }, undefined, (update) => updates.push(update));
+
+    expect((result as { isError?: boolean }).isError).toBeFalsy();
+    expect(updates.length).toBeGreaterThanOrEqual(1);
+    expect(updates[0]?.details).toEqual(
+      expect.objectContaining({
+        waitedMs: 0,
+        items: [expect.objectContaining({ id: launched.id, state: "running", steps: 1, messages: 1 })],
+      }),
+    );
+    expect(updates[0]?.content[0]?.text).toContain(`[${launched.id}]`);
+    expect(result.details).toEqual({
+      outcome: "settled",
+      waitedMs: 500,
+      settled: [expect.objectContaining({ id: launched.id, latestResponse: "Waited response." })],
+    });
+    const finalText = result.content[0]?.type === "text" ? result.content[0].text : "";
+    expect(finalText).toContain("outcome: settled");
+    expect(finalText).toContain("latestResponse: Waited response.");
+    expect(finalText).not.toContain("steps:");
+  });
+
+  it("does not emit partial wait updates when progress is none", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+    setVigilRuntimeOverrides({
+      processRunner: {
+        spawnDetached: async () => ({ pid: 9500 }),
+        isAlive: () => true,
+        terminateAndWait: async () => undefined,
+      },
+      childSessionReader: {
+        readChildSessionState: async () => ({
+          latestResponse: null,
+          turnComplete: false,
+          lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+          activity: { steps: 3, messages: 2, lastActivity: "user message", lastActivityTimestamp: "t" },
+        }),
+      },
+    });
+    await harness.execute({ action: "launch", name: "Silent progress", message: "Work" });
+    const updates: unknown[] = [];
+    const result = await harness.execute({ action: "wait", progress: "none", timeoutMs: 50, initialDelayMs: 50, maxDelayMs: 50 }, undefined, (update) => updates.push(update));
+    expect((result as { isError?: boolean }).isError).toBeFalsy();
+    expect(updates).toEqual([]);
   });
 
   it("poll returns an error for an unknown vigil id", async () => {
