@@ -122,13 +122,15 @@ Child session JSONL files are never deleted by Vigil. Pi's normal session UI/man
 
 ## Install
 
-Pi loads this extension from source TypeScript (`pi.extensions` → `./src/index.ts`). Point your Pi host at a Git source pinned to a commit or tag, or at a local clone for development.
+Pi loads this extension from source TypeScript (`pi.extensions` → `./src/index.ts`). Point your Pi host at an npm package version, a Git source pinned to a commit or tag, or a local clone for development.
+
+**npm (pinned):** `pi install npm:pi-vigil@0.1.0` — initial public release.
+
+**npm (latest):** `pi install npm:pi-vigil`
 
 **Git source (pinned):** `pi install https://github.com/itgeorge/pi-vigil.git@<commit-or-tag>` (replace `<commit-or-tag>` with a release tag or full commit SHA). Shorthand: `pi install git:github.com/itgeorge/pi-vigil@<commit-or-tag>`.
 
 **Local development:** clone this repository and reference the checkout path in your Pi extension settings so Pi resolves `./src/index.ts` from your working tree.
-
-This package is not published to the npm registry; install through Pi Git/path source only.
 
 ## Requirements
 
