@@ -29,6 +29,7 @@ const defaultActivity = (
   messages: 0,
   lastActivity: null,
   lastActivityTimestamp: null,
+  recentMessages: [],
   ...overrides,
 });
 
@@ -434,5 +435,38 @@ describe("VigilService.wait progress", () => {
     );
 
     expect(updates).toHaveLength(1);
+  });
+
+  it("emits when recent message previews change before heartbeat expiry", async () => {
+    const { service, scheduler } = createHarness({
+      records: [launchRecord("vigil-recent", 1)],
+      stateFor: () => ({
+        latestResponse: null,
+        turnComplete: false,
+        activity: defaultActivity({
+          steps: scheduler.sleeps.length + 1,
+          messages: scheduler.sleeps.length + 1,
+          lastActivity: "user message",
+          lastActivityTimestamp: "2026-08-01T12:00:01.000Z",
+          recentMessages:
+            scheduler.sleeps.length === 0
+              ? [{ label: "user", excerpt: "first prompt" }]
+              : [{ label: "assistant", excerpt: "working on it" }],
+        }),
+      }),
+    });
+    const updates: VigilWaitProgress[] = [];
+
+    const result = await service.wait(
+      { timeoutMs: 500, initialDelayMs: 100, maxDelayMs: 100, progressIntervalMs: 10_000 },
+      undefined,
+      (progress) => updates.push(progress),
+    );
+
+    expectWait(result);
+    expect(result.outcome).toBe("timeout");
+    expect(updates.length).toBeGreaterThanOrEqual(2);
+    expect(updates[0]?.items[0]?.recentMessages).toEqual([{ label: "user", excerpt: "first prompt" }]);
+    expect(updates[1]?.items[0]?.recentMessages).toEqual([{ label: "assistant", excerpt: "working on it" }]);
   });
 });

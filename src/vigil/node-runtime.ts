@@ -583,6 +583,7 @@ export class VigilService {
       messages: activity.messages,
       lastActivity: activity.lastActivity,
       lastActivityTimestamp: activity.lastActivityTimestamp,
+      recentMessages: activity.recentMessages,
     };
   }
 
@@ -912,6 +913,7 @@ const EMPTY_CHILD_SESSION_STATE: ChildSessionState = {
     messages: 0,
     lastActivity: null,
     lastActivityTimestamp: null,
+    recentMessages: [],
   },
 };
 

@@ -21,6 +21,7 @@ describe("wait progress formatting", () => {
           messages: 7,
           lastActivity: "tool result: bash",
           lastActivityTimestamp: "2026-08-01T12:00:12.000Z",
+          recentMessages: [],
         },
       ],
       omittedItemCount: 0,
@@ -49,6 +50,7 @@ describe("wait progress formatting", () => {
           messages: 1,
           lastActivity: longActivity,
           lastActivityTimestamp: null,
+          recentMessages: [],
         },
       ],
       omittedItemCount: 0,
@@ -69,6 +71,7 @@ describe("wait progress formatting", () => {
       messages: index,
       lastActivity: null,
       lastActivityTimestamp: null,
+      recentMessages: [],
     }));
     const bounded = boundWaitProgressItems(items);
     expect(bounded.items).toHaveLength(MAX_WAIT_PROGRESS_ITEMS);
@@ -79,6 +82,60 @@ describe("wait progress formatting", () => {
       Date.now(),
     );
     expect(text).toContain("… and 3 more children omitted");
+  });
+
+  it("renders recent message previews under each child line when present", () => {
+    const progress = {
+      waitedMs: 5_000,
+      nextPollInMs: 2_000,
+      items: [
+        {
+          id: "vigil-abcd",
+          name: "Slice 4 implementation",
+          state: "running" as const,
+          steps: 12,
+          messages: 7,
+          lastActivity: "tool result: bash",
+          lastActivityTimestamp: "2026-08-01T12:00:12.000Z",
+          recentMessages: [
+            { label: "assistant", excerpt: "I'm adding transcript bounds and tests" },
+            { label: "tool result", excerpt: "172 tests passed" },
+            { label: "user", excerpt: "Apply the final renderer correction" },
+          ],
+        },
+      ],
+      omittedItemCount: 0,
+    };
+
+    const text = formatWaitProgressText(progress, Date.parse("2026-08-01T12:00:15.000Z"));
+    expect(text).toContain("Slice 4 implementation [vigil-abcd] — running");
+    expect(text).toContain("  recent:");
+    expect(text).toContain('    assistant: "I\'m adding transcript bounds and tests"');
+    expect(text).toContain('    tool result: "172 tests passed"');
+    expect(text).toContain('    user: "Apply the final renderer correction"');
+  });
+
+  it("omits the recent section when a child has no message previews", () => {
+    const progress = {
+      waitedMs: 0,
+      nextPollInMs: 500,
+      items: [
+        {
+          id: "vigil-empty",
+          name: "Empty child",
+          state: "running" as const,
+          steps: 0,
+          messages: 0,
+          lastActivity: null,
+          lastActivityTimestamp: null,
+          recentMessages: [],
+        },
+      ],
+      omittedItemCount: 0,
+    };
+
+    const text = formatWaitProgressText(progress, Date.now());
+    expect(text).not.toContain("recent:");
   });
 });
 
@@ -133,9 +190,30 @@ describe("computeNextPollInMs", () => {
 });
 
 describe("wait progress fingerprint", () => {
+  const baseItem = {
+    id: "vigil-a",
+    state: "running" as const,
+    steps: 1,
+    messages: 1,
+    lastActivity: "user message",
+    lastActivityTimestamp: "t1",
+    recentMessages: [] as { label: string; excerpt: string }[],
+  };
+
   it("changes when persisted activity facts change", () => {
-    const base = [{ id: "vigil-a", state: "running" as const, steps: 1, messages: 1, lastActivity: "user message", lastActivityTimestamp: "t1" }];
-    const changedSteps = [{ ...base[0], steps: 2 }];
+    const base = [baseItem];
+    const changedSteps = [{ ...baseItem, steps: 2 }];
     expect(fingerprintWaitProgress(base)).not.toBe(fingerprintWaitProgress(changedSteps));
+  });
+
+  it("changes when recent message previews change", () => {
+    const base = [baseItem];
+    const changedRecent = [
+      {
+        ...baseItem,
+        recentMessages: [{ label: "user", excerpt: "new message" }],
+      },
+    ];
+    expect(fingerprintWaitProgress(base)).not.toBe(fingerprintWaitProgress(changedRecent));
   });
 });

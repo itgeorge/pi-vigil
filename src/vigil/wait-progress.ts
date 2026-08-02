@@ -1,4 +1,5 @@
 import { truncateLine } from "@earendil-works/pi-coding-agent";
+import type { VigilMessagePreview } from "./session-text";
 import type { VigilState } from "./types";
 
 export const DEFAULT_WAIT_PROGRESS_INTERVAL_MS = 30_000;
@@ -14,6 +15,7 @@ export interface VigilWaitProgressItem {
   messages: number;
   lastActivity: string | null;
   lastActivityTimestamp: string | null;
+  recentMessages: VigilMessagePreview[];
 }
 
 export interface VigilWaitProgress {
@@ -30,6 +32,7 @@ export interface VigilWaitProgressFingerprintItem {
   messages: number;
   lastActivity: string | null;
   lastActivityTimestamp: string | null;
+  recentMessages: VigilMessagePreview[];
 }
 
 function sanitizeSingleLine(value: string): string {
@@ -38,6 +41,20 @@ function sanitizeSingleLine(value: string): string {
     return "";
   }
   return truncateLine(normalized, MAX_PROGRESS_FIELD_CHARS).text;
+}
+
+function formatRecentMessagePreviewLines(recentMessages: VigilMessagePreview[]): string[] {
+  if (recentMessages.length === 0) {
+    return [];
+  }
+
+  const lines = ["  recent:"];
+  for (const preview of recentMessages) {
+    const label = sanitizeSingleLine(preview.label) || preview.label;
+    const excerpt = sanitizeSingleLine(preview.excerpt).replace(/"/g, "'");
+    lines.push(`    ${label}: "${excerpt}"`);
+  }
+  return lines;
 }
 
 export function computeNextPollInMs(input: {
@@ -96,15 +113,26 @@ export function formatWaitProgressItemLine(
   return `${name} [${id}] — ${item.state} · steps: ${item.steps} · messages: ${item.messages} · ${lastPart}`;
 }
 
+export function formatWaitProgressItemLines(
+  item: VigilWaitProgressItem,
+  referenceMs: number,
+): string[] {
+  return [formatWaitProgressItemLine(item, referenceMs), ...formatRecentMessagePreviewLines(item.recentMessages)];
+}
+
 export function formatWaitProgressText(progress: VigilWaitProgress, referenceMs: number): string {
   const elapsedSeconds = Math.floor(progress.waitedMs / 1_000);
   const nextPollSeconds = Math.ceil(progress.nextPollInMs / 1_000);
   const header = `elapsed ${elapsedSeconds}s · next poll ≤${nextPollSeconds}s`;
-  const lines = progress.items.map((item) => formatWaitProgressItemLine(item, referenceMs));
+  const lines = progress.items.flatMap((item) => formatWaitProgressItemLines(item, referenceMs));
   if (progress.omittedItemCount > 0) {
     lines.push(`… and ${progress.omittedItemCount} more child${progress.omittedItemCount === 1 ? "" : "ren"} omitted`);
   }
   return [header, ...lines].join("\n");
+}
+
+function fingerprintRecentMessages(recentMessages: VigilMessagePreview[]): string {
+  return recentMessages.map((preview) => `${preview.label}:${preview.excerpt}`).join(";");
 }
 
 export function fingerprintWaitProgress(items: VigilWaitProgressFingerprintItem[]): string {
@@ -113,7 +141,7 @@ export function fingerprintWaitProgress(items: VigilWaitProgressFingerprintItem[
     .sort((left, right) => left.id.localeCompare(right.id))
     .map(
       (item) =>
-        `${item.id}|${item.state}|${item.steps}|${item.messages}|${item.lastActivity ?? ""}|${item.lastActivityTimestamp ?? ""}`,
+        `${item.id}|${item.state}|${item.steps}|${item.messages}|${item.lastActivity ?? ""}|${item.lastActivityTimestamp ?? ""}|${fingerprintRecentMessages(item.recentMessages)}`,
     )
     .join("\n");
 }

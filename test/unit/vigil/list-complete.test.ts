@@ -84,7 +84,7 @@ function createHarness(options?: {
         latestResponse,
         turnComplete,
         lastConversationTimestamp,
-        activity: { steps: 0, messages: 0, lastActivity: null, lastActivityTimestamp: null },
+        activity: { steps: 0, messages: 0, lastActivity: null, lastActivityTimestamp: null, recentMessages: [] },
       };
     },
   };

@@ -22,6 +22,7 @@ describe("vigil extension adapter", () => {
     messages: 0,
     lastActivity: null,
     lastActivityTimestamp: null,
+    recentMessages: [],
   };
 
   const testTheme = createDeterministicTestTheme();
@@ -489,6 +490,7 @@ describe("vigil extension adapter", () => {
               messages: 1,
               lastActivity: "user message",
               lastActivityTimestamp: "2026-08-01T12:00:01.000Z",
+              recentMessages: [],
             },
           };
         },
@@ -534,7 +536,7 @@ describe("vigil extension adapter", () => {
           latestResponse: null,
           turnComplete: false,
           lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
-          activity: { steps: 3, messages: 2, lastActivity: "user message", lastActivityTimestamp: "t" },
+          activity: { steps: 3, messages: 2, lastActivity: "user message", lastActivityTimestamp: "t", recentMessages: [] },
         }),
       },
     });
