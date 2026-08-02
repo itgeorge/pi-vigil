@@ -628,7 +628,12 @@ export class VigilService {
     return {
       outcome: "settled",
       waitedMs: this.waitedMs(startedAt, scheduler),
-      settled: scan.filter(({ snapshot }) => snapshot.state !== "running").map(({ snapshot }) => snapshot),
+      settled: scan
+        .filter(({ snapshot }) => snapshot.state !== "running")
+        .map(({ snapshot, directSubagents }) => ({
+          ...snapshot,
+          directSubagents,
+        })),
     };
   }
 

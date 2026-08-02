@@ -216,4 +216,86 @@ describe("wait progress fingerprint", () => {
     ];
     expect(fingerprintWaitProgress(base)).not.toBe(fingerprintWaitProgress(changedRecent));
   });
+
+  it("changes when direct-subagent visible items change at the same aggregate counts", () => {
+    const base = [
+      {
+        ...baseItem,
+        directSubagents: {
+          inspection: "available" as const,
+          total: 1,
+          incomplete: 1,
+          running: 1,
+          waiting: 0,
+          completed: 0,
+          unknown: 0,
+          items: [{ id: "vigil-a1", sessionId: "vigil-a1", name: "Research API", state: "running" as const }],
+          omittedCount: 0,
+        },
+      },
+    ];
+    const renamed = [
+      {
+        ...base[0]!,
+        directSubagents: {
+          inspection: "available" as const,
+          total: 1,
+          incomplete: 1,
+          running: 1,
+          waiting: 0,
+          completed: 0,
+          unknown: 0,
+          items: [{ id: "vigil-a1", sessionId: "vigil-a1", name: "Renamed task", state: "running" as const }],
+          omittedCount: 0,
+        },
+      },
+    ];
+    const replaced = [
+      {
+        ...base[0]!,
+        directSubagents: {
+          inspection: "available" as const,
+          total: 1,
+          incomplete: 1,
+          running: 1,
+          waiting: 0,
+          completed: 0,
+          unknown: 0,
+          items: [{ id: "vigil-a2", sessionId: "vigil-a2", name: "Research API", state: "running" as const }],
+          omittedCount: 0,
+        },
+      },
+    ];
+    expect(fingerprintWaitProgress(base)).not.toBe(fingerprintWaitProgress(renamed));
+    expect(fingerprintWaitProgress(base)).not.toBe(fingerprintWaitProgress(replaced));
+  });
+
+  it("changes when direct-subagent inspection becomes unavailable", () => {
+    const available = [
+      {
+        ...baseItem,
+        directSubagents: {
+          inspection: "available" as const,
+          total: 0,
+          incomplete: 0,
+          running: 0,
+          waiting: 0,
+          completed: 0,
+          unknown: 0,
+          items: [],
+          omittedCount: 0,
+        },
+      },
+    ];
+    const unavailable = [
+      {
+        ...baseItem,
+        directSubagents: {
+          inspection: "unavailable" as const,
+          error: "Child session ledger unavailable",
+        },
+      },
+    ];
+    expect(fingerprintWaitProgress(available)).not.toBe(fingerprintWaitProgress(unavailable));
+  });
 });

@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ChildSessionReader, ProcessRunner } from "../../../src/vigil/ports";
 import {
@@ -332,7 +335,107 @@ describe("createInMemoryDescendantInspector", () => {
   });
 });
 
+describe("formatDirectSubagentItemLine", () => {
+  it("uses fixed safe placeholders when sanitizer output is empty instead of raw name/id", async () => {
+    const { formatDirectSubagentItemLine } = await import("../../../src/vigil/descendant-inspector");
+    const maliciousName = "\u0007\u001b[31m\nhidden\u001b[0m";
+    const maliciousId = "\u0007\u001b[31m\nhidden-id\u001b[0m";
+
+    const line = formatDirectSubagentItemLine({
+      id: maliciousId,
+      sessionId: maliciousId,
+      name: maliciousName,
+      state: "waiting",
+    });
+
+    expect(line).not.toContain("hidden");
+    expect(line).not.toMatch(/\u001b|\u0007/);
+    expect(line).toContain("[unnamed subagent]");
+    expect(line).toContain("[id unavailable]");
+  });
+});
+
 describe("createNodeChildSessionDescendantInspector", () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function createPersistedIntermediateSession(options: {
+    cwd: string;
+    sessionDir: string;
+    sessionId: string;
+    launches: VigilLaunchRecord[];
+  }): string {
+    const timestamp = new Date().toISOString();
+    const fileTimestamp = timestamp.replace(/[:.]/g, "-");
+    const sessionFile = path.join(options.sessionDir, `${fileTimestamp}_${options.sessionId}.jsonl`);
+    writeFileSync(
+      sessionFile,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: options.sessionId,
+        timestamp,
+        cwd: options.cwd,
+      })}\n`,
+    );
+
+    const sessionManager = SessionManager.open(sessionFile, options.sessionDir, options.cwd);
+    for (const launch of options.launches) {
+      sessionManager.appendCustomEntry("vigil-launch", launch);
+    }
+    return sessionFile;
+  }
+
+  it("maps a direct descendant with a missing session file to unknown while retaining the intermediate ledger summary", async () => {
+    const cwd = mkdtempSync(path.join(os.tmpdir(), "pi-vigil-descendant-cwd-"));
+    const sessionDir = mkdtempSync(path.join(os.tmpdir(), "pi-vigil-descendant-sessions-"));
+    tempDirs.push(cwd, sessionDir);
+
+    const intermediateSessionId = "vigil-intermediate-parent";
+    createPersistedIntermediateSession({
+      cwd,
+      sessionDir,
+      sessionId: intermediateSessionId,
+      launches: [launchRecord("vigil-a1", { name: "Missing session child", pid: 801 })],
+    });
+
+    const inspector = createNodeChildSessionDescendantInspector({
+      childSessionReader: {
+        async readChildSessionState() {
+          throw new Error("poll reader must not be used for descendant inspection");
+        },
+      },
+      processRunner: {
+        spawnDetached: async () => ({ pid: 1 }),
+        isAlive: () => false,
+        terminateAndWait: async () => undefined,
+      },
+    });
+
+    const result = await inspector.inspectDirectSubagents({
+      sessionId: intermediateSessionId,
+      cwd,
+      sessionDir,
+    });
+
+    expect(result.inspection).toBe("available");
+    if (result.inspection !== "available") {
+      return;
+    }
+    expect(result.total).toBe(1);
+    expect(result.unknown).toBe(1);
+    expect(result.incomplete).toBe(1);
+    expect(result.waiting).toBe(0);
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({ id: "vigil-a1", name: "Missing session child", state: "unknown" }),
+    );
+  });
+
   it("returns unavailable when the intermediate child session cannot be resolved", async () => {
     const inspector = createNodeChildSessionDescendantInspector({
       childSessionReader: {

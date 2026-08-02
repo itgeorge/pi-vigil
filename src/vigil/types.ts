@@ -11,6 +11,7 @@ export interface VigilSnapshot {
   state: VigilState;
   latestResponse: string | null;
   completedAt?: string;
+  directSubagents?: VigilDirectSubagentInspection;
 }
 
 export interface VigilLaunchRecord {
@@ -161,6 +162,9 @@ export function formatSnapshotText(snapshot: VigilSnapshot): string {
   ];
   if (snapshot.completedAt) {
     lines.push(`completedAt: ${snapshot.completedAt}`);
+  }
+  if (snapshot.directSubagents) {
+    lines.push(...formatDirectSubagentsSummaryText(snapshot.directSubagents));
   }
   return lines.join("\n");
 }

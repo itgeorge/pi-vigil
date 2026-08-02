@@ -237,3 +237,9 @@ If Vigil cannot read/validate the direct child session/ledger needed to determin
 - Acceptance without opt-in: `npm run test:acceptance` fails with documented `PI_VIGIL_LIVE` prerequisite (expected).
 - Live acceptance with auth not run in this session (requires `PI_VIGIL_LIVE=1` and authenticated Pi).
 - Deviations: `setVigilRuntimeOverrides` now merges partial overrides so extension tests can set `descendantInspector` in `beforeEach` without losing per-test runner/reader overrides. Default deterministic harnesses use `createZeroDescendantInspector()`; production uses `createNodeChildSessionDescendantInspector`.
+- 2026-08-02 (review remediation): Addressed five confirmed review findings via red-green TDD.
+  - Red (review remediation): `npm test` — 5 failed / 203 passed. Failures: settled wait omitted `directSubagents`; node inspector fabricated `waiting` for missing descendant sessions; direct-subagent fingerprint ignored visible item identity; subagent line formatter fell back to raw unsanitized name/id; node-inspector missing-descendant test fixture did not persist intermediate session to disk.
+  - Green (review remediation): `npm test` — 208 passed; `npm run typecheck` — clean.
+  - Opt-out acceptance: `npm run test:acceptance` fails immediately with documented `PI_VIGIL_LIVE` prerequisite error (expected guard; not a regression).
+  - Authenticated live acceptance (`PI_VIGIL_LIVE=1 npm run test:acceptance`): **not run** — `PI_VIGIL_LIVE` unset and Pi auth not configured in this session. Do **not** claim live auth passed.
+  - Fixes: optional `directSubagents` on settled `VigilSnapshot` + `formatSnapshotText`; node descendant state reader resolves session path before derivation (missing/unreadable → per-item `unknown`, ledger summary retained); fingerprint includes bounded items + `omittedCount` + unavailable error; safe subagent name/id placeholders.

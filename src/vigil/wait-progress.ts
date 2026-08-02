@@ -152,9 +152,12 @@ function fingerprintDirectSubagents(summary: VigilDirectSubagentInspection | und
     return "";
   }
   if (fingerprint.inspection === "unavailable") {
-    return "unavailable";
+    return `unavailable|${fingerprint.error ?? ""}`;
   }
-  return `${fingerprint.incomplete ?? 0}|${fingerprint.running ?? 0}|${fingerprint.waiting ?? 0}|${fingerprint.completed ?? 0}|${fingerprint.unknown ?? 0}`;
+  const itemPart = (fingerprint.items ?? [])
+    .map((item) => `${item.id}:${item.sessionId}:${item.name}:${item.state}`)
+    .join(";");
+  return `${fingerprint.incomplete ?? 0}|${fingerprint.running ?? 0}|${fingerprint.waiting ?? 0}|${fingerprint.completed ?? 0}|${fingerprint.unknown ?? 0}|${fingerprint.omittedCount ?? 0}|${itemPart}`;
 }
 
 export function fingerprintWaitProgress(items: VigilWaitProgressFingerprintItem[]): string {

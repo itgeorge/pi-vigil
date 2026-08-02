@@ -9,8 +9,8 @@ import {
   sortLifecycleStatesMostRecentFirst,
   type VigilLifecycleState,
 } from "./lifecycle";
-import type { ChildSessionReader, ProcessRunner } from "./ports";
-import { deriveVigilState, getTurnStartedAt } from "./session-text";
+import type { ChildSessionReader, ChildSessionState, ProcessRunner } from "./ports";
+import { deriveVigilState, extractLatestAssistantState, extractSessionActivity, getTurnStartedAt } from "./session-text";
 import { truncateLine } from "@earendil-works/pi-coding-agent";
 import { escapeTerminalControls } from "./transcript";
 import type { VigilState } from "./types";
@@ -53,6 +53,13 @@ export interface ChildSessionDescendantInspector {
   }): Promise<VigilDirectSubagentInspection>;
 }
 
+export interface VigilDirectSubagentFingerprintItem {
+  id: string;
+  sessionId: string;
+  name: string;
+  state: VigilState | "unknown";
+}
+
 export interface VigilDirectSubagentFingerprint {
   inspection: "available" | "unavailable";
   incomplete?: number;
@@ -60,11 +67,20 @@ export interface VigilDirectSubagentFingerprint {
   waiting?: number;
   completed?: number;
   unknown?: number;
+  items?: VigilDirectSubagentFingerprintItem[];
+  omittedCount?: number;
+  error?: string;
 }
+
+export const SAFE_SUBAGENT_NAME_PLACEHOLDER = "[unnamed subagent]";
+export const SAFE_SUBAGENT_ID_PLACEHOLDER = "[id unavailable]";
 
 const MAX_SUBAGENT_DISPLAY_FIELD_CHARS = 120;
 
 function sanitizeSubagentField(value: string): string {
+  if (/[\u0000-\u001f\u007f-\u009f]|\u001b/.test(value)) {
+    return "";
+  }
   const normalized = escapeTerminalControls(value.replace(/\s+/g, " ").trim(), false);
   if (!normalized) {
     return "";
@@ -73,8 +89,8 @@ function sanitizeSubagentField(value: string): string {
 }
 
 export function formatDirectSubagentItemLine(item: VigilDirectSubagentItem): string {
-  const name = sanitizeSubagentField(item.name) || item.id;
-  const id = sanitizeSubagentField(item.id) || item.id;
+  const name = sanitizeSubagentField(item.name) || SAFE_SUBAGENT_NAME_PLACEHOLDER;
+  const id = sanitizeSubagentField(item.id) || SAFE_SUBAGENT_ID_PLACEHOLDER;
   return `  - ${name} [${id}] — ${item.state}`;
 }
 
@@ -124,7 +140,7 @@ export function toDirectSubagentFingerprint(
     return undefined;
   }
   if (summary.inspection === "unavailable") {
-    return { inspection: "unavailable" };
+    return { inspection: "unavailable", error: summary.error };
   }
   return {
     inspection: "available",
@@ -133,6 +149,13 @@ export function toDirectSubagentFingerprint(
     waiting: summary.waiting,
     completed: summary.completed,
     unknown: summary.unknown,
+    omittedCount: summary.omittedCount,
+    items: summary.items.map((item) => ({
+      id: item.id,
+      sessionId: item.sessionId,
+      name: item.name,
+      state: item.state,
+    })),
   };
 }
 
@@ -247,6 +270,33 @@ async function resolveChildSessionPath(
   return match?.path ?? null;
 }
 
+function readDescendantSessionStateFromFile(sessionFile: string): ChildSessionState {
+  const content = readFileSync(sessionFile, "utf8");
+  const fileEntries = parseSessionEntries(content);
+  const entries = fileEntries.filter((entry) => entry.type !== "session") as SessionEntry[];
+  const assistantState = extractLatestAssistantState(entries);
+  return {
+    ...assistantState,
+    activity: extractSessionActivity(entries),
+  };
+}
+
+function createDescendantStateReader(): ChildSessionReader {
+  return {
+    async readChildSessionState({ sessionId, cwd, sessionDir }) {
+      const sessionPath = await resolveChildSessionPath(sessionId, cwd, sessionDir);
+      if (!sessionPath) {
+        throw new Error("Child session unavailable for direct subagent state inspection");
+      }
+      try {
+        return readDescendantSessionStateFromFile(sessionPath);
+      } catch {
+        throw new Error("Child session unreadable for direct subagent state inspection");
+      }
+    },
+  };
+}
+
 export function createZeroDescendantInspector(): ChildSessionDescendantInspector {
   const empty: VigilDirectSubagentSummary = {
     inspection: "available",
@@ -297,7 +347,11 @@ export function createNodeChildSessionDescendantInspector(options: {
         const content = readFileSync(sessionPath, "utf8");
         const fileEntries = parseSessionEntries(content);
         const entries = fileEntries.filter((entry) => (entry as { type: string }).type !== "session") as SessionEntry[];
-        return inspectDirectSubagentsFromEntries(entries, options.childSessionReader, options.processRunner);
+        return inspectDirectSubagentsFromEntries(
+          entries,
+          createDescendantStateReader(),
+          options.processRunner,
+        );
       } catch {
         return {
           inspection: "unavailable",

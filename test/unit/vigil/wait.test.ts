@@ -549,6 +549,18 @@ describe("VigilService.wait shallow descendant visibility", () => {
     const progressText = formatWaitProgressText(updates[0]!, 0);
     expect(progressText).toContain("direct subagents: 1 incomplete (1 waiting)");
     expect(progressText).toContain("Nested task");
+
+    if (result.outcome !== "settled") {
+      return;
+    }
+    expect(result.settled[0]?.directSubagents).toEqual(
+      expect.objectContaining({ inspection: "available", incomplete: 1, waiting: 1 }),
+    );
+
+    const { formatWaitText } = await import("../../../src/vigil/types");
+    const waitText = formatWaitText(result);
+    expect(waitText).toContain("direct subagents: 1 incomplete (1 waiting)");
+    expect(waitText).toContain("Nested task");
   });
 
   it("changes wait progress fingerprint when direct-subagent summary changes without a heartbeat", () => {
@@ -569,12 +581,12 @@ describe("VigilService.wait shallow descendant visibility", () => {
           waiting: 0,
           completed: 0,
           unknown: 0,
-          items: [],
+          items: [{ id: "vigil-a1", sessionId: "vigil-a1", name: "Research API", state: "running" as const }],
           omittedCount: 0,
         },
       },
     ];
-    const changed = [
+    const changedCounts = [
       {
         ...base[0]!,
         directSubagents: {
@@ -585,11 +597,28 @@ describe("VigilService.wait shallow descendant visibility", () => {
           waiting: 0,
           completed: 1,
           unknown: 0,
-          items: [],
+          items: [{ id: "vigil-a1", sessionId: "vigil-a1", name: "Research API", state: "completed" as const }],
           omittedCount: 0,
         },
       },
     ];
-    expect(fingerprintWaitProgress(base)).not.toBe(fingerprintWaitProgress(changed));
+    const renamedSameCounts = [
+      {
+        ...base[0]!,
+        directSubagents: {
+          inspection: "available" as const,
+          total: 1,
+          incomplete: 1,
+          running: 1,
+          waiting: 0,
+          completed: 0,
+          unknown: 0,
+          items: [{ id: "vigil-a1", sessionId: "vigil-a1", name: "Renamed task", state: "running" as const }],
+          omittedCount: 0,
+        },
+      },
+    ];
+    expect(fingerprintWaitProgress(base)).not.toBe(fingerprintWaitProgress(changedCounts));
+    expect(fingerprintWaitProgress(base)).not.toBe(fingerprintWaitProgress(renamedSameCounts));
   });
 });

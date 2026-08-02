@@ -346,6 +346,13 @@ describe("live vigil acceptance", () => {
     });
     expect((waitWithSubs as { isError?: boolean }).isError).toBeFalsy();
     expect((waitWithSubs.content[0] as { text?: string }).text).toContain("direct subagents");
+    const waitWithSubsDetails = waitWithSubs.details as VigilWaitResult;
+    expect(waitWithSubsDetails.outcome).toBe("settled");
+    if (waitWithSubsDetails.outcome === "settled") {
+      expect(waitWithSubsDetails.settled.find((snapshot) => snapshot.id === launched.id)?.directSubagents).toEqual(
+        expect.objectContaining({ inspection: "available", incomplete: 1, waiting: 1 }),
+      );
+    }
 
     const rejectedComplete = await harness.execute({ action: "complete", id: launched.id });
     expect((rejectedComplete as { isError?: boolean }).isError).toBe(true);
