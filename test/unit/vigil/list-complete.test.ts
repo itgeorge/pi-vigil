@@ -222,7 +222,7 @@ describe("VigilService.list", () => {
 
     await service.complete({ vigilId: "vigil-done", parentCwd: "/parent/default" });
 
-    const defaultList = await service.list(false);
+    const defaultList = await service.list({ includeCompleted: false });
     expectList(defaultList);
     expect(defaultList.vigils.map((item) => item.id)).toEqual(["vigil-active"]);
     for (const item of defaultList.vigils) {
@@ -248,7 +248,7 @@ describe("VigilService.list", () => {
 
     await service.complete({ vigilId: launched.id, parentCwd: "/parent/default" });
 
-    const all = await service.list(true);
+    const all = await service.list({ includeCompleted: true });
     expectList(all);
     expect(all.vigils).toHaveLength(1);
     expect(all.vigils[0]).toEqual({

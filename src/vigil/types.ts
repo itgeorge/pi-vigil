@@ -62,8 +62,51 @@ export interface VigilListItem {
   directSubagents?: VigilDirectSubagentInspection;
 }
 
+export const DEFAULT_LIST_MAX_RESULTS = 20;
+export const MAX_LIST_MAX_RESULTS = 50;
+
+export interface ListInput {
+  includeCompleted?: boolean;
+  maxResults?: number;
+  skipToId?: string;
+}
+
+export interface ListPolicy {
+  includeCompleted: boolean;
+  maxResults: number;
+  skipToId?: string;
+}
+
 export interface VigilListResult {
   vigils: VigilListItem[];
+  omittedCount: number;
+  nextSkipToId?: string;
+}
+
+export function resolveListPolicy(input: ListInput = {}): ListPolicy | { error: string } {
+  const maxResults = input.maxResults ?? DEFAULT_LIST_MAX_RESULTS;
+  if (!Number.isSafeInteger(maxResults) || maxResults <= 0 || maxResults > MAX_LIST_MAX_RESULTS) {
+    return {
+      error: `maxResults must be a positive safe integer no greater than ${MAX_LIST_MAX_RESULTS}`,
+    };
+  }
+
+  let skipToId: string | undefined;
+  if (input.skipToId !== undefined) {
+    if (input.skipToId !== input.skipToId.trim()) {
+      return { error: "skipToId must not contain leading or trailing whitespace" };
+    }
+    if (!input.skipToId) {
+      return { error: "skipToId must be nonblank when supplied" };
+    }
+    skipToId = input.skipToId;
+  }
+
+  return {
+    includeCompleted: input.includeCompleted ?? false,
+    maxResults,
+    ...(skipToId !== undefined ? { skipToId } : {}),
+  };
 }
 
 export interface WaitInput {
@@ -227,7 +270,7 @@ export function formatListText(result: VigilListResult): string {
     return "vigils: (none)";
   }
 
-  return result.vigils
+  const body = result.vigils
     .map((item) => {
       const parts = [
         `id: ${item.id}`,
@@ -245,4 +288,11 @@ export function formatListText(result: VigilListResult): string {
       return lines.join("\n");
     })
     .join("\n\n");
+
+  if (result.omittedCount > 0 && result.nextSkipToId) {
+    const safeNextSkipToId = sanitizeReceiptField(result.nextSkipToId, MAX_DISPLAY_ID_CHARS);
+    return `${body}\n\n${result.omittedCount} more children omitted. Use maxResults to expand this page or skipToId to retrieve older children. next skipToId: ${safeNextSkipToId}`;
+  }
+
+  return body;
 }

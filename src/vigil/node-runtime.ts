@@ -55,8 +55,10 @@ import {
 import {
   createVigilId,
   normalizeVigilName,
+  type ListInput,
   type ReadInput,
   type SearchInput,
+  resolveListPolicy,
   type VigilReadOrError,
   type VigilSearchOrError,
   type CompleteInput,
@@ -240,9 +242,44 @@ export class VigilService {
     };
   }
 
-  async list(includeCompleted = false): Promise<VigilListOrError> {
-    const items = await this.buildListItems(includeCompleted);
-    return { vigils: items };
+  async list(input: ListInput = {}): Promise<VigilListOrError> {
+    const policy = resolveListPolicy(input);
+    if ("error" in policy) {
+      return policy;
+    }
+
+    const states = this.deps.parentLedger.listLifecycleStates(policy.includeCompleted);
+
+    let startIndex = 0;
+    if (policy.skipToId !== undefined) {
+      const skipIndex = states.findIndex((state) => state.id === policy.skipToId);
+      if (skipIndex === -1) {
+        const lifecycle = this.getLifecycleState(policy.skipToId);
+        if (!lifecycle) {
+          return { error: `Unknown vigil id: ${policy.skipToId}` };
+        }
+        if (lifecycle.completionRecord && !policy.includeCompleted) {
+          return {
+            error: `Completed vigil child excluded: ${policy.skipToId} (pass includeCompleted: true)`,
+          };
+        }
+        return { error: `Unknown vigil id: ${policy.skipToId}` };
+      }
+      startIndex = skipIndex;
+    }
+
+    const pageStates = states.slice(startIndex, startIndex + policy.maxResults);
+    const items = await this.buildListItemsFromStates(pageStates);
+    const remainingEligible = states.length - startIndex;
+    const omittedCount = remainingEligible - pageStates.length;
+    const nextSkipToId =
+      omittedCount > 0 ? states[startIndex + pageStates.length]?.id : undefined;
+
+    return {
+      vigils: items,
+      omittedCount,
+      ...(nextSkipToId !== undefined ? { nextSkipToId } : {}),
+    };
   }
 
   async search(input: SearchInput): Promise<VigilSearchOrError> {
@@ -696,8 +733,7 @@ export class VigilService {
     return this.deps.parentLedger.getLifecycle(vigilId);
   }
 
-  private async buildListItems(includeCompleted: boolean): Promise<VigilListItem[]> {
-    const states = this.deps.parentLedger.listLifecycleStates(includeCompleted);
+  private async buildListItemsFromStates(states: VigilLifecycleState[]): Promise<VigilListItem[]> {
     const items: VigilListItem[] = [];
 
     for (const lifecycle of states) {

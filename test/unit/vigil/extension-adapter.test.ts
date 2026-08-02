@@ -293,6 +293,16 @@ describe("vigil extension adapter", () => {
       }),
     );
     expect(listed.vigils[0]).not.toHaveProperty("latestResponse");
+    expect(listed.omittedCount).toBe(0);
+    expect(listed.nextSkipToId).toBeUndefined();
+  });
+
+  it("list rejects invalid maxResults before observational work", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+
+    const result = await harness.execute({ action: "list", maxResults: 51 });
+    expect((result as { isError?: boolean }).isError).toBe(true);
+    expect((result.details as { error?: string }).error).toContain("maxResults");
   });
 
   it("complete returns a completed snapshot and rejects send afterward", async () => {

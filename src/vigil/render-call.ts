@@ -25,6 +25,7 @@ export interface VigilCallArgs {
   before?: number;
   after?: number;
   maxResults?: number;
+  skipToId?: string;
   includeCompleted?: boolean;
   timeoutMs?: number;
   initialDelayMs?: number;
@@ -209,6 +210,16 @@ export function formatVigilCallSummary(
     }
     case "list": {
       segments.push(args.includeCompleted ? "including completed" : "active");
+      if (
+        typeof args.maxResults === "number" &&
+        Number.isFinite(args.maxResults) &&
+        Number.isSafeInteger(args.maxResults)
+      ) {
+        segments.push(`max ${args.maxResults}`);
+      }
+      if (args.skipToId?.trim()) {
+        segments.push(`from ${formatVigilShortId(args.skipToId)}`);
+      }
       break;
     }
     case "wait": {
@@ -321,12 +332,18 @@ export function renderVigilCallText(
         parts.push(theme.fg("dim", " · allow incomplete subagents"));
       }
     } else if (summary.startsWith("list")) {
-      parts.push(
-        theme.fg(
-          "muted",
-          args.includeCompleted ? " list · including completed" : " list · active",
-        ),
-      );
+      const listSegments = [args.includeCompleted ? "including completed" : "active"];
+      if (
+        typeof args.maxResults === "number" &&
+        Number.isFinite(args.maxResults) &&
+        Number.isSafeInteger(args.maxResults)
+      ) {
+        listSegments.push(`max ${args.maxResults}`);
+      }
+      if (args.skipToId?.trim()) {
+        listSegments.push(`from ${formatVigilShortId(args.skipToId)}`);
+      }
+      parts.push(theme.fg("muted", ` list · ${listSegments.join(" · ")}`));
     } else if (summary.startsWith("wait")) {
       const timeoutMs =
         typeof args.timeoutMs === "number" && Number.isFinite(args.timeoutMs)

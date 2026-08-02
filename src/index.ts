@@ -114,7 +114,13 @@ export const vigilTool = defineTool({
     ),
     maxResults: Type.Optional(
       Type.Number({
-        description: "Maximum search matches to return (default 20, maximum 50)",
+        description: "Maximum list items or search matches to return (default 20, maximum 50)",
+      }),
+    ),
+    skipToId: Type.Optional(
+      Type.String({
+        description:
+          "For list only: inclusive cursor — page begins at this exact Vigil child id in most-recent-first filtered order",
       }),
     ),
     includeCompleted: Type.Optional(
@@ -247,7 +253,11 @@ export const vigilTool = defineTool({
     }
 
     if (params.action === "list") {
-      const result = await service.list(params.includeCompleted ?? false);
+      const result = await service.list({
+        includeCompleted: params.includeCompleted,
+        maxResults: params.maxResults,
+        skipToId: params.skipToId,
+      });
       if (isVigilError(result)) {
         return {
           content: [{ type: "text" as const, text: result.error }],

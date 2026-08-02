@@ -12,7 +12,7 @@ The extension registers a single tool:
 vigil({ action: "launch", name, message, model?, cwd? })
 vigil({ action: "poll", id })
 vigil({ action: "send", id, message, model? })
-vigil({ action: "list", includeCompleted? })
+vigil({ action: "list", includeCompleted?, maxResults?, skipToId? })
 vigil({ action: "complete", id, allowIncompleteSubagents? })
 vigil({ action: "wait", id?, timeoutMs?, initialDelayMs?, maxDelayMs?, progress?, progressIntervalMs? })
 vigil({ action: "search", query, id?, includeCompleted?, maxResults? })
@@ -31,7 +31,7 @@ vigil({ action: "read", id, entryId, before?, after?, includeCompleted? })
 
 `poll` does not terminate child processes; reaping a settled-but-alive Pi process happens during `send` and `complete`.
 
-`list` reconstructs Vigil children from append-only entries in the current parent session file. By default it returns active (`running` / `waiting`) items only, sorted most recently updated first. Pass `includeCompleted: true` to include completed children. List items are concise (`id`, `sessionId`, `name`, `cwd`, `state`, optional `completedAt`, optional `directSubagents`) and omit large `latestResponse` text; use `poll` for response bodies.
+`list` reconstructs Vigil children from append-only entries in the current parent session file. By default it returns active (`running` / `waiting`) items only, sorted most recently updated first, capped at **20** items per page (`maxResults`, maximum **50**). Pass `includeCompleted: true` to include completed children. Pass `skipToId` with an exact direct canonical Vigil child id to begin the page **inclusively** at that item in the filtered, ordered list; use the prior page's `nextSkipToId` to retrieve older children. Unknown ids, whitespace-invalid ids, or ids excluded by `includeCompleted: false` return a controlled error. Structured list results add `omittedCount` and optional `nextSkipToId` (the first omitted eligible item when more exist). Text output reports truncation with actionable guidance when items are omitted. List pagination is a fresh observational scan on each call—not a transactional snapshot when the ledger changes between pages. List items are concise (`id`, `sessionId`, `name`, `cwd`, `state`, optional `completedAt`, optional `directSubagents`) and omit large `latestResponse` text; use `poll` for response bodies.
 
 Each listed direct child may include a **one-level** `directSubagents` summary of that child's own direct Vigil children (root grandchildren only). Counts (`total`, `incomplete`, `running`, `waiting`, `completed`, `unknown`) reflect the full shallow ledger inspection; `items` is capped at 20 display entries with `omittedCount`. Text output uses lines such as `direct subagents: none`, `direct subagents: 2 incomplete (1 running, 1 waiting; 1 completed)`, followed by bounded item lines. If the intermediate child ledger cannot be read, the root child is retained with `directSubagents: { inspection: "unavailable", error }` rather than failing the entire list. Deeper descendants are never traversed.
 

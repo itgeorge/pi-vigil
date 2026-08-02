@@ -82,7 +82,7 @@ describe("VigilService.list shallow descendant visibility", () => {
     const { service } = createHarness();
     await service.launch({ name: "Implement feature A", message: "work", parentCwd: "/parent/default" });
 
-    const result = await service.list(false);
+    const result = await service.list({ includeCompleted: false });
     expectList(result);
     expect(result.vigils).toHaveLength(1);
     expect(result.vigils[0]?.directSubagents).toEqual(
@@ -109,7 +109,7 @@ describe("VigilService.list shallow descendant visibility", () => {
     });
     await service.launch({ name: "Broken ledger child", message: "work", parentCwd: "/parent/default" });
 
-    const result = await service.list(false);
+    const result = await service.list({ includeCompleted: false });
     expectList(result);
     expect(result.vigils[0]?.directSubagents).toEqual({
       inspection: "unavailable",
