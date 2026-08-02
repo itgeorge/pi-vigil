@@ -355,8 +355,11 @@ export class VigilService {
 
     const scheduler = this.deps.waitScheduler ?? createNodeWaitScheduler();
     const startedAt = scheduler.now();
-    const cohort = this.deps.parentLedger.listLifecycleStates(false);
-    if (cohort.length === 0) {
+    const cohortIds = this.resolveWaitCohortIds(policy);
+    if ("error" in cohortIds) {
+      return cohortIds;
+    }
+    if (cohortIds.length === 0) {
       return { outcome: "empty", waitedMs: 0 };
     }
 
@@ -408,7 +411,7 @@ export class VigilService {
       }
     };
 
-    let scan = await this.scanWaitCohort(cohort.map((lifecycle) => lifecycle.id));
+    let scan = await this.scanWaitCohort(cohortIds);
     if ("error" in scan) {
       return scan;
     }
@@ -436,7 +439,7 @@ export class VigilService {
       }
 
       afterCompletedSleep = true;
-      scan = await this.scanWaitCohort(cohort.map((lifecycle) => lifecycle.id));
+      scan = await this.scanWaitCohort(cohortIds);
       if ("error" in scan) {
         return scan;
       }
@@ -677,6 +680,18 @@ export class VigilService {
     return Math.max(0, scheduler.now() - startedAt);
   }
 
+  private resolveWaitCohortIds(policy: VigilWaitPolicy): string[] | { error: string } {
+    if (policy.id) {
+      const lifecycle = this.getLifecycleState(policy.id);
+      if (!lifecycle) {
+        return { error: `Unknown vigil id: ${policy.id}` };
+      }
+      return [policy.id];
+    }
+
+    return this.deps.parentLedger.listLifecycleStates(false).map((lifecycle) => lifecycle.id);
+  }
+
   private getLifecycleState(vigilId: string): VigilLifecycleState | null {
     return this.deps.parentLedger.getLifecycle(vigilId);
   }
@@ -761,7 +776,23 @@ export class VigilService {
   }
 }
 
+function validateWaitOptionalId(value: string): string | { error: string } {
+  if (value !== value.trim()) {
+    return { error: "wait id must not contain leading or trailing whitespace" };
+  }
+  if (!value) {
+    return { error: "wait id must be nonblank when supplied" };
+  }
+  return value;
+}
+
 export function resolveWaitPolicy(input: WaitInput): VigilWaitPolicy | { error: string } {
+  const validatedId =
+    input.id === undefined ? undefined : validateWaitOptionalId(input.id);
+  if (validatedId && typeof validatedId === "object" && "error" in validatedId) {
+    return validatedId;
+  }
+
   const timeoutMs = input.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS;
   const initialDelayMs = input.initialDelayMs ?? DEFAULT_WAIT_INITIAL_DELAY_MS;
   const maxDelayMs = input.maxDelayMs ?? DEFAULT_WAIT_MAX_DELAY_MS;
@@ -796,7 +827,14 @@ export function resolveWaitPolicy(input: WaitInput): VigilWaitPolicy | { error: 
     };
   }
 
-  return { timeoutMs, initialDelayMs, maxDelayMs, progress, progressIntervalMs };
+  return {
+    ...(typeof validatedId === "string" ? { id: validatedId } : {}),
+    timeoutMs,
+    initialDelayMs,
+    maxDelayMs,
+    progress,
+    progressIntervalMs,
+  };
 }
 
 export function createNodeWaitScheduler(): WaitScheduler {

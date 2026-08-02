@@ -62,7 +62,7 @@ export const vigilTool = defineTool({
   parameters: Type.Object({
     action: StringEnum(["launch", "poll", "send", "list", "complete", "wait", "search", "read"], {
       description:
-        "launch starts a detached child session; poll reads status; send continues a waiting child; list returns the parent working set; complete retires a waiting child; wait boundedly observes the initial active cohort; search finds literal matches in child transcripts; read inspects a stable child entry with nearby JSONL context",
+        "launch starts a detached child session; poll reads status; send continues a waiting child; list returns the parent working set; complete retires a waiting child; wait boundedly observes the initial active cohort or one targeted direct child; search finds literal matches in child transcripts; read inspects a stable child entry with nearby JSONL context",
     }),
     name: Type.Optional(
       Type.String({
@@ -87,7 +87,7 @@ export const vigilTool = defineTool({
     id: Type.Optional(
       Type.String({
         description:
-          "Vigil id returned by launch (required for poll, send, complete, and read; optional search filter)",
+          "Vigil id returned by launch (required for poll, send, complete, and read; optional search filter or wait target)",
       }),
     ),
     query: Type.Optional(
@@ -199,6 +199,7 @@ export const vigilTool = defineTool({
     if (params.action === "wait") {
       const result = await service.wait(
         {
+          id: params.id,
           timeoutMs: params.timeoutMs,
           initialDelayMs: params.initialDelayMs,
           maxDelayMs: params.maxDelayMs,

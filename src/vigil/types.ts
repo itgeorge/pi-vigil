@@ -61,6 +61,7 @@ export interface VigilListResult {
 }
 
 export interface WaitInput {
+  id?: string;
   timeoutMs?: number;
   initialDelayMs?: number;
   maxDelayMs?: number;
@@ -69,6 +70,7 @@ export interface WaitInput {
 }
 
 export interface VigilWaitPolicy {
+  id?: string;
   timeoutMs: number;
   initialDelayMs: number;
   maxDelayMs: number;

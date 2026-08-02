@@ -570,6 +570,58 @@ describe("vigil extension adapter", () => {
     });
   });
 
+  it("wait with id targets one direct child and returns an unknown-id error without mutation", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+    let time = 0;
+    setVigilRuntimeOverrides({
+      waitScheduler: {
+        now: () => time,
+        sleep: async (ms) => {
+          time += ms;
+          return "elapsed";
+        },
+      },
+      processRunner: {
+        spawnDetached: async () => ({ pid: 9400 }),
+        isAlive: () => true,
+        terminateAndWait: async () => undefined,
+      },
+      childSessionReader: {
+        readChildSessionState: async () => ({
+          latestResponse: time > 0 ? "Target settled." : null,
+          turnComplete: time > 0,
+          lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+          activity: emptyActivity,
+        }),
+      },
+    });
+
+    const launchA = await harness.execute({ action: "launch", name: "Target child", message: "Work A" });
+    await harness.execute({ action: "launch", name: "Other child", message: "Work B" });
+    const target = launchA.details as VigilSnapshot;
+
+    const result = await harness.execute({
+      action: "wait",
+      id: target.id,
+      timeoutMs: 5_000,
+      initialDelayMs: 100,
+      maxDelayMs: 100,
+    });
+    expect((result as { isError?: boolean }).isError).toBeFalsy();
+    expect(result.details).toEqual({
+      outcome: "settled",
+      waitedMs: 100,
+      settled: [expect.objectContaining({ id: target.id, latestResponse: "Target settled." })],
+    });
+
+    const unknown = await harness.execute({ action: "wait", id: "vigil-missing" });
+    expect((unknown as { isError?: boolean }).isError).toBe(true);
+    expect(unknown.content[0]).toEqual({
+      type: "text",
+      text: "Unknown vigil id: vigil-missing",
+    });
+  });
+
   it("search requires a nonblank query and returns structured matches with bounded text", async () => {
     const harness = await createVigilTestHarness({ cwd: "/parent/project" });
     const record: VigilLaunchRecord = {

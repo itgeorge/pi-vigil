@@ -474,6 +474,110 @@ describe("VigilService.wait progress", () => {
   });
 });
 
+describe("VigilService.wait targeted id", () => {
+  it("waits only for a running target and excludes an unrelated waiting sibling", async () => {
+    const { service, scheduler } = createHarness({
+      records: [launchRecord("vigil-running", 1), launchRecord("vigil-waiting", 2)],
+      stateFor: (id) =>
+        id === "vigil-waiting"
+          ? { latestResponse: "Sibling done.", turnComplete: true }
+          : {
+              latestResponse: scheduler.sleeps.length >= 1 ? "Target done." : null,
+              turnComplete: scheduler.sleeps.length >= 1,
+            },
+    });
+
+    const result = await service.wait({ id: "vigil-running", timeoutMs: 5_000, initialDelayMs: 100, maxDelayMs: 200 });
+
+    expectWait(result);
+    expect(result).toEqual({
+      outcome: "settled",
+      waitedMs: 100,
+      settled: [expect.objectContaining({ id: "vigil-running", state: "waiting", latestResponse: "Target done." })],
+    });
+    expect(scheduler.sleeps).toEqual([100]);
+  });
+
+  it("returns an already waiting target immediately with only that child snapshot", async () => {
+    const { service, scheduler } = createHarness({
+      records: [launchRecord("vigil-target", 1), launchRecord("vigil-other", 2)],
+      stateFor: (id) =>
+        id === "vigil-target"
+          ? { latestResponse: "Target ready.", turnComplete: true }
+          : { latestResponse: "Other ready.", turnComplete: true },
+    });
+
+    const result = await service.wait({ id: "vigil-target" });
+
+    expectWait(result);
+    expect(result).toEqual({
+      outcome: "settled",
+      waitedMs: 0,
+      settled: [expect.objectContaining({ id: "vigil-target", state: "waiting", latestResponse: "Target ready." })],
+    });
+    expect(scheduler.sleeps).toEqual([]);
+  });
+
+  it("returns a completed target immediately without requiring includeCompleted", async () => {
+    const record = launchRecord("vigil-completed-target", 1);
+    const { service, scheduler, sessionManager } = createHarness({ records: [record] });
+    sessionManager.appendCustomEntry("vigil-complete", {
+      id: record.id,
+      sessionId: record.sessionId,
+      name: "[completed] Task vigil-completed-target",
+      cwd: record.cwd,
+      completedAt: "2026-08-01T11:00:00.000Z",
+    } satisfies VigilCompletionRecord);
+
+    const result = await service.wait({ id: record.id });
+
+    expectWait(result);
+    expect(result).toEqual({
+      outcome: "settled",
+      waitedMs: 0,
+      settled: [expect.objectContaining({ id: record.id, state: "completed" })],
+    });
+    expect(scheduler.sleeps).toEqual([]);
+  });
+
+  it("rejects an unknown id without lifecycle mutation", async () => {
+    const { service, scheduler, captured, mutations } = createHarness({
+      records: [launchRecord("vigil-known", 1)],
+    });
+
+    const result = await service.wait({ id: "vigil-missing" });
+
+    expect(result).toEqual({ error: "Unknown vigil id: vigil-missing" });
+    expect(scheduler.sleeps).toEqual([]);
+    expect(captured).toEqual([]);
+    expect(mutations()).toEqual({ spawned: 0, reaped: 0, renamed: 0 });
+  });
+
+  it("scopes progress and final output to the selected child only", async () => {
+    const { service } = createHarness({
+      records: [launchRecord("vigil-target", 1), launchRecord("vigil-other", 2)],
+      stateFor: (id) =>
+        id === "vigil-target"
+          ? { latestResponse: "Target ready.", turnComplete: true }
+          : { latestResponse: null, turnComplete: false },
+    });
+    const updates: VigilWaitProgress[] = [];
+
+    const result = await service.wait({ id: "vigil-target", progress: "status" }, undefined, (progress) => updates.push(progress));
+
+    expectWait(result);
+    expect(result.outcome).toBe("settled");
+    if (result.outcome !== "settled") {
+      return;
+    }
+    expect(result.settled).toHaveLength(1);
+    expect(result.settled[0]?.id).toBe("vigil-target");
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.items).toHaveLength(1);
+    expect(updates[0]?.items[0]?.id).toBe("vigil-target");
+  });
+});
+
 describe("VigilService.wait shallow descendant visibility", () => {
   function createSubagentHarness(options?: {
     summaries?: Map<string, import("../../../src/vigil/descendant-inspector").VigilDirectSubagentInspection>;

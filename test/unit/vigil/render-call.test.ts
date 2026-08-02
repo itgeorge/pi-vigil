@@ -207,6 +207,30 @@ describe("formatVigilCallSummary", () => {
     ).toBe("wait · up to 120s · progress none");
   });
 
+  it("includes the targeted vigil id in wait summaries only when id is supplied", () => {
+    const entries = [
+      {
+        type: "custom" as const,
+        id: "entry-1",
+        parentId: null,
+        timestamp: "2026-08-01T10:00:00.000Z",
+        customType: "vigil-launch",
+        data: {
+          id: SAMPLE_UUID,
+          sessionId: SAMPLE_UUID,
+          name: "Target task",
+          pid: 100,
+          cwd: "/parent/project",
+          launchedAt: "2026-08-01T10:00:00.000Z",
+        },
+      },
+    ];
+    expect(plainSummary({ action: "wait", id: SAMPLE_UUID }, entries)).toBe(
+      "wait · Target task [vigil-bd02f54] · up to 60s · progress status",
+    );
+    expect(plainSummary({ action: "wait" }, entries)).toBe("wait · up to 60s · progress status");
+  });
+
   it("falls back safely for unknown or malformed ids without throwing", () => {
     expect(plainSummary({ action: "poll", id: "vigil-missing" })).toBe("poll · [vigil-missing]");
     expect(plainSummary({ action: "poll", id: "not-a-vigil-id" })).toBe("poll · [not-a-vigil-id]");

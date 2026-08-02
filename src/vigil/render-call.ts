@@ -212,6 +212,9 @@ export function formatVigilCallSummary(
       break;
     }
     case "wait": {
+      if (args.id?.trim()) {
+        segments.push(formatIdIdentity(args.id, lookup));
+      }
       const timeoutMs =
         typeof args.timeoutMs === "number" && Number.isFinite(args.timeoutMs)
           ? args.timeoutMs
@@ -333,10 +336,15 @@ export function renderVigilCallText(
         args.progress === "none" || args.progress === "status"
           ? args.progress
           : DEFAULT_WAIT_PROGRESS_MODE;
+      parts.push(theme.fg("muted", " wait"));
+      if (args.id?.trim()) {
+        parts.push(theme.fg("muted", " · "));
+        parts.push(theme.fg("text", formatIdIdentity(args.id, lookup)));
+      }
       parts.push(
         theme.fg(
           "muted",
-          ` wait · ${formatWaitTimeoutLabel(timeoutMs)} · progress ${progress}`,
+          ` · ${formatWaitTimeoutLabel(timeoutMs)} · progress ${progress}`,
         ),
       );
     } else if (summary.startsWith("search")) {

@@ -14,7 +14,7 @@ vigil({ action: "poll", id })
 vigil({ action: "send", id, message, model? })
 vigil({ action: "list", includeCompleted? })
 vigil({ action: "complete", id, allowIncompleteSubagents? })
-vigil({ action: "wait", timeoutMs?, initialDelayMs?, maxDelayMs?, progress?, progressIntervalMs? })
+vigil({ action: "wait", id?, timeoutMs?, initialDelayMs?, maxDelayMs?, progress?, progressIntervalMs? })
 vigil({ action: "search", query, id?, includeCompleted?, maxResults? })
 vigil({ action: "read", id, entryId, before?, after?, includeCompleted? })
 ```
@@ -35,7 +35,7 @@ vigil({ action: "read", id, entryId, before?, after?, includeCompleted? })
 
 Each listed direct child may include a **one-level** `directSubagents` summary of that child's own direct Vigil children (root grandchildren only). Counts (`total`, `incomplete`, `running`, `waiting`, `completed`, `unknown`) reflect the full shallow ledger inspection; `items` is capped at 20 display entries with `omittedCount`. Text output uses lines such as `direct subagents: none`, `direct subagents: 2 incomplete (1 running, 1 waiting; 1 completed)`, followed by bounded item lines. If the intermediate child ledger cannot be read, the root child is retained with `directSubagents: { inspection: "unavailable", error }` rather than failing the entire list. Deeper descendants are never traversed.
 
-`wait` is a foreground, bounded convenience loop over the fixed active (`running` / `waiting`) child cohort from the current parent session. It scans immediately, then polls with capped exponential backoff until any watched child is `waiting` or is observed `completed`. It returns structured details with one normal outcome: `settled` (full snapshots, including `latestResponse`), `timeout` (concise pending list items), `empty`, or `cancelled` (concise pending list items). It never calls `send`, `complete`, reaping, spawning, renaming, or ledger append operations.
+`wait` is a foreground, bounded convenience loop over the fixed active (`running` / `waiting`) child cohort from the current parent session, or over one targeted direct child when `id` is supplied. It scans immediately, then polls with capped exponential backoff until any watched child is `waiting` or is observed `completed`. A targeted wait accepts a direct child in any lifecycle state (`running`, `waiting`, or `completed`) and returns immediately when that child is already `waiting` or `completed`. It returns structured details with one normal outcome: `settled` (full snapshots, including `latestResponse`), `timeout` (concise pending list items), `empty`, or `cancelled` (concise pending list items). It never calls `send`, `complete`, reaping, spawning, renaming, or ledger append operations.
 
 While a `wait` invocation remains active, Pi renders optional foreground partial tool results when `progress` is `"status"` (default). These updates report persisted child-session facts—state, step/message counts, the latest persisted activity line, and up to the last three persisted child `message` previews (oldest→newest within the preview)—and are visible in the TUI/RPC partial tool-result stream and JSON `tool_execution_update` events. They do not append parent ledger records, mutate child sessions, or replace the final wait result. Pass `progress: "none"` to suppress partial updates while preserving normal wait behavior.
 
