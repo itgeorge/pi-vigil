@@ -59,12 +59,16 @@ export interface WaitInput {
   timeoutMs?: number;
   initialDelayMs?: number;
   maxDelayMs?: number;
+  progress?: "status" | "none";
+  progressIntervalMs?: number;
 }
 
 export interface VigilWaitPolicy {
   timeoutMs: number;
   initialDelayMs: number;
   maxDelayMs: number;
+  progress: "status" | "none";
+  progressIntervalMs: number;
 }
 
 export type VigilWaitResult =

@@ -1,4 +1,5 @@
 import type { VigilLifecycleState } from "./lifecycle";
+import type { VigilSessionActivity } from "./session-text";
 import type {
   VigilCompletionRecord,
   VigilLaunchRecord,
@@ -24,10 +25,13 @@ export interface ProcessRunner {
   terminateAndWait(pid: number, options?: TerminateAndWaitOptions): Promise<void>;
 }
 
+export type { VigilSessionActivity } from "./session-text";
+
 export interface ChildSessionState {
   latestResponse: string | null;
   turnComplete: boolean;
   lastConversationTimestamp: string | null;
+  activity: VigilSessionActivity;
 }
 
 export interface ChildSessionReader {

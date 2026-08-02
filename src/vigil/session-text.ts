@@ -1,12 +1,99 @@
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
-export interface ChildSessionState {
+export interface AssistantTurnState {
   latestResponse: string | null;
   turnComplete: boolean;
   lastConversationTimestamp: string | null;
 }
 
+export interface VigilSessionActivity {
+  steps: number;
+  messages: number;
+  lastActivity: string | null;
+  lastActivityTimestamp: string | null;
+}
+
+export interface ChildSessionState {
+  latestResponse: string | null;
+  turnComplete: boolean;
+  lastConversationTimestamp: string | null;
+  activity: VigilSessionActivity;
+}
+
 const TERMINAL_STOP_REASONS = new Set(["stop", "length", "error", "aborted"]);
+
+const EMPTY_SESSION_ACTIVITY: VigilSessionActivity = {
+  steps: 0,
+  messages: 0,
+  lastActivity: null,
+  lastActivityTimestamp: null,
+};
+
+function describePersistedEntryActivity(entry: SessionEntry): string | null {
+  if (entry.type === "message") {
+    if (entry.message.role === "user") {
+      return "user message";
+    }
+    if (entry.message.role === "toolResult") {
+      const toolName = entry.message.toolName?.trim();
+      return toolName ? `tool result: ${toolName}` : "tool result";
+    }
+    if (entry.message.role === "assistant") {
+      for (const content of entry.message.content) {
+        if (content.type === "toolCall") {
+          const toolName = content.name?.trim();
+          return toolName ? `assistant tool use: ${toolName}` : "assistant tool use";
+        }
+      }
+      return "assistant response";
+    }
+    return null;
+  }
+
+  if (entry.type === "model_change") {
+    return "model change";
+  }
+
+  return null;
+}
+
+export function extractSessionActivity(entries: SessionEntry[]): VigilSessionActivity {
+  if (entries.length === 0) {
+    return EMPTY_SESSION_ACTIVITY;
+  }
+
+  let steps = 0;
+  let messages = 0;
+  let lastActivity: string | null = null;
+  let lastActivityTimestamp: string | null = null;
+
+  for (const entry of entries) {
+    steps += 1;
+    if (entry.type === "message") {
+      messages += 1;
+    }
+  }
+
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (!entry) {
+      continue;
+    }
+    const description = describePersistedEntryActivity(entry);
+    if (description) {
+      lastActivity = description;
+      lastActivityTimestamp = entry.timestamp;
+      break;
+    }
+  }
+
+  return {
+    steps,
+    messages,
+    lastActivity,
+    lastActivityTimestamp,
+  };
+}
 
 function extractAssistantText(message: SessionEntry & { type: "message" }): string | null {
   if (message.message.role !== "assistant") {
@@ -35,7 +122,7 @@ function isTerminalAssistantMessage(entry: SessionEntry & { type: "message" }): 
   return entry.message.stopReason !== undefined && TERMINAL_STOP_REASONS.has(entry.message.stopReason);
 }
 
-export function extractLatestAssistantState(entries: SessionEntry[]): ChildSessionState {
+export function extractLatestAssistantState(entries: SessionEntry[]): AssistantTurnState {
   let latestResponse: string | null = null;
   let lastConversationTimestamp: string | null = null;
 
