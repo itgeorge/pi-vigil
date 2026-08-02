@@ -18,14 +18,36 @@ const PI_CORE_PEERS = [
   "@earendil-works/pi-tui",
 ];
 
+type PackDryRunFile = { path?: string };
+type PackDryRunEntry = { files?: PackDryRunFile[] };
+
+export function extractPackDryRunJson(output: string): string {
+  const trimmed = output.trim();
+  if (trimmed.startsWith("[")) {
+    return trimmed;
+  }
+
+  const start = output.indexOf("[");
+  const end = output.lastIndexOf("]");
+  if (start >= 0 && end > start) {
+    return output.slice(start, end + 1);
+  }
+
+  throw new Error("npm pack --dry-run --json did not emit a JSON array");
+}
+
 export function parsePackDryRunPaths(output: string): string[] {
+  const parsed = JSON.parse(extractPackDryRunJson(output)) as PackDryRunEntry[];
   const paths: string[] = [];
-  for (const line of output.split(/\r?\n/)) {
-    const match = line.match(/^npm notice \d+(?:\.\d+)?[kKmMgG]?B (.+)$/);
-    if (match) {
-      paths.push(match[1]!);
+
+  for (const entry of parsed) {
+    for (const file of entry.files ?? []) {
+      if (typeof file.path === "string") {
+        paths.push(file.path);
+      }
     }
   }
+
   return paths;
 }
 
@@ -96,9 +118,10 @@ export function verifyFromPackDryRunOutput(
 
 function main(): void {
   const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-  const output = execSync("npm pack --dry-run 2>&1", {
+  const output = execSync("npm pack --dry-run --json", {
     cwd: packageRoot,
     encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
   });
   const peerDependencies = loadPeerDependencies(join(packageRoot, "package.json"));
   const errors = verifyFromPackDryRunOutput(output, { peerDependencies });

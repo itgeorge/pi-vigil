@@ -124,7 +124,7 @@ Child session JSONL files are never deleted by Vigil. Pi's normal session UI/man
 
 Pi loads this extension from source TypeScript (`pi.extensions` → `./src/index.ts`). Point your Pi host at a Git source pinned to a commit or tag, or at a local clone for development.
 
-**Git source (pinned):** configure Pi to load from `git+https://github.com/itgeorge/pi-vigil.git#<commit-or-tag>` (replace `<commit-or-tag>` with a release tag or full commit SHA).
+**Git source (pinned):** `pi install https://github.com/itgeorge/pi-vigil.git@<commit-or-tag>` (replace `<commit-or-tag>` with a release tag or full commit SHA). Shorthand: `pi install git:github.com/itgeorge/pi-vigil@<commit-or-tag>`.
 
 **Local development:** clone this repository and reference the checkout path in your Pi extension settings so Pi resolves `./src/index.ts` from your working tree.
 

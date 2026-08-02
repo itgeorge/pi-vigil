@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  extractPackDryRunJson,
   parsePackDryRunPaths,
   verifyFromPackDryRunOutput,
   verifyPackageSurface,
@@ -11,18 +12,28 @@ import {
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
+function runPackDryRun(env: NodeJS.ProcessEnv = process.env): string {
+  return execSync("npm pack --dry-run --json", {
+    cwd: packageRoot,
+    encoding: "utf8",
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
 describe("package surface verification", () => {
-  it("parses npm pack dry-run tarball paths", () => {
-    const sample = `
-npm notice
-npm notice 📦  pi-vigil@0.1.0
-npm notice Tarball Contents
-npm notice 1.1kB LICENSE
-npm notice 18.3kB README.md
-npm notice 865B package.json
-npm notice 13.8kB src/index.ts
-npm notice Tarball Details
-`;
+  it("parses npm pack dry-run JSON tarball paths", () => {
+    const sample = JSON.stringify([
+      {
+        id: "pi-vigil@0.1.0",
+        files: [
+          { path: "LICENSE", size: 1083 },
+          { path: "README.md", size: 19872 },
+          { path: "package.json", size: 1503 },
+          { path: "src/index.ts", size: 13768 },
+        ],
+      },
+    ]);
 
     expect(parsePackDryRunPaths(sample)).toEqual([
       "LICENSE",
@@ -30,6 +41,24 @@ npm notice Tarball Details
       "package.json",
       "src/index.ts",
     ]);
+  });
+
+  it("extracts JSON from mixed npm notice and JSON output", () => {
+    const sample = `
+npm notice
+npm notice Tarball Contents
+${JSON.stringify([
+  {
+    files: [{ path: "LICENSE" }, { path: "src/index.ts" }],
+  },
+])}
+npm notice Tarball Details
+`;
+
+    expect(extractPackDryRunJson(sample)).toBe(
+      JSON.stringify([{ files: [{ path: "LICENSE" }, { path: "src/index.ts" }] }]),
+    );
+    expect(parsePackDryRunPaths(sample)).toEqual(["LICENSE", "src/index.ts"]);
   });
 
   it("rejects forbidden and unexpected tarball entries", () => {
@@ -69,10 +98,17 @@ npm notice Tarball Details
   });
 
   it("matches the live npm pack dry-run surface for this package", () => {
-    const output = execSync("npm pack --dry-run 2>&1", {
-      cwd: packageRoot,
-      encoding: "utf8",
-    });
+    const output = runPackDryRun();
+    const peerDependencies = JSON.parse(
+      readFileSync(join(packageRoot, "package.json"), "utf8"),
+    ).peerDependencies;
+
+    const errors = verifyFromPackDryRunOutput(output, { peerDependencies });
+    expect(errors).toEqual([]);
+  });
+
+  it("matches the live npm pack dry-run surface when npm_config_json=true is inherited", () => {
+    const output = runPackDryRun({ ...process.env, npm_config_json: "true" });
     const peerDependencies = JSON.parse(
       readFileSync(join(packageRoot, "package.json"), "utf8"),
     ).peerDependencies;

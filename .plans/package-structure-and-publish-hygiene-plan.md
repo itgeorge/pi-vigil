@@ -25,7 +25,7 @@ Prepare `pi-vigil` for source-based Pi distribution with correct peer-dependency
 - Repository: `https://github.com/itgeorge/pi-vigil` (HTTPS git URL for npm `repository` field).
 - Extension entry: `pi.extensions` → `./src/index.ts`; no compiled output.
 - Runtime non-Pi deps (if any were added later) belong in `dependencies`; Pi core packages never do.
-- `npm pack --dry-run` output lines use `npm notice <size> <path>` for tarball entries; notices are emitted on stderr (capture via `2>&1`).
+- `npm pack --dry-run --json` emits a JSON array with `files[].path` tarball entries; capture stdout (not human `npm notice` lines, which break when inherited `npm_config_json=true`).
 - Default `npm test` remains unit-only; acceptance stays opt-in via `npm run test:acceptance`.
 - No `author` field added unless clearly public and appropriate; none is present today.
 
@@ -78,4 +78,25 @@ Prepare `pi-vigil` for source-based Pi distribution with correct peer-dependency
   - `npm pack --dry-run` tarball entries (16): `LICENSE`, `README.md`, `package.json`, and 13 files under `src/` (`index.ts` + 12 `src/vigil/*.ts` modules). Excluded: `.plans/`, `test/`, `optional-followups.md`, `tsconfig.json`, `vitest.config.ts`, `package-lock.json`.
   - `npm run test:acceptance` without `PI_VIGIL_LIVE=1` → expected opt-in guard error (not run live; env unset).
 - README: added Install, Requirements, expanded Dependencies (including `pi-tui`, host peers vs dev deps), License, and `npm run check` in Development; preserved user-authored intro prose.
+- README Install uses Pi source syntax (`pi install https://github.com/itgeorge/pi-vigil.git@<commit-or-tag>` and `git:` shorthand), not npm-style `git+https://...#ref`.
 - Non-goals confirmed: no Vigil behavior/API changes, no typebox dependency, no npm registry publish claim, no live acceptance in prepublish/check.
+
+---
+
+# Phase 3 — Review remediation (JSON pack verifier + Pi install docs)
+
+## Todos
+
+- [x] Replace README npm-style `git+https://...#ref` install example with documented Pi `pi install` Git source syntax; keep local path example valid.
+- [x] Change `scripts/verify-package-surface.ts` to invoke `npm pack --dry-run --json` and parse `files[].path` (robust to mixed notice/JSON output).
+- [x] Expand unit tests for JSON parsing and inherited `npm_config_json=true`; validate `npm run check` / `pack:verify` in both environments.
+- [x] Validate `npm publish --dry-run --json` when safe (no actual publication).
+
+## Progress notes
+
+- 2026-08-02 review remediation: independent GPT review confirmed README used npm `git+https` syntax instead of Pi install syntax, and `verify-package-surface.ts` parsed human `npm notice` lines (breaks under inherited `npm_config_json=true`, including via `npm publish --dry-run --json` → `prepublishOnly`).
+- Red evidence: live package-surface integration test failed under `npm_config_json=true` (notice parser returned 0 paths → missing required entries).
+- Green: switched verifier to `npm pack --dry-run --json` + JSON `files[].path` parser with mixed-output fallback; README Install now documents `pi install https://github.com/itgeorge/pi-vigil.git@<commit-or-tag>` and `git:` shorthand.
+- Validation (normal env): `npm test -- test/unit/package-surface.test.ts` → **6/6** passed; `npm run check` → passed.
+- Validation (`npm_config_json=true`): `npm_config_json=true npm run pack:verify` → passed; `npm_config_json=true npm run check` → passed.
+- Validation (`npm publish --dry-run --json`): prepublishOnly/check/pack:verify completed without publication.
