@@ -16,6 +16,8 @@ import {
   type VigilListResult,
   type VigilSnapshot,
 } from "./vigil/types";
+import { formatWaitProgressText } from "./vigil/wait-progress";
+import type { VigilWaitProgress } from "./vigil/node-runtime";
 
 let appendEntryForTool: ExtensionAPI["appendEntry"] = () => {
   throw new Error("pi-vigil extension not initialized");
@@ -78,9 +80,21 @@ export const vigilTool = defineTool({
     timeoutMs: Type.Optional(Type.Number({ description: "Wait timeout in milliseconds (default 60000, maximum 300000)" })),
     initialDelayMs: Type.Optional(Type.Number({ description: "Initial wait polling delay in milliseconds (default 500, maximum 30000)" })),
     maxDelayMs: Type.Optional(Type.Number({ description: "Maximum wait polling delay in milliseconds (default 5000, maximum 30000)" })),
+    progress: Type.Optional(
+      StringEnum(["status", "none"], {
+        description:
+          'Foreground wait progress updates: "status" emits factual persisted-activity partial updates (default), "none" is silent',
+      }),
+    ),
+    progressIntervalMs: Type.Optional(
+      Type.Number({
+        description:
+          "Heartbeat cap for unchanged wait progress in milliseconds (default 30000, maximum 60000; ignored when progress is none)",
+      }),
+    ),
   }),
 
-  async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+  async execute(_toolCallId, params, signal, onUpdate, ctx) {
     const service = createService(ctx);
 
     if (params.action === "launch") {
@@ -125,8 +139,19 @@ export const vigilTool = defineTool({
           timeoutMs: params.timeoutMs,
           initialDelayMs: params.initialDelayMs,
           maxDelayMs: params.maxDelayMs,
+          progress:
+            params.progress === "none" || params.progress === "status" ? params.progress : undefined,
+          progressIntervalMs: params.progressIntervalMs,
         },
         signal,
+        params.progress === "none"
+          ? undefined
+          : (progress) => {
+              onUpdate?.({
+                content: [{ type: "text" as const, text: formatWaitProgressText(progress, Date.now()) }],
+                details: progress as VigilWaitProgress,
+              });
+            },
       );
       if (isVigilError(result)) {
         return {

@@ -21,9 +21,18 @@ import type {
   SpawnChildInput,
   TerminateAndWaitOptions,
   VigilServiceDeps,
+  VigilSessionActivity,
   WaitScheduler,
 } from "./ports";
-import { extractLatestAssistantState, deriveVigilState, getTurnStartedAt } from "./session-text";
+import { extractLatestAssistantState, deriveVigilState, getTurnStartedAt, extractSessionActivity } from "./session-text";
+import {
+  boundWaitProgressItems,
+  DEFAULT_WAIT_PROGRESS_INTERVAL_MS,
+  fingerprintWaitProgress,
+  MAX_WAIT_PROGRESS_INTERVAL_MS,
+  type VigilWaitProgress,
+  type VigilWaitProgressItem,
+} from "./wait-progress";
 import {
   createVigilId,
   normalizeVigilName,
@@ -46,6 +55,13 @@ import {
 
 const DEFAULT_REAP_TIMEOUT_MS = 5000;
 export const DEFAULT_WAIT_TIMEOUT_MS = 60_000;
+export const DEFAULT_WAIT_PROGRESS_MODE = "status" as const;
+export {
+  DEFAULT_WAIT_PROGRESS_INTERVAL_MS,
+  MAX_WAIT_PROGRESS_INTERVAL_MS,
+  MAX_WAIT_PROGRESS_ITEMS,
+} from "./wait-progress";
+export type { VigilWaitProgress, VigilWaitProgressItem } from "./wait-progress";
 export const DEFAULT_WAIT_INITIAL_DELAY_MS = 500;
 export const DEFAULT_WAIT_MAX_DELAY_MS = 5_000;
 export const MAX_WAIT_TIMEOUT_MS = 300_000;
@@ -199,7 +215,11 @@ export class VigilService {
     return { vigils: items };
   }
 
-  async wait(input: WaitInput, signal?: AbortSignal): Promise<VigilWaitOrError> {
+  async wait(
+    input: WaitInput,
+    signal?: AbortSignal,
+    onProgress?: (progress: VigilWaitProgress) => void,
+  ): Promise<VigilWaitOrError> {
     const policy = resolveWaitPolicy(input);
     if ("error" in policy) {
       return policy;
@@ -212,10 +232,50 @@ export class VigilService {
       return { outcome: "empty", waitedMs: 0 };
     }
 
+    let delayMs = policy.initialDelayMs;
+    let lastFingerprint: string | null = null;
+    let lastProgressAt = startedAt;
+
+    const emitProgressIfNeeded = (
+      scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[],
+      options?: { force?: boolean },
+    ) => {
+      if (policy.progress !== "status" || !onProgress) {
+        return;
+      }
+
+      const waitedMs = this.waitedMs(startedAt, scheduler);
+      const remainingMs = policy.timeoutMs - waitedMs;
+      const nextPollInMs = remainingMs <= 0 ? 0 : Math.min(delayMs, remainingMs);
+      const progressItems = scan.map(({ snapshot, activity }) =>
+        this.toWaitProgressItem(snapshot, activity),
+      );
+      const fingerprint = fingerprintWaitProgress(progressItems);
+      const heartbeatDue = waitedMs > 0 && scheduler.now() - lastProgressAt >= policy.progressIntervalMs;
+      if (!options?.force && fingerprint === lastFingerprint && !heartbeatDue) {
+        return;
+      }
+
+      lastFingerprint = fingerprint;
+      lastProgressAt = scheduler.now();
+      const bounded = boundWaitProgressItems(progressItems);
+      try {
+        onProgress({
+          waitedMs,
+          nextPollInMs,
+          items: bounded.items,
+          omittedItemCount: bounded.omittedItemCount,
+        });
+      } catch {
+        // Progress updates are transport ephemera; consumer failures must not affect wait.
+      }
+    };
+
     let scan = await this.scanWaitCohort(cohort.map((lifecycle) => lifecycle.id));
     if ("error" in scan) {
       return scan;
     }
+    emitProgressIfNeeded(scan, { force: true });
     if (signal?.aborted) {
       return this.cancelledWaitResult(startedAt, scheduler, scan);
     }
@@ -223,7 +283,6 @@ export class VigilService {
       return this.settledWaitResult(startedAt, scheduler, scan);
     }
 
-    let delayMs = policy.initialDelayMs;
     while (true) {
       const remainingMs = policy.timeoutMs - this.waitedMs(startedAt, scheduler);
       if (remainingMs <= 0) {
@@ -243,6 +302,7 @@ export class VigilService {
       if ("error" in scan) {
         return scan;
       }
+      emitProgressIfNeeded(scan);
       if (scan.some(({ snapshot }) => snapshot.state !== "running")) {
         return this.settledWaitResult(startedAt, scheduler, scan);
       }
@@ -317,32 +377,55 @@ export class VigilService {
 
   private async scanWaitCohort(
     cohortIds: string[],
-  ): Promise<{ lifecycle: VigilLifecycleState; snapshot: VigilSnapshot }[] | { error: string }> {
-    const scans: Array<{ lifecycle: VigilLifecycleState; snapshot: VigilSnapshot } | { error: string }> =
-      await Promise.all(
-        cohortIds.map(async (vigilId) => {
-          const lifecycle = this.getLifecycleState(vigilId);
-          if (!lifecycle) {
-            return { error: `Watched vigil record no longer resolves: ${vigilId}` };
-          }
-          const snapshot = lifecycle.completionRecord
-            ? await this.buildCompletedSnapshot(lifecycle)
-            : await this.buildActiveSnapshot(lifecycle);
-          return { lifecycle, snapshot };
-        }),
-      );
+  ): Promise<
+    | { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[]
+    | { error: string }
+  > {
+    const scans: Array<
+      | { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }
+      | { error: string }
+    > = await Promise.all(
+      cohortIds.map(async (vigilId) => {
+        const lifecycle = this.getLifecycleState(vigilId);
+        if (!lifecycle) {
+          return { error: `Watched vigil record no longer resolves: ${vigilId}` };
+        }
+        const record = lifecycle.runtimeRecord;
+        const childState = await this.deps.childSessionReader.readChildSessionState({
+          sessionId: record.sessionId,
+          cwd: record.cwd,
+          sessionDir: record.sessionDir,
+        });
+        const snapshot = lifecycle.completionRecord
+          ? await this.buildCompletedSnapshot(lifecycle, childState)
+          : await this.buildActiveSnapshot(lifecycle, childState);
+        return { lifecycle, snapshot, activity: childState.activity };
+      }),
+    );
 
     const failure = scans.find((scan): scan is { error: string } => "error" in scan);
     if (failure) {
       return failure;
     }
-    return scans as { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot }[];
+    return scans as { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[];
+  }
+
+  private toWaitProgressItem(snapshot: VigilSnapshot, activity: VigilSessionActivity): VigilWaitProgressItem {
+    return {
+      id: snapshot.id,
+      name: snapshot.name,
+      state: snapshot.state,
+      steps: activity.steps,
+      messages: activity.messages,
+      lastActivity: activity.lastActivity,
+      lastActivityTimestamp: activity.lastActivityTimestamp,
+    };
   }
 
   private settledWaitResult(
     startedAt: number,
     scheduler: WaitScheduler,
-    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot }[],
+    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[],
   ): VigilWaitResult {
     return {
       outcome: "settled",
@@ -354,7 +437,7 @@ export class VigilService {
   private timeoutWaitResult(
     startedAt: number,
     scheduler: WaitScheduler,
-    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot }[],
+    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[],
   ): VigilWaitResult {
     return {
       outcome: "timeout",
@@ -366,7 +449,7 @@ export class VigilService {
   private cancelledWaitResult(
     startedAt: number,
     scheduler: WaitScheduler,
-    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot }[],
+    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[],
   ): VigilWaitResult {
     return {
       outcome: "cancelled",
@@ -376,7 +459,7 @@ export class VigilService {
   }
 
   private waitPendingItems(
-    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot }[],
+    scan: { lifecycle: VigilLifecycleState; snapshot: VigilSnapshot; activity: VigilSessionActivity }[],
   ): VigilListItem[] {
     return scan.map(({ snapshot }) => ({
       id: snapshot.id,
@@ -415,14 +498,19 @@ export class VigilService {
     return items;
   }
 
-  private async buildActiveSnapshot(lifecycle: VigilLifecycleState): Promise<VigilSnapshot> {
+  private async buildActiveSnapshot(
+    lifecycle: VigilLifecycleState,
+    childState?: ChildSessionState,
+  ): Promise<VigilSnapshot> {
     const record = lifecycle.runtimeRecord;
-    const { latestResponse, turnComplete, lastConversationTimestamp } =
-      await this.deps.childSessionReader.readChildSessionState({
+    const sessionState =
+      childState ??
+      (await this.deps.childSessionReader.readChildSessionState({
         sessionId: record.sessionId,
         cwd: record.cwd,
         sessionDir: record.sessionDir,
-      });
+      }));
+    const { latestResponse, turnComplete, lastConversationTimestamp } = sessionState;
 
     const alive = this.deps.processRunner.isAlive(record.pid);
     const state = deriveVigilState({
@@ -442,14 +530,20 @@ export class VigilService {
     };
   }
 
-  private async buildCompletedSnapshot(lifecycle: VigilLifecycleState): Promise<VigilSnapshot> {
+  private async buildCompletedSnapshot(
+    lifecycle: VigilLifecycleState,
+    childState?: ChildSessionState,
+  ): Promise<VigilSnapshot> {
     const completion = lifecycle.completionRecord!;
     const record = lifecycle.runtimeRecord;
-    const { latestResponse } = await this.deps.childSessionReader.readChildSessionState({
-      sessionId: record.sessionId,
-      cwd: record.cwd,
-      sessionDir: record.sessionDir,
-    });
+    const sessionState =
+      childState ??
+      (await this.deps.childSessionReader.readChildSessionState({
+        sessionId: record.sessionId,
+        cwd: record.cwd,
+        sessionDir: record.sessionDir,
+      }));
+    const { latestResponse } = sessionState;
 
     return {
       id: record.id,
@@ -467,6 +561,12 @@ export function resolveWaitPolicy(input: WaitInput): VigilWaitPolicy | { error: 
   const timeoutMs = input.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS;
   const initialDelayMs = input.initialDelayMs ?? DEFAULT_WAIT_INITIAL_DELAY_MS;
   const maxDelayMs = input.maxDelayMs ?? DEFAULT_WAIT_MAX_DELAY_MS;
+  const progress = input.progress ?? DEFAULT_WAIT_PROGRESS_MODE;
+  const progressIntervalMs = input.progressIntervalMs ?? DEFAULT_WAIT_PROGRESS_INTERVAL_MS;
+
+  if (progress !== "status" && progress !== "none") {
+    return { error: 'progress must be "status" or "none"' };
+  }
 
   for (const [name, value, maximum] of [
     ["timeoutMs", timeoutMs, MAX_WAIT_TIMEOUT_MS],
@@ -481,7 +581,18 @@ export function resolveWaitPolicy(input: WaitInput): VigilWaitPolicy | { error: 
     return { error: "maxDelayMs must be greater than or equal to initialDelayMs" };
   }
 
-  return { timeoutMs, initialDelayMs, maxDelayMs };
+  if (
+    progress === "status" &&
+    (!Number.isSafeInteger(progressIntervalMs) ||
+      progressIntervalMs <= 0 ||
+      progressIntervalMs > MAX_WAIT_PROGRESS_INTERVAL_MS)
+  ) {
+    return {
+      error: `progressIntervalMs must be a positive safe integer no greater than ${MAX_WAIT_PROGRESS_INTERVAL_MS}`,
+    };
+  }
+
+  return { timeoutMs, initialDelayMs, maxDelayMs, progress, progressIntervalMs };
 }
 
 export function createNodeWaitScheduler(): WaitScheduler {
@@ -628,11 +739,27 @@ export async function findChildSessionPath(
   return match?.path ?? null;
 }
 
+const EMPTY_CHILD_SESSION_STATE: ChildSessionState = {
+  latestResponse: null,
+  turnComplete: false,
+  lastConversationTimestamp: null,
+  activity: {
+    steps: 0,
+    messages: 0,
+    lastActivity: null,
+    lastActivityTimestamp: null,
+  },
+};
+
 export function readChildSessionStateFromFile(sessionFile: string): ChildSessionState {
   const content = readFileSync(sessionFile, "utf8");
   const fileEntries = parseSessionEntries(content);
   const entries = fileEntries.filter((entry) => entry.type !== "session") as SessionEntry[];
-  return extractLatestAssistantState(entries);
+  const assistantState = extractLatestAssistantState(entries);
+  return {
+    ...assistantState,
+    activity: extractSessionActivity(entries),
+  };
 }
 
 export function readLatestAssistantTextFromFile(sessionFile: string): string | null {
@@ -644,7 +771,7 @@ export function createNodeChildSessionReader(): ChildSessionReader {
     async readChildSessionState({ sessionId, cwd, sessionDir }) {
       const sessionPath = await findChildSessionPath(sessionId, cwd, sessionDir);
       if (!sessionPath) {
-        return { latestResponse: null, turnComplete: false, lastConversationTimestamp: null };
+        return EMPTY_CHILD_SESSION_STATE;
       }
       return readChildSessionStateFromFile(sessionPath);
     },
