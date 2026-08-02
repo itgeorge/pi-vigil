@@ -15,6 +15,7 @@ import {
 import type {
   ChildSessionNamer,
   ChildSessionReader,
+  ChildSessionTranscriptReader,
   ChildSessionState,
   ParentLedger,
   ProcessRunner,
@@ -25,6 +26,16 @@ import type {
   WaitScheduler,
 } from "./ports";
 import { extractLatestAssistantState, deriveVigilState, getTurnStartedAt, extractSessionActivity } from "./session-text";
+import {
+  parseChildSessionTranscript,
+  readTranscriptWindow,
+  resolveReadPolicy,
+  resolveSearchPolicy,
+  searchTranscriptEntries,
+  type ChildSessionTranscript,
+  type VigilReadResult,
+  type VigilSearchResult,
+} from "./transcript";
 import {
   boundWaitProgressItems,
   computeNextPollInMs,
@@ -37,6 +48,10 @@ import {
 import {
   createVigilId,
   normalizeVigilName,
+  type ReadInput,
+  type SearchInput,
+  type VigilReadOrError,
+  type VigilSearchOrError,
   type CompleteInput,
   type LaunchInput,
   type SendInput,
@@ -216,6 +231,110 @@ export class VigilService {
     return { vigils: items };
   }
 
+  async search(input: SearchInput): Promise<VigilSearchOrError> {
+    const policy = resolveSearchPolicy(input);
+    if ("error" in policy) {
+      return policy;
+    }
+
+    const candidates = this.resolveDiagnosticCandidates(policy.id, policy.includeCompleted);
+    if ("error" in candidates) {
+      return candidates;
+    }
+
+    const matches: VigilSearchResult["matches"] = [];
+    for (const lifecycle of candidates) {
+      const remaining = policy.maxResults - matches.length;
+      if (remaining <= 0) {
+        break;
+      }
+
+      const transcriptResult = await this.loadChildTranscript(lifecycle);
+      if ("error" in transcriptResult) {
+        return { error: `Child session transcript unavailable for vigil: ${lifecycle.id}` };
+      }
+
+      const snapshot = lifecycle.completionRecord
+        ? await this.buildCompletedSnapshot(lifecycle)
+        : await this.buildActiveSnapshot(lifecycle);
+      const record = lifecycle.runtimeRecord;
+
+      matches.push(
+        ...searchTranscriptEntries(
+          transcriptResult,
+          policy.query,
+          {
+            id: lifecycle.id,
+            sessionId: record.sessionId,
+            name: snapshot.name,
+            state: snapshot.state,
+          },
+          remaining,
+        ),
+      );
+    }
+
+    return { matches };
+  }
+
+  async read(input: ReadInput): Promise<VigilReadOrError> {
+    const policy = resolveReadPolicy(input);
+    if ("error" in policy) {
+      return policy;
+    }
+
+    const lifecycle = this.getLifecycleState(policy.id);
+    if (!lifecycle) {
+      return { error: `Unknown vigil id: ${policy.id}` };
+    }
+
+    if (lifecycle.completionRecord && !policy.includeCompleted) {
+      return {
+        error: `Completed vigil child excluded: ${policy.id} (pass includeCompleted: true)`,
+      };
+    }
+
+    const transcriptResult = await this.loadChildTranscript(lifecycle);
+    if ("error" in transcriptResult) {
+      return { error: `Child session transcript unavailable for vigil: ${policy.id}` };
+    }
+
+    const anchorIndex = transcriptResult.entries.findIndex((entry) => entry.entryId === policy.entryId);
+    if (anchorIndex < 0) {
+      return { error: `Unknown child session entry: ${policy.entryId}` };
+    }
+
+    const window = readTranscriptWindow(transcriptResult, policy.entryId, policy.before, policy.after);
+    if ("error" in window) {
+      return window;
+    }
+
+    const start = Math.max(0, anchorIndex - policy.before);
+    const end = Math.min(transcriptResult.entries.length - 1, anchorIndex + policy.after);
+    const snapshot = lifecycle.completionRecord
+      ? await this.buildCompletedSnapshot(lifecycle)
+      : await this.buildActiveSnapshot(lifecycle);
+    const record = lifecycle.runtimeRecord;
+    const anchor = transcriptResult.entries[anchorIndex]!;
+
+    const result: VigilReadResult = {
+      id: policy.id,
+      sessionId: record.sessionId,
+      name: snapshot.name,
+      state: snapshot.state,
+      anchorEntryId: policy.entryId,
+      anchorParentId: anchor.parentId,
+      requestedBefore: policy.before,
+      requestedAfter: policy.after,
+      effectiveBefore: anchorIndex - start,
+      effectiveAfter: end - anchorIndex,
+      order: "jsonl-append-order",
+      entries: window,
+    };
+
+    return result;
+  }
+
   async wait(
     input: WaitInput,
     signal?: AbortSignal,
@@ -384,6 +503,37 @@ export class VigilService {
       latestResponse: activeSnapshot.latestResponse,
       completedAt,
     };
+  }
+
+  private resolveDiagnosticCandidates(
+    explicitId: string | undefined,
+    includeCompleted: boolean,
+  ): VigilLifecycleState[] | { error: string } {
+    if (explicitId) {
+      const lifecycle = this.getLifecycleState(explicitId);
+      if (!lifecycle) {
+        return { error: `Unknown vigil id: ${explicitId}` };
+      }
+      if (lifecycle.completionRecord && !includeCompleted) {
+        return {
+          error: `Completed vigil child excluded: ${explicitId} (pass includeCompleted: true)`,
+        };
+      }
+      return [lifecycle];
+    }
+
+    return this.deps.parentLedger.listLifecycleStates(includeCompleted);
+  }
+
+  private async loadChildTranscript(
+    lifecycle: VigilLifecycleState,
+  ): Promise<ChildSessionTranscript | { error: string }> {
+    const record = lifecycle.runtimeRecord;
+    return this.deps.childSessionTranscriptReader.readChildTranscript({
+      sessionId: record.sessionId,
+      cwd: record.cwd,
+      sessionDir: record.sessionDir ?? this.deps.sessionDir,
+    });
   }
 
   private async scanWaitCohort(
@@ -773,8 +923,42 @@ export function readChildSessionStateFromFile(sessionFile: string): ChildSession
   };
 }
 
+export function readChildTranscriptFromFile(
+  sessionFile: string,
+): ChildSessionTranscript | { error: string } {
+  try {
+    const content = readFileSync(sessionFile, "utf8");
+    const fileEntries = parseSessionEntries(content);
+    const entries = fileEntries.filter((entry) => entry.type !== "session") as SessionEntry[];
+    return parseChildSessionTranscript(entries);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { error: `Failed to read child session transcript: ${message}` };
+  }
+}
+
 export function readLatestAssistantTextFromFile(sessionFile: string): string | null {
   return readChildSessionStateFromFile(sessionFile).latestResponse;
+}
+
+export function createEmptyChildSessionTranscriptReader(): ChildSessionTranscriptReader {
+  return {
+    async readChildTranscript() {
+      return { entries: [] };
+    },
+  };
+}
+
+export function createNodeChildSessionTranscriptReader(): ChildSessionTranscriptReader {
+  return {
+    async readChildTranscript({ sessionId, cwd, sessionDir }) {
+      const sessionPath = await findChildSessionPath(sessionId, cwd, sessionDir);
+      if (!sessionPath) {
+        return { error: `Child session not found: ${sessionId}` };
+      }
+      return readChildTranscriptFromFile(sessionPath);
+    },
+  };
 }
 
 export function createNodeChildSessionReader(): ChildSessionReader {
@@ -865,6 +1049,7 @@ export function createVigilServiceForContext(options: {
   sessionDir?: string;
   processRunner?: ProcessRunner;
   childSessionReader?: ChildSessionReader;
+  childSessionTranscriptReader?: ChildSessionTranscriptReader;
   childSessionNamer?: ChildSessionNamer;
   reapTimeoutMs?: number;
   waitScheduler?: WaitScheduler;
@@ -872,6 +1057,8 @@ export function createVigilServiceForContext(options: {
   return new VigilService({
     processRunner: options.processRunner ?? createNodeProcessRunner(),
     childSessionReader: options.childSessionReader ?? createNodeChildSessionReader(),
+    childSessionTranscriptReader:
+      options.childSessionTranscriptReader ?? createNodeChildSessionTranscriptReader(),
     childSessionNamer: options.childSessionNamer ?? createNodeChildSessionNamer(),
     parentLedger: createSessionParentLedger(options.sessionManager, options.appendEntry),
     sessionDir: options.sessionDir,

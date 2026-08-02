@@ -1,8 +1,15 @@
-import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, WaitScheduler } from "./ports.ts";
+import type {
+  ChildSessionNamer,
+  ChildSessionReader,
+  ChildSessionTranscriptReader,
+  ProcessRunner,
+  WaitScheduler,
+} from "./ports.ts";
 
 export interface VigilRuntimeOverrides {
   processRunner?: ProcessRunner;
   childSessionReader?: ChildSessionReader;
+  childSessionTranscriptReader?: ChildSessionTranscriptReader;
   childSessionNamer?: ChildSessionNamer;
   waitScheduler?: WaitScheduler;
   sessionDir?: string;

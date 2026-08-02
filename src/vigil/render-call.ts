@@ -13,12 +13,17 @@ export const MAX_CALL_FIELD_CHARS = 120;
 export const VIGIL_SHORT_ID_HEX_LENGTH = 7;
 
 export interface VigilCallArgs {
-  action?: "launch" | "poll" | "send" | "list" | "complete" | "wait";
+  action?: "launch" | "poll" | "send" | "list" | "complete" | "wait" | "search" | "read";
   name?: string;
   message?: string;
   model?: string;
   cwd?: string;
   id?: string;
+  query?: string;
+  entryId?: string;
+  before?: number;
+  after?: number;
+  maxResults?: number;
   includeCompleted?: boolean;
   timeoutMs?: number;
   initialDelayMs?: number;
@@ -212,6 +217,27 @@ export function formatVigilCallSummary(
       segments.push(`progress ${progress}`);
       break;
     }
+    case "search": {
+      const excerpt = formatQuotedExcerpt(args.query) ?? '""';
+      segments.push(excerpt);
+      if (args.id?.trim()) {
+        segments.push(formatIdIdentity(args.id, lookup));
+      } else {
+        segments.push(args.includeCompleted ? "including completed" : "active");
+      }
+      break;
+    }
+    case "read": {
+      segments.push(formatIdIdentity(args.id, lookup));
+      const entryId = args.entryId?.trim() ? sanitizeCallField(args.entryId) || "entry" : "entry";
+      const before =
+        typeof args.before === "number" && Number.isFinite(args.before) ? args.before : 1;
+      const after =
+        typeof args.after === "number" && Number.isFinite(args.after) ? args.after : 1;
+      segments.push(`entry ${entryId}`);
+      segments.push(`context ${before}/${after}`);
+      break;
+    }
     default:
       break;
   }
@@ -303,6 +329,29 @@ export function renderVigilCallText(
           ` wait · ${formatWaitTimeoutLabel(timeoutMs)} · progress ${progress}`,
         ),
       );
+    } else if (summary.startsWith("search")) {
+      const excerpt = formatQuotedExcerpt(args.query) ?? '""';
+      parts.push(theme.fg("muted", " search · "));
+      parts.push(theme.fg("text", excerpt));
+      if (args.id?.trim()) {
+        parts.push(theme.fg("dim", ` · ${formatIdIdentity(args.id, lookup)}`));
+      } else {
+        parts.push(
+          theme.fg(
+            "dim",
+            args.includeCompleted ? " · including completed" : " · active",
+          ),
+        );
+      }
+    } else if (summary.startsWith("read")) {
+      parts.push(theme.fg("muted", " read · "));
+      parts.push(theme.fg("text", formatIdIdentity(args.id, lookup)));
+      const entryId = args.entryId?.trim() ? sanitizeCallField(args.entryId) || "entry" : "entry";
+      const before =
+        typeof args.before === "number" && Number.isFinite(args.before) ? args.before : 1;
+      const after =
+        typeof args.after === "number" && Number.isFinite(args.after) ? args.after : 1;
+      parts.push(theme.fg("dim", ` · entry ${entryId} · context ${before}/${after}`));
     } else {
       appendThemedSegment(parts, theme, "muted", ` ${summary}`);
     }

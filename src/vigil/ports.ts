@@ -1,4 +1,5 @@
 import type { VigilLifecycleState } from "./lifecycle";
+import type { ChildSessionTranscript } from "./transcript";
 import type { VigilSessionActivity } from "./session-text";
 import type {
   VigilCompletionRecord,
@@ -42,6 +43,14 @@ export interface ChildSessionReader {
   }): Promise<ChildSessionState>;
 }
 
+export interface ChildSessionTranscriptReader {
+  readChildTranscript(input: {
+    sessionId: string;
+    cwd: string;
+    sessionDir?: string;
+  }): Promise<ChildSessionTranscript | { error: string }>;
+}
+
 export interface WaitScheduler {
   now(): number;
   sleep(ms: number, signal?: AbortSignal): Promise<"elapsed" | "cancelled">;
@@ -66,6 +75,7 @@ export interface ParentLedger {
 export interface VigilServiceDeps {
   processRunner: ProcessRunner;
   childSessionReader: ChildSessionReader;
+  childSessionTranscriptReader: ChildSessionTranscriptReader;
   childSessionNamer: ChildSessionNamer;
   parentLedger: ParentLedger;
   createId?: () => string;

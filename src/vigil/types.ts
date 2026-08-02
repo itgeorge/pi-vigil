@@ -97,6 +97,30 @@ export interface CompleteInput {
   parentCwd: string;
 }
 
+export interface SearchInput {
+  query: string;
+  id?: string;
+  includeCompleted?: boolean;
+  maxResults?: number;
+}
+
+export interface ReadInput {
+  id: string;
+  entryId: string;
+  before?: number;
+  after?: number;
+  includeCompleted?: boolean;
+}
+
+export type {
+  VigilReadContextEntry,
+  VigilReadResult,
+  VigilSearchMatch,
+  VigilSearchResult,
+} from "./transcript";
+
+export { formatReadText, formatSearchText } from "./transcript";
+
 export interface VigilError {
   error: string;
 }
@@ -104,6 +128,9 @@ export interface VigilError {
 export type VigilResult = VigilSnapshot | VigilError;
 export type VigilListOrError = VigilListResult | VigilError;
 export type VigilWaitOrError = VigilWaitResult | VigilError;
+
+export type VigilSearchOrError = import("./transcript").VigilSearchResult | VigilError;
+export type VigilReadOrError = import("./transcript").VigilReadResult | VigilError;
 
 export function isVigilError(result: unknown): result is VigilError {
   return typeof result === "object" && result !== null && "error" in result;

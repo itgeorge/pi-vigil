@@ -15,10 +15,14 @@ import {
 } from "./vigil/render-call";
 import {
   formatListText,
+  formatReadText,
+  formatSearchText,
   formatSnapshotText,
   formatWaitText,
   isVigilError,
   type VigilListResult,
+  type VigilReadResult,
+  type VigilSearchResult,
   type VigilSnapshot,
 } from "./vigil/types";
 import { formatWaitProgressText } from "./vigil/wait-progress";
@@ -43,6 +47,7 @@ function createService(ctx: ExtensionContext) {
     sessionDir: overrides.sessionDir ?? getVigilSessionDir(),
     processRunner: overrides.processRunner,
     childSessionReader: overrides.childSessionReader,
+    childSessionTranscriptReader: overrides.childSessionTranscriptReader,
     childSessionNamer: overrides.childSessionNamer,
     waitScheduler: overrides.waitScheduler,
   });
@@ -52,11 +57,11 @@ export const vigilTool = defineTool({
   name: "vigil",
   label: "Vigil",
   description:
-    "Launch, poll, continue, list, complete, or foreground-wait on detached Pi child sessions. Wait observes the current active cohort with bounded polling and never changes child state.",
+    "Launch, poll, continue, list, complete, foreground-wait, search, or read detached Pi child sessions. Wait observes the current active cohort with bounded polling and never changes child state.",
   parameters: Type.Object({
-    action: StringEnum(["launch", "poll", "send", "list", "complete", "wait"], {
+    action: StringEnum(["launch", "poll", "send", "list", "complete", "wait", "search", "read"], {
       description:
-        "launch starts a detached child session; poll reads status; send continues a waiting child; list returns the parent working set; complete retires a waiting child; wait boundedly observes the initial active cohort",
+        "launch starts a detached child session; poll reads status; send continues a waiting child; list returns the parent working set; complete retires a waiting child; wait boundedly observes the initial active cohort; search finds literal matches in child transcripts; read inspects a stable child entry with nearby JSONL context",
     }),
     name: Type.Optional(
       Type.String({
@@ -80,12 +85,39 @@ export const vigilTool = defineTool({
     ),
     id: Type.Optional(
       Type.String({
-        description: "Vigil id returned by launch (required for poll, send, and complete)",
+        description:
+          "Vigil id returned by launch (required for poll, send, complete, and read; optional search filter)",
+      }),
+    ),
+    query: Type.Optional(
+      Type.String({
+        description: "Case-insensitive literal substring to search child transcripts (required for search)",
+      }),
+    ),
+    entryId: Type.Optional(
+      Type.String({
+        description: "Stable Pi child-session entry id from search (required for read)",
+      }),
+    ),
+    before: Type.Optional(
+      Type.Number({
+        description: "Nearby JSONL entries before the anchor entry for read (default 1, maximum 10)",
+      }),
+    ),
+    after: Type.Optional(
+      Type.Number({
+        description: "Nearby JSONL entries after the anchor entry for read (default 1, maximum 10)",
+      }),
+    ),
+    maxResults: Type.Optional(
+      Type.Number({
+        description: "Maximum search matches to return (default 20, maximum 50)",
       }),
     ),
     includeCompleted: Type.Optional(
       Type.Boolean({
-        description: "When listing, include completed children (default false)",
+        description:
+          "When listing or searching, include completed children (default false). Required to search/read an explicitly completed child.",
       }),
     ),
     timeoutMs: Type.Optional(Type.Number({ description: "Wait timeout in milliseconds (default 60000, maximum 300000)" })),
@@ -265,6 +297,62 @@ export const vigilTool = defineTool({
       }
 
       return snapshotResult(result);
+    }
+
+    if (params.action === "search") {
+      const result = await service.search({
+        query: params.query ?? "",
+        id: params.id,
+        includeCompleted: params.includeCompleted,
+        maxResults: params.maxResults,
+      });
+      if (isVigilError(result)) {
+        return {
+          content: [{ type: "text" as const, text: result.error }],
+          details: result,
+          isError: true,
+        };
+      }
+      return {
+        content: [{ type: "text" as const, text: formatSearchText(result) }],
+        details: result as VigilSearchResult,
+      };
+    }
+
+    if (params.action === "read") {
+      if (!params.id) {
+        return {
+          content: [{ type: "text" as const, text: "read requires id" }],
+          details: { error: "read requires id" },
+          isError: true,
+        };
+      }
+      if (!params.entryId) {
+        return {
+          content: [{ type: "text" as const, text: "read requires entryId" }],
+          details: { error: "read requires entryId" },
+          isError: true,
+        };
+      }
+
+      const result = await service.read({
+        id: params.id,
+        entryId: params.entryId,
+        before: params.before,
+        after: params.after,
+        includeCompleted: params.includeCompleted,
+      });
+      if (isVigilError(result)) {
+        return {
+          content: [{ type: "text" as const, text: result.error }],
+          details: result,
+          isError: true,
+        };
+      }
+      return {
+        content: [{ type: "text" as const, text: formatReadText(result) }],
+        details: result as VigilReadResult,
+      };
     }
 
     if (!params.id) {
