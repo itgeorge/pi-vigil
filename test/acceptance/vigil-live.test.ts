@@ -5,14 +5,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { resetVigilRuntimeOverrides } from "../../src/vigil/runtime-overrides";
 import { findChildSessionPath, readLatestAssistantTextFromFile } from "../../src/vigil/node-runtime";
-import type {
-  VigilLaunchRecord,
-  VigilListResult,
-  VigilReadResult,
-  VigilSearchResult,
-  VigilSnapshot,
-  VigilTurnRecord,
-  VigilWaitResult,
+import {
+  DEFAULT_LIST_MAX_RESULTS,
+  type VigilLaunchRecord,
+  type VigilListResult,
+  type VigilReadResult,
+  type VigilSearchResult,
+  type VigilSnapshot,
+  type VigilTurnRecord,
+  type VigilWaitResult,
 } from "../../src/vigil/types";
 import {
   getAcceptanceTimeoutMs,
@@ -21,6 +22,8 @@ import {
   verifyPiAuthentication,
 } from "./live-prereq";
 
+const SYNTHETIC_PAGINATION_PID_BASE = 9_000_000;
+
 function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -28,6 +31,31 @@ function isProcessAlive(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+function appendSyntheticPaginationLaunches(
+  sessionManager: { appendCustomEntry: (customType: string, data: unknown) => void },
+  options: { cwd: string; sessionDir: string; count: number; runId: string },
+): VigilLaunchRecord[] {
+  const records: VigilLaunchRecord[] = Array.from({ length: options.count }, (_, index) => {
+    const ordinal = index + 1;
+    const id = `vigil-pag-${options.runId}-${String(ordinal).padStart(3, "0")}`;
+    return {
+      id,
+      sessionId: id,
+      name: `Synthetic pagination task ${ordinal}`,
+      pid: SYNTHETIC_PAGINATION_PID_BASE + ordinal,
+      cwd: options.cwd,
+      sessionDir: options.sessionDir,
+      launchedAt: new Date(Date.UTC(2026, 7, 2, 12, index)).toISOString(),
+    };
+  });
+
+  for (const record of records) {
+    sessionManager.appendCustomEntry("vigil-launch", record);
+  }
+
+  return records;
 }
 
 describe("live vigil acceptance", () => {
@@ -122,6 +150,27 @@ describe("live vigil acceptance", () => {
     const firstWaiting = firstWait.outcome === "settled" ? firstWait.settled.find((snapshot) => snapshot.id === launched.id) : undefined;
     expect(firstWaiting?.state).toBe("waiting");
     expect(firstWaiting?.latestResponse).toContain(firstMarker);
+
+    const targetedWaitingResult = await harness.execute({
+      action: "wait",
+      id: launched.id,
+      timeoutMs: getAcceptanceTimeoutMs(),
+      initialDelayMs: 250,
+      maxDelayMs: 5_000,
+    });
+    expect((targetedWaitingResult as { isError?: boolean }).isError).toBeFalsy();
+    const targetedWaiting = targetedWaitingResult.details as VigilWaitResult;
+    expect(targetedWaiting.outcome).toBe("settled");
+    expect(targetedWaiting.outcome === "settled" && targetedWaiting.waitedMs).toBeLessThanOrEqual(250);
+    if (targetedWaiting.outcome === "settled") {
+      expect(targetedWaiting.settled).toHaveLength(1);
+      expect(targetedWaiting.settled[0]?.id).toBe(launched.id);
+      expect(targetedWaiting.settled[0]?.state).toBe("waiting");
+      expect(targetedWaiting.settled[0]?.latestResponse).toContain(firstMarker);
+    }
+    const targetedWaitingText =
+      targetedWaitingResult.content[0]?.type === "text" ? targetedWaitingResult.content[0].text : "";
+    expect(targetedWaitingText).toContain(firstMarker);
 
     const launchPid = launchRecord.pid;
     const wasAliveBeforeSend = isProcessAlive(launchPid);
@@ -236,6 +285,21 @@ describe("live vigil acceptance", () => {
 
     const polledCompleted = await harness.execute({ action: "poll", id: launched.id });
     expect((polledCompleted.details as VigilSnapshot).state).toBe("completed");
+
+    const targetedCompletedResult = await harness.execute({ action: "wait", id: launched.id });
+    expect((targetedCompletedResult as { isError?: boolean }).isError).toBeFalsy();
+    const targetedCompleted = targetedCompletedResult.details as VigilWaitResult;
+    expect(targetedCompleted.outcome).toBe("settled");
+    expect(targetedCompleted.outcome === "settled" && targetedCompleted.waitedMs).toBeLessThanOrEqual(250);
+    if (targetedCompleted.outcome === "settled") {
+      expect(targetedCompleted.settled).toHaveLength(1);
+      expect(targetedCompleted.settled[0]?.id).toBe(launched.id);
+      expect(targetedCompleted.settled[0]?.state).toBe("completed");
+      expect(targetedCompleted.settled[0]?.latestResponse).toContain(secondMarker);
+    }
+    const targetedCompletedText =
+      targetedCompletedResult.content[0]?.type === "text" ? targetedCompletedResult.content[0].text : "";
+    expect(targetedCompletedText).toContain(secondMarker);
 
     const sendAfterComplete = await harness.execute({
       action: "send",
@@ -386,4 +450,77 @@ describe("live vigil acceptance", () => {
       childTextBeforeComplete.split(syntheticSubId).length,
     );
   }, getAcceptanceTimeoutMs() + 120_000);
+
+  it("paginates list results with synthetic lifecycle records without launching real children", async () => {
+    const { createVigilTestHarness } = await import("../helpers/vigil-test-harness");
+
+    const runId = crypto.randomUUID();
+    const harness = await createVigilTestHarness({ cwd: tempCwd });
+    const syntheticRecords = appendSyntheticPaginationLaunches(harness.sessionManager, {
+      cwd: tempCwd,
+      sessionDir,
+      count: 25,
+      runId,
+    });
+
+    const firstPageResult = await harness.execute({ action: "list" });
+    expect((firstPageResult as { isError?: boolean }).isError).toBeFalsy();
+    const firstPage = firstPageResult.details as VigilListResult;
+    expect(firstPage.vigils).toHaveLength(DEFAULT_LIST_MAX_RESULTS);
+    expect(firstPage.omittedCount).toBe(5);
+    expect(firstPage.nextSkipToId).toBe(syntheticRecords[4]?.id);
+    expect(firstPage.vigils.map((item) => item.id)).toEqual(
+      syntheticRecords
+        .slice()
+        .reverse()
+        .slice(0, DEFAULT_LIST_MAX_RESULTS)
+        .map((record) => record.id),
+    );
+    for (const item of firstPage.vigils) {
+      expect(item).toEqual(
+        expect.objectContaining({
+          id: expect.stringMatching(/^vigil-pag-/),
+          sessionId: expect.any(String),
+          name: expect.stringMatching(/^Synthetic pagination task /),
+          cwd: tempCwd,
+          state: "waiting",
+        }),
+      );
+      expect(item).not.toHaveProperty("latestResponse");
+      expect(item.directSubagents).toEqual(
+        expect.objectContaining({
+          inspection: "unavailable",
+          error: "Child session ledger unavailable for direct subagent inspection",
+        }),
+      );
+    }
+
+    const firstPageText = firstPageResult.content[0]?.type === "text" ? firstPageResult.content[0].text : "";
+    expect(firstPageText).toContain("5 more children omitted.");
+    expect(firstPageText).toContain(
+      "Use maxResults to expand this page or skipToId to retrieve older children.",
+    );
+    expect(firstPageText).toContain(`next skipToId: ${syntheticRecords[4]?.id}`);
+
+    const secondPageResult = await harness.execute({ action: "list", skipToId: firstPage.nextSkipToId });
+    expect((secondPageResult as { isError?: boolean }).isError).toBeFalsy();
+    const secondPage = secondPageResult.details as VigilListResult;
+    expect(secondPage.vigils.map((item) => item.id)).toEqual(
+      syntheticRecords
+        .slice(0, 5)
+        .reverse()
+        .map((record) => record.id),
+    );
+    expect(secondPage.omittedCount).toBe(0);
+    expect(secondPage.nextSkipToId).toBeUndefined();
+
+    const firstIds = new Set(firstPage.vigils.map((item) => item.id));
+    for (const item of secondPage.vigils) {
+      expect(firstIds.has(item.id)).toBe(false);
+    }
+
+    const secondPageText = secondPageResult.content[0]?.type === "text" ? secondPageResult.content[0].text : "";
+    expect(secondPageText).not.toContain("more children omitted");
+    expect(secondPageText).toContain("Synthetic pagination task 1");
+  }, 30_000);
 });
