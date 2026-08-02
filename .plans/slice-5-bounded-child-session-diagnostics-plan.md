@@ -268,7 +268,7 @@ Exact DTO/format names can improve during implementation, but result identity, b
 
 - [x] Tool arguments: full deterministic valid JSON match corpus preserved for transcript matching (including markers beyond 2,000 characters); bounded display excerpts are separately truncated and not claimed as valid JSON.
 - [x] Terminal safety: diagnostic output escapes tabs, CR, DEL/C1, and ESC visibly; only LF newlines are preserved deliberately in multiline read detail.
-- [x] Compact call rendering: `sanitizeCallField`/`formatVigilShortId` neutralize terminal controls for search/read query/IDs and other user-controlled compact fields; expanded argument rendering relies on JSON serialization.
+- [x] Compact call rendering: `sanitizeCallField`/`formatVigilShortId` neutralize terminal controls for search/read query/IDs and other user-controlled compact fields; expanded pretty JSON is additionally terminal-control escaped while preserving LF indentation and JSON validity.
 - [x] Run `npm test`, `npm run typecheck`, opt-out and live acceptance.
 
 ## Future work (not implementation work for this handoff)
