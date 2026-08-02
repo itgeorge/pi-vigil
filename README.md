@@ -15,7 +15,7 @@ With Vigil, each of your Pi sessions can:
 - List running/waiting/completed subagents, search, and read through their sessions
 - And, yes, each launched subagent can launch it's own subagents
 
-Each launched agent gets its own Pi session *(unless you say otherwise)*. 
+Each launched agent gets its own Pi session.
 You can use Pi `/resume` to manually review or continue any of those agent sessions.
 All orchestration data lives inside the sessions.
 
