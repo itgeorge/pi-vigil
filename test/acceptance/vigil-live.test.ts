@@ -335,7 +335,7 @@ describe("live vigil acceptance", () => {
     const listed = listResult.details as VigilListResult;
     const listedChild = listed.vigils.find((item) => item.id === launched.id);
     expect(listedChild?.directSubagents).toEqual(
-      expect.objectContaining({ inspection: "available", incomplete: 1, waiting: 1 }),
+      expect.objectContaining({ inspection: "available", incomplete: 1, unknown: 1, waiting: 0 }),
     );
     expect((listResult.content[0] as { text?: string }).text).toContain("Synthetic nested task");
 
@@ -350,7 +350,7 @@ describe("live vigil acceptance", () => {
     expect(waitWithSubsDetails.outcome).toBe("settled");
     if (waitWithSubsDetails.outcome === "settled") {
       expect(waitWithSubsDetails.settled.find((snapshot) => snapshot.id === launched.id)?.directSubagents).toEqual(
-        expect.objectContaining({ inspection: "available", incomplete: 1, waiting: 1 }),
+        expect.objectContaining({ inspection: "available", incomplete: 1, unknown: 1, waiting: 0 }),
       );
     }
 
@@ -372,6 +372,10 @@ describe("live vigil acceptance", () => {
     const childTextAfterComplete = readFileSync(childSessionPath!, "utf8");
     expect(childTextAfterComplete).toContain("Synthetic nested task");
     expect(childTextAfterComplete).toContain(syntheticSubId);
-    expect(childTextAfterComplete).toBe(childTextBeforeComplete);
+    // Parent completion appends its own session-info rename; its synthetic direct-child ledger remains unchanged.
+    expect(childTextAfterComplete).not.toBe(childTextBeforeComplete);
+    expect(childTextAfterComplete.split(syntheticSubId).length).toBe(
+      childTextBeforeComplete.split(syntheticSubId).length,
+    );
   }, getAcceptanceTimeoutMs() + 120_000);
 });
