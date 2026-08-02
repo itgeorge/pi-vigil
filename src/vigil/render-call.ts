@@ -142,6 +142,24 @@ function formatModelIndicator(model: string | undefined, fallback?: string): str
   return `model ${value}`;
 }
 
+export function formatVigilCallExpandedArgs(args: VigilCallArgs): string {
+  try {
+    return JSON.stringify(args, null, 2);
+  } catch {
+    return "{}";
+  }
+}
+
+function resolveTextComponent(lastComponent?: Component): Text {
+  if (
+    lastComponent &&
+    typeof (lastComponent as { setText?: unknown }).setText === "function"
+  ) {
+    return lastComponent as Text;
+  }
+  return new Text("", 0, 0);
+}
+
 export function formatVigilCallSummary(
   args: VigilCallArgs,
   lookup: VigilDisplayNameLookup | ((id: string) => string | undefined) = new Map(),
@@ -213,13 +231,18 @@ function appendThemedSegment(
   parts.push(theme.fg(color, text));
 }
 
+export interface VigilCallRenderContext {
+  lastComponent?: Component;
+  expanded?: boolean;
+}
+
 export function renderVigilCallText(
   args: VigilCallArgs,
   theme: Theme,
   lookup: VigilDisplayNameLookup | ((id: string) => string | undefined) = new Map(),
-  lastComponent?: Component,
+  renderContext: VigilCallRenderContext = {},
 ): Text {
-  const text = (lastComponent as Text | undefined) ?? new Text("", 0, 0);
+  const text = resolveTextComponent(renderContext.lastComponent);
 
   try {
     const summary = formatVigilCallSummary(args, lookup);
@@ -284,14 +307,21 @@ export function renderVigilCallText(
       appendThemedSegment(parts, theme, "muted", ` ${summary}`);
     }
 
-    text.setText(parts.join(""));
+    let rendered = parts.join("");
+    if (renderContext.expanded) {
+      rendered += `\n\n${formatVigilCallExpandedArgs(args)}`;
+    }
+    text.setText(rendered);
     return text;
   } catch {
+    let fallback = "vigil";
     if (theme?.fg && theme?.bold) {
-      text.setText(theme.fg("toolTitle", theme.bold("vigil")));
-    } else {
-      text.setText("vigil");
+      fallback = theme.fg("toolTitle", theme.bold("vigil"));
     }
+    if (renderContext.expanded) {
+      fallback += `\n\n${formatVigilCallExpandedArgs(args)}`;
+    }
+    text.setText(fallback);
     return text;
   }
 }

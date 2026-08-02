@@ -139,6 +139,7 @@ Rules:
 
 - 2026-08-02: Plan created after Slice 4.5 acceptance. User approved names plus short IDs for ID-addressed actions, bounded send-message excerpts, no launch-prompt excerpt, and model display on every launch / supplied-model sends. No implementation has started.
 - 2026-08-02: Implemented `src/vigil/render-call.ts` (`buildVigilDisplayNameIndex`, `formatVigilShortId`, `formatVigilCallSummary`, `renderVigilCallText`) and wired `renderCall` plus session-scoped cache refresh in `src/index.ts`. Added `test/unit/vigil/render-call.test.ts`, extended adapter/harness coverage, and README interactive-row notes.
+- 2026-08-02: Review-correction pass: `@earendil-works/pi-tui` promoted to peerDependency; expanded rows append full JSON args; robust `lastComponent` fallback.
 
 ## Deviations
 
@@ -150,7 +151,9 @@ Rules:
 - Short-ID behavior is covered in `formatVigilShortId` unit tests.
 - Branch isolation uses `SessionManager.branch()` plus `session_tree` refresh in render integration tests.
 - Rendering side-effect freedom is asserted by comparing `capturedEntries` length before/after `renderCall`.
-- `@earendil-works/pi-tui` added as a devDependency for `Text` imports in tests/implementation.
+- `@earendil-works/pi-tui` is declared as a runtime peer dependency (`>=0.75.0`) with a matching devDependency for local tests/typecheck.
+- Expanded tool rows append pretty-printed full arguments via `formatVigilCallExpandedArgs`; collapsed compact lines are unchanged.
+- `lastComponent` reuse checks for `setText` before reusing; otherwise a fresh `Text` component is allocated.
 
 ## Future work (explicitly out of scope)
 

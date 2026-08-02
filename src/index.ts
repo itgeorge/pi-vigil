@@ -110,7 +110,10 @@ export const vigilTool = defineTool({
       args as VigilCallArgs,
       theme,
       vigilDisplayNameCache.lookup(),
-      context.lastComponent,
+      {
+        lastComponent: context.lastComponent,
+        expanded: context.expanded,
+      },
     );
   },
 

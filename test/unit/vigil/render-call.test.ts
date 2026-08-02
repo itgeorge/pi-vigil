@@ -3,6 +3,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import {
   buildVigilDisplayNameIndex,
+  formatVigilCallExpandedArgs,
   formatVigilCallSummary,
   formatVigilShortId,
   renderVigilCallText,
@@ -28,17 +29,23 @@ function plainSummary(args: VigilCallArgs, entries: ReturnType<SessionManager["g
   return formatVigilCallSummary(args, lookupFrom(entries));
 }
 
-function renderPlainText(args: VigilCallArgs, entries: ReturnType<SessionManager["getBranch"]> = []) {
-  const component = renderVigilCallText(args, testTheme, lookupFrom(entries));
+function renderPlainText(
+  args: VigilCallArgs,
+  entries: ReturnType<SessionManager["getBranch"]> = [],
+  renderContext: { expanded?: boolean; lastComponent?: unknown } = {},
+) {
+  const component = renderVigilCallText(args, testTheme, lookupFrom(entries), renderContext as never);
   return stripAnsi(component.render(120).join("\n").trim());
 }
 
 function renderHarnessCall(
   harness: Awaited<ReturnType<typeof createVigilTestHarness>>,
   args: VigilCallArgs,
+  renderContext: { expanded?: boolean; lastComponent?: unknown } = {},
 ) {
   const component = harness.tool.renderCall!(args, testTheme, {
-    lastComponent: undefined,
+    lastComponent: renderContext.lastComponent,
+    expanded: renderContext.expanded ?? false,
     args,
   } as never);
   return stripAnsi(component.render(120).join("\n").trim());
@@ -226,6 +233,26 @@ describe("formatVigilCallSummary", () => {
   });
 });
 
+describe("formatVigilCallExpandedArgs", () => {
+  it("pretty-prints the full argument object", () => {
+    expect(
+      formatVigilCallExpandedArgs({
+        action: "launch",
+        name: "Task",
+        message: "Full prompt",
+      }),
+    ).toBe(
+      [
+        "{",
+        '  "action": "launch",',
+        '  "name": "Task",',
+        '  "message": "Full prompt"',
+        "}",
+      ].join("\n"),
+    );
+  });
+});
+
 describe("renderVigilCallText", () => {
   it("styles the vigil title and reuses the last Text component", () => {
     const first = renderVigilCallText(
@@ -239,7 +266,7 @@ describe("renderVigilCallText", () => {
       { action: "launch", name: "Task", message: "go", model: "openai/gpt" },
       testTheme,
       new Map(),
-      first,
+      { lastComponent: first },
     );
     expect(second).toBe(first);
 
@@ -252,6 +279,46 @@ describe("renderVigilCallText", () => {
     const rendered = renderPlainText({ action: "launch" } as VigilCallArgs);
     expect(rendered).toContain("vigil");
     expect(rendered).toContain("launch");
+  });
+
+  it("appends full arguments when expanded without changing the collapsed line", () => {
+    const args: VigilCallArgs = {
+      action: "launch",
+      name: "Slice 4.5 implementation",
+      message: "Implement the reviewer feedback in full.",
+      model: "cursor/composer-2.5-fast",
+    };
+
+    const collapsed = renderPlainText(args);
+    expect(collapsed).toBe("vigil launch · Slice 4.5 implementation · model cursor/composer-2.5-fast");
+    expect(collapsed).not.toContain("Implement the reviewer feedback");
+
+    const expanded = renderPlainText(args, [], { expanded: true });
+    expect(expanded.startsWith(collapsed)).toBe(true);
+    expect(expanded).toContain('"message": "Implement the reviewer feedback in full."');
+    expect(expanded).toContain('"model": "cursor/composer-2.5-fast"');
+  });
+
+  it("reuses a Text lastComponent but falls back when setText is unavailable", () => {
+    const textComponent = new Text("", 0, 0);
+    const reused = renderVigilCallText(
+      { action: "list" },
+      testTheme,
+      new Map(),
+      { lastComponent: textComponent },
+    );
+    expect(reused).toBe(textComponent);
+
+    const foreignComponent = { render: () => ["foreign"] };
+    const fallback = renderVigilCallText(
+      { action: "list", includeCompleted: true },
+      testTheme,
+      new Map(),
+      { lastComponent: foreignComponent as never },
+    );
+    expect(fallback).toBeInstanceOf(Text);
+    expect(fallback).not.toBe(foreignComponent);
+    expect(stripAnsi(fallback.render(120).join("\n"))).toContain("including completed");
   });
 });
 
@@ -308,6 +375,23 @@ describe("vigil renderCall integration", () => {
     const branchA = renderHarnessCall(harness, { action: "poll", id: "vigil-branch-a" });
     expect(branchA).toContain("Branch A child");
     expect(branchA).not.toContain("Branch B child");
+  });
+
+  it("shows full tool arguments through renderCall when expanded", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+    const args: VigilCallArgs = {
+      action: "launch",
+      name: "Hidden launch name",
+      message: "Full launch prompt body",
+      model: "cursor/composer-2.5-fast",
+    };
+
+    const collapsed = renderHarnessCall(harness, args, { expanded: false });
+    expect(collapsed).not.toContain("Full launch prompt body");
+
+    const expanded = renderHarnessCall(harness, args, { expanded: true });
+    expect(expanded).toContain('"message": "Full launch prompt body"');
+    expect(expanded).toContain('"action": "launch"');
   });
 
   it("does not append ledger entries or execute tool services when rendering", async () => {
