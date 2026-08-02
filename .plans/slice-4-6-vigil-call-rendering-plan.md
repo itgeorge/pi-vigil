@@ -53,8 +53,8 @@ Rules:
 
 ## Todos
 
-- [ ] Read current `src/index.ts`, lifecycle reconstruction, extension-adapter harness/tests, accepted Slice 4/4.5 plans, and Pi custom-tool rendering documentation before editing.
-- [ ] Add focused failing tests for the `renderCall` output (render the returned component with a deterministic test theme/width or a small pure formatter seam):
+- [x] Read current `src/index.ts`, lifecycle reconstruction, extension-adapter harness/tests, accepted Slice 4/4.5 plans, and Pi custom-tool rendering documentation before editing.
+- [x] Add focused failing tests for the `renderCall` output (render the returned component with a deterministic test theme/width or a small pure formatter seam):
   - `launch` renders name and an explicitly supplied model;
   - `launch` with omitted model renders `model Pi default`, not the parent model or an invented child model;
   - `poll`, `send`, and `complete` render the lifecycle-reconstructed display name plus short ID;
@@ -63,13 +63,14 @@ Rules:
   - `wait` renders its default/explicit timeout and progress mode concisely;
   - unknown/malformed IDs fall back safely without error;
   - long/newline-containing name/message/model/ID values remain a bounded single line.
-- [ ] Add a failing adapter/lifecycle integration test proving the cache is hydrated on resumed session state and rebuilt on a branch/tree change, so a renderer does not leak a name from another branch/session.
-- [ ] Add a failing test proving the rendering layer neither appends entries nor calls child/session/process services.
+- [x] Add a failing adapter/lifecycle integration test proving the cache is hydrated on resumed session state and rebuilt on a branch/tree change, so a renderer does not leak a name from another branch/session.
+- [x] Add a failing test proving the rendering layer neither appends entries nor calls child/session/process services.
 
 ## Agent notes / assumptions
 
 - Prefer direct observable rendered text and lifecycle-driven cache behavior. Do not assert private map mutation sequences.
 - Keep TUI styling assertions minimal; validate semantic text, safe output, and use of expected theme categories where practical.
+- Implemented via `test/unit/vigil/render-call.test.ts` (pure formatter + themed render + integration) and an adapter test for post-`launch` cache refresh.
 
 ---
 
@@ -77,20 +78,21 @@ Rules:
 
 ## Todos
 
-- [ ] Add a narrowly scoped renderer/display helper, with names such as `VigilDisplayNameIndex`, `buildVigilDisplayNameIndex`, or `formatVigilCallText`. Exact structure may evolve, but separate pure formatting from extension event wiring.
-- [ ] Reuse `reconstructVigilLifecycleFromEntries(...)` (or a small exported lifecycle projection) to map canonical Vigil IDs to display names from current parent entries:
+- [x] Add a narrowly scoped renderer/display helper, with names such as `VigilDisplayNameIndex`, `buildVigilDisplayNameIndex`, or `formatVigilCallText`. Exact structure may evolve, but separate pure formatting from extension event wiring.
+- [x] Reuse `reconstructVigilLifecycleFromEntries(...)` (or a small exported lifecycle projection) to map canonical Vigil IDs to display names from current parent entries:
   - active lifecycle uses its original launch name;
   - completed lifecycle uses its immutable completed display name when the cache is refreshed after completion;
   - malformed/duplicate/tampered records retain existing lifecycle hardening and do not corrupt a valid name.
-- [ ] Install refreshes at Pi `session_start` and `session_tree`, using the active session branch/entries appropriate to current lifecycle reconstruction semantics. Reset/replace the entire cache on refresh; never merge stale IDs across sessions/branches.
-- [ ] Refresh the derived index at an appropriate point after a successful `launch` or `complete` result so future tool rows in the same session can identify it. Ensure an error result never invents an entry.
-- [ ] Keep cache ownership session-scoped and read-only: no custom entry, disk file, child JSONL write, timer, watcher, process, or background task.
-- [ ] Add unit coverage for duplicate/malformed lifecycle data and branch replacement behavior if existing lifecycle tests do not already prove the renderer projection inherits it.
+- [x] Install refreshes at Pi `session_start` and `session_tree`, using the active session branch/entries appropriate to current lifecycle reconstruction semantics. Reset/replace the entire cache on refresh; never merge stale IDs across sessions/branches.
+- [x] Refresh the derived index at an appropriate point after a successful `launch` or `complete` result so future tool rows in the same session can identify it. Ensure an error result never invents an entry.
+- [x] Keep cache ownership session-scoped and read-only: no custom entry, disk file, child JSONL write, timer, watcher, process, or background task.
+- [x] Add unit coverage for duplicate/malformed lifecycle data and branch replacement behavior if existing lifecycle tests do not already prove the renderer projection inherits it.
 
 ## Agent notes / assumptions
 
 - Rendering starts before tool execution, so same-row `launch` identity comes from `params.name`; subsequent ID operations need the prehydrated derived cache.
 - The user asked that names make `poll`/`send`/`complete` recognizable. The name cache is UX-only and must never become a source of lifecycle truth for services.
+- `createVigilDisplayNameCache()` in `src/vigil/render-call.ts` owns the read-only map; `src/index.ts` wires Pi events and post-success refresh only.
 
 ---
 
@@ -98,18 +100,18 @@ Rules:
 
 ## Todos
 
-- [ ] Import Pi TUI `Text` and implement `renderCall` on the Vigil `defineTool` definition. Preserve the default tool shell.
-- [ ] Implement a pure action formatter (suggested `formatVigilCallSummary(args, lookup)`) that follows the End Goal examples and centralizes:
+- [x] Import Pi TUI `Text` and implement `renderCall` on the Vigil `defineTool` definition. Preserve the default tool shell.
+- [x] Implement a pure action formatter (suggested `formatVigilCallSummary(args, lookup)`) that follows the End Goal examples and centralizes:
   - action label;
   - display-name lookup and unknown-ID fallback;
   - deterministic short-ID formatting;
   - safe one-line truncation/quoting of send message excerpt;
   - launch/send model indicator rules;
   - concise list/wait option summaries using existing documented defaults.
-- [ ] Style the stable `vigil` title with `toolTitle`/bold and secondary values with `muted`/`dim`/`accent` using the supplied Pi theme. Avoid ANSI construction outside theme APIs.
-- [ ] Use `context.lastComponent` when suitable to update a `Text` component across re-renders; do not cache theme-colored strings in module state.
-- [ ] Ensure incomplete/partially decoded tool arguments render defensively during streaming/preflight. A renderer exception must not prevent the underlying tool from executing; retain a simple safe fallback header.
-- [ ] Do not add `renderResult`; preserve current final text/details and Slice 4.5 partial result rendering behavior.
+- [x] Style the stable `vigil` title with `toolTitle`/bold and secondary values with `muted`/`dim`/`accent` using the supplied Pi theme. Avoid ANSI construction outside theme APIs.
+- [x] Use `context.lastComponent` when suitable to update a `Text` component across re-renders; do not cache theme-colored strings in module state.
+- [x] Ensure incomplete/partially decoded tool arguments render defensively during streaming/preflight. A renderer exception must not prevent the underlying tool from executing; retain a simple safe fallback header.
+- [x] Do not add `renderResult`; preserve current final text/details and Slice 4.5 partial result rendering behavior.
 
 ## Agent notes / assumptions
 
@@ -122,20 +124,33 @@ Rules:
 
 ## Todos
 
-- [ ] Update README only as needed to state that interactive Vigil rows render compact action/name/ID summaries, that names are reconstructed from the current parent session, and that full args/results are expandable. Do not document implementation-only cache names.
-- [ ] Add a short user-facing example showing launch/poll/send rendering and clarify that the launch `name` is the visual task identity; launch prompt text is deliberately not echoed in the compact row.
-- [ ] Run and record:
-  - `npm test`;
-  - `npm run typecheck`;
-  - `npm run test:acceptance` without `PI_VIGIL_LIVE=1` to preserve prerequisite behavior;
-  - `PI_VIGIL_LIVE=1 npm run test:acceptance` when authenticated (no new live scenario is required unless existing adapter acceptance can directly validate a renderer).
-- [ ] Confirm no behavioral API/result/session changes and no new state persistence/background work were introduced.
-- [ ] Update this plan’s checkboxes, assumptions/deviations, progress notes, and test notes. Commit plan updates with code/tests.
-- [ ] Provide reviewer handoff with commit SHA, rendered action examples, exact model fallback behavior, cache-refresh/branch behavior, test results, and deviations.
+- [x] Update README only as needed to state that interactive Vigil rows render compact action/name/ID summaries, that names are reconstructed from the current parent session, and that full args/results are expandable. Do not document implementation-only cache names.
+- [x] Add a short user-facing example showing launch/poll/send rendering and clarify that the launch `name` is the visual task identity; launch prompt text is deliberately not echoed in the compact row.
+- [x] Run and record:
+  - `npm test` — 118 passed (13 files);
+  - `npm run typecheck` — clean;
+  - `npm run test:acceptance` without `PI_VIGIL_LIVE=1` — fails immediately with opt-in instructions (expected prerequisite behavior);
+  - `PI_VIGIL_LIVE=1 npm run test:acceptance` — 1 passed (live child orchestration unchanged).
+- [x] Confirm no behavioral API/result/session changes and no new state persistence/background work were introduced.
+- [x] Update this plan’s checkboxes, assumptions/deviations, progress notes, and test notes. Commit plan updates with code/tests.
+- [x] Provide reviewer handoff with commit SHA, rendered action examples, exact model fallback behavior, cache-refresh/branch behavior, test results, and deviations.
 
 ## Progress notes
 
 - 2026-08-02: Plan created after Slice 4.5 acceptance. User approved names plus short IDs for ID-addressed actions, bounded send-message excerpts, no launch-prompt excerpt, and model display on every launch / supplied-model sends. No implementation has started.
+- 2026-08-02: Implemented `src/vigil/render-call.ts` (`buildVigilDisplayNameIndex`, `formatVigilShortId`, `formatVigilCallSummary`, `renderVigilCallText`) and wired `renderCall` plus session-scoped cache refresh in `src/index.ts`. Added `test/unit/vigil/render-call.test.ts`, extended adapter/harness coverage, and README interactive-row notes.
+
+## Deviations
+
+- Send message excerpts are rendered with ASCII quotes (`"..."`) per the plan rules section (“quoted/safe one-line excerpt”), while the end-goal example line omits visible quotes.
+- Short IDs use the first seven hex characters after removing hyphens from the UUID suffix (`vigil-bd02f54e-…` → `vigil-bd02f54`).
+
+## Test notes
+
+- Short-ID behavior is covered in `formatVigilShortId` unit tests.
+- Branch isolation uses `SessionManager.branch()` plus `session_tree` refresh in render integration tests.
+- Rendering side-effect freedom is asserted by comparing `capturedEntries` length before/after `renderCall`.
+- `@earendil-works/pi-tui` added as a devDependency for `Text` imports in tests/implementation.
 
 ## Future work (explicitly out of scope)
 

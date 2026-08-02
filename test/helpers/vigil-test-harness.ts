@@ -3,6 +3,7 @@ import {
   SessionManager,
   type ExtensionAPI,
   type ExtensionContext,
+  type ExtensionEvent,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { registerVigilExtension } from "../../src/index";
@@ -17,6 +18,7 @@ export interface VigilTestHarness {
   sessionManager: SessionManager;
   capturedEntries: CapturedEntry[];
   ctx: ExtensionContext;
+  emitExtensionEvent: (event: "session_start" | "session_tree") => Promise<void>;
   execute: (
     params: Record<string, unknown>,
     signal?: AbortSignal,
@@ -31,20 +33,26 @@ export async function createVigilTestHarness(options?: {
   const sessionManager = SessionManager.inMemory(cwd);
   const capturedEntries: CapturedEntry[] = [];
   const runtime = createExtensionRuntime();
+  const eventHandlers = new Map<string, Array<(event: ExtensionEvent, ctx: ExtensionContext) => void | Promise<void>>>();
 
   runtime.appendEntry = (customType, data) => {
     capturedEntries.push({ customType, data });
     sessionManager.appendCustomEntry(customType, data);
   };
 
+  let registeredTool: ToolDefinition | undefined;
   const api = {
     appendEntry: runtime.appendEntry,
     registerTool: (tool: ToolDefinition) => {
       registeredTool = tool;
     },
+    on: (event: string, handler: (event: ExtensionEvent, ctx: ExtensionContext) => void | Promise<void>) => {
+      const handlers = eventHandlers.get(event) ?? [];
+      handlers.push(handler);
+      eventHandlers.set(event, handlers);
+    },
   } as ExtensionAPI;
 
-  let registeredTool: ToolDefinition | undefined;
   registerVigilExtension(api);
 
   if (!registeredTool) {
@@ -53,11 +61,21 @@ export async function createVigilTestHarness(options?: {
 
   const ctx = createExtensionContext(sessionManager, cwd);
 
+  async function emitExtensionEvent(event: "session_start" | "session_tree"): Promise<void> {
+    const payload = { type: event } as ExtensionEvent;
+    for (const handler of eventHandlers.get(event) ?? []) {
+      await handler(payload, ctx);
+    }
+  }
+
+  await emitExtensionEvent("session_start");
+
   return {
     tool: registeredTool,
     sessionManager,
     capturedEntries,
     ctx,
+    emitExtensionEvent,
     execute: (params, signal, onUpdate) =>
       registeredTool!.execute("test-call-id", params, signal, onUpdate, ctx),
   };

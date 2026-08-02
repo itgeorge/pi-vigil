@@ -5,20 +5,61 @@ import { resetVigilRuntimeOverrides, setVigilRuntimeOverrides } from "../../../s
 import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, VigilSessionActivity, WaitScheduler } from "../../../src/vigil/ports";
 import { readLatestAssistantTextFromFile, readChildSessionStateFromFile } from "../../../src/vigil/node-runtime";
 import type { VigilLaunchRecord, VigilListResult, VigilSnapshot } from "../../../src/vigil/types";
+import { formatVigilShortId } from "../../../src/vigil/render-call";
+import { createDeterministicTestTheme } from "../../helpers/test-theme";
 import { createVigilTestHarness } from "../../helpers/vigil-test-harness";
-
-const emptyActivity: VigilSessionActivity = {
-  steps: 0,
-  messages: 0,
-  lastActivity: null,
-  lastActivityTimestamp: null,
-};
 
 const fixturesDir = path.dirname(fileURLToPath(import.meta.url));
 
 describe("vigil extension adapter", () => {
   afterEach(() => {
     resetVigilRuntimeOverrides();
+  });
+
+  const emptyActivity: VigilSessionActivity = {
+    steps: 0,
+    messages: 0,
+    lastActivity: null,
+    lastActivityTimestamp: null,
+  };
+
+  const testTheme = createDeterministicTestTheme();
+
+  function stripAnsi(value: string): string {
+    return value.replace(/\u001b\[[0-9;]*m/g, "");
+  }
+
+  it("renderCall identifies a launched child after execute refreshes the display-name cache", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+
+    setVigilRuntimeOverrides({
+      processRunner: {
+        spawnDetached: async () => ({ pid: 5151 }),
+        isAlive: () => true,
+        terminateAndWait: async () => undefined,
+      },
+    });
+
+    const launchResult = await harness.execute({
+      action: "launch",
+      name: "Adapter render child",
+      message: "Do work",
+    });
+    const launched = launchResult.details as VigilSnapshot;
+
+    const rendered = stripAnsi(
+      harness.tool
+        .renderCall!(
+          { action: "poll", id: launched.id },
+          testTheme,
+          { lastComponent: undefined, args: { action: "poll", id: launched.id } } as never,
+        )
+        .render(120)
+        .join("\n"),
+    );
+
+    expect(rendered).toContain("Adapter render child");
+    expect(rendered).toContain(`[${formatVigilShortId(launched.id)}]`);
   });
 
   it("launch returns a running snapshot and appends a vigil-launch parent entry", async () => {

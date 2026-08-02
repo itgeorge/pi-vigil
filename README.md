@@ -43,6 +43,8 @@ A typical orchestration loop is `list` → `wait` (use TUI partial progress whil
 
 `complete` retires a waiting Vigil child without deleting its child session JSONL. It reaps a still-live settled tracked PID if needed, prefixes the child session's current Pi-native display name with `[completed]`, appends one parent `vigil-complete` record, and returns a `completed` snapshot. Repeating `complete` is idempotent. After completion, `send` rejects the id.
 
+In the interactive TUI, compact Vigil tool rows show the action, human-readable child name, and a shortened id (for example `vigil launch · Slice 4.5 implementation · model Pi default` or `vigil poll · Slice 4.5 implementation [vigil-bd02f54]`). Names are reconstructed from the current parent session branch; full arguments and results remain expandable. Launch rows always include a model indicator (`model <value>` when supplied, otherwise the honest fallback `model Pi default`). Send rows include a bounded message excerpt and show `model <value>` only when a continuation model was supplied. The launch `name` is the visual task identity; launch prompt text is deliberately not echoed in the compact row.
+
 Completion uses the child session's **current** display name, not the original launch name. If the session was renamed during work, that renamed value is preserved and prefixed. A missing current name becomes `[completed]`.
 
 Child session JSONL files are never deleted by Vigil. Pi's normal session UI/manual cleanup remains available.

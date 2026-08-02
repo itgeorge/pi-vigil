@@ -9,6 +9,11 @@ import { createVigilServiceForContext } from "./vigil/node-runtime";
 import { getVigilSessionDir } from "./vigil/config";
 import { getVigilRuntimeOverrides } from "./vigil/runtime-overrides";
 import {
+  createVigilDisplayNameCache,
+  renderVigilCallText,
+  type VigilCallArgs,
+} from "./vigil/render-call";
+import {
   formatListText,
   formatSnapshotText,
   formatWaitText,
@@ -22,6 +27,12 @@ import type { VigilWaitProgress } from "./vigil/node-runtime";
 let appendEntryForTool: ExtensionAPI["appendEntry"] = () => {
   throw new Error("pi-vigil extension not initialized");
 };
+
+const vigilDisplayNameCache = createVigilDisplayNameCache();
+
+function refreshVigilDisplayNameCache(ctx: ExtensionContext): void {
+  vigilDisplayNameCache.refreshFromBranch(() => ctx.sessionManager.getBranch());
+}
 
 function createService(ctx: ExtensionContext) {
   const overrides = getVigilRuntimeOverrides();
@@ -94,6 +105,15 @@ export const vigilTool = defineTool({
     ),
   }),
 
+  renderCall(args, theme, context) {
+    return renderVigilCallText(
+      args as VigilCallArgs,
+      theme,
+      vigilDisplayNameCache.lookup(),
+      context.lastComponent,
+    );
+  },
+
   async execute(_toolCallId, params, signal, onUpdate, ctx) {
     const service = createService(ctx);
 
@@ -130,6 +150,7 @@ export const vigilTool = defineTool({
         };
       }
 
+      refreshVigilDisplayNameCache(ctx);
       return snapshotResult(result);
     }
 
@@ -204,6 +225,7 @@ export const vigilTool = defineTool({
         };
       }
 
+      refreshVigilDisplayNameCache(ctx);
       return snapshotResult(result);
     }
 
@@ -272,6 +294,14 @@ function snapshotResult(snapshot: VigilSnapshot) {
 
 export function registerVigilExtension(pi: ExtensionAPI): ToolDefinition {
   appendEntryForTool = pi.appendEntry.bind(pi);
+
+  pi.on("session_start", (_event, ctx) => {
+    refreshVigilDisplayNameCache(ctx);
+  });
+  pi.on("session_tree", (_event, ctx) => {
+    refreshVigilDisplayNameCache(ctx);
+  });
+
   pi.registerTool(vigilTool);
   return vigilTool;
 }
