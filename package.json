@@ -2,6 +2,7 @@
   "name": "pi-vigil",
   "version": "0.1.0",
   "description": "Pi extension for asynchronous, turn-based subagents",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=22.19"
