@@ -73,21 +73,21 @@ If Vigil cannot read/validate the direct child session/ledger needed to determin
 
 ## Todos
 
-- [ ] Read the accepted Slice 1–5 plans, current 4.5 progress implementation, current types/lifecycle/node adapter/ports/extension adapter/rendering, Pi session-tree format docs, and existing deterministic/live test harness before changing code.
-- [ ] Add focused failing unit tests proving a root child session containing custom Vigil records for A1/A2/A3 produces a **one-level** direct-descendant summary:
+- [x] Read the accepted Slice 1–5 plans, current 4.5 progress implementation, current types/lifecycle/node adapter/ports/extension adapter/rendering, Pi session-tree format docs, and existing deterministic/live test harness before changing code.
+- [x] Add focused failing unit tests proving a root child session containing custom Vigil records for A1/A2/A3 produces a **one-level** direct-descendant summary:
   - canonical active/completed records produce deterministic counts/items;
   - malformed/duplicate/tampered descendant records inherit lifecycle reconstruction hardening;
   - no deeper ledger (A1’s own children) is inspected or exposed;
   - zero direct descendants differs from unavailable child-ledger inspection.
-- [ ] Add failing tests for display-state inspection: mixed `running`, `waiting`, and `completed` direct descendants; unavailable direct descendant session/state reports an explicit documented status/error rather than an invented terminal state.
-- [ ] Add failing `complete` service/adapter tests:
+- [x] Add failing tests for display-state inspection: mixed `running`, `waiting`, and `completed` direct descendants; unavailable direct descendant session/state reports an explicit documented status/error rather than an invented terminal state.
+- [x] Add failing `complete` service/adapter tests:
   - a settled direct parent with incomplete A1/A2 rejects with the exact actionable error and causes no parent append, reaping, rename, spawn, child-session write, or descendant mutation;
   - an all-completed direct-descendant ledger allows normal existing completion;
   - `allowIncompleteSubagents: true` allows normal completion of the parent only and leaves descendant records/process operations untouched;
   - unavailable/corrupt intermediate child ledger fails closed even with the allow flag;
   - a still-running requested direct parent keeps existing “still running” rejection before any completion mutation.
-- [ ] Add failing `list` and `wait` tests proving summary hydration is bounded/read-only, wait settlement behavior/fixed cohort is unchanged, direct-descendant data appears in structured/text output, and a changed shallow summary changes wait progress fingerprint/status without a heartbeat.
-- [ ] Add failing schema/rendering tests: `allowIncompleteSubagents` is a boolean option on `complete` only; compact call rendering shows an explicit bounded override indicator when true; malformed/partial params are safe.
+- [x] Add failing `list` and `wait` tests proving summary hydration is bounded/read-only, wait settlement behavior/fixed cohort is unchanged, direct-descendant data appears in structured/text output, and a changed shallow summary changes wait progress fingerprint/status without a heartbeat.
+- [x] Add failing schema/rendering tests: `allowIncompleteSubagents` is a boolean option on `complete` only; compact call rendering shows an explicit bounded override indicator when true; malformed/partial params are safe.
 
 ## Agent notes / assumptions
 
@@ -100,10 +100,10 @@ If Vigil cannot read/validate the direct child session/ledger needed to determin
 
 ## Todos
 
-- [ ] Add a read-only shallow descendant inspection port/module, e.g. `ChildSessionDescendantInspector`, independent of the parent ledger and writable `SessionManager`. Its input is the canonical direct child session identity (`sessionId`, `cwd`, `sessionDir`); its output is either a bounded/typed inspection result or a controlled error.
-- [ ] Implement node inspection by resolving only that canonical direct child session through existing session-dir policy, parsing its JSONL with Pi’s parser, excluding the session header, and calling `reconstructVigilLifecycleFromEntries` on **that one file’s entries**.
-- [ ] Make the one-level boundary structural: the inspector must not call itself, inspect a descendant’s session JSONL, recurse through lifecycle records, or accept arbitrary paths. Add a test fixture with nested records to prove this.
-- [ ] Define DTOs such as:
+- [x] Add a read-only shallow descendant inspection port/module, e.g. `ChildSessionDescendantInspector`, independent of the parent ledger and writable `SessionManager`. Its input is the canonical direct child session identity (`sessionId`, `cwd`, `sessionDir`); its output is either a bounded/typed inspection result or a controlled error.
+- [x] Implement node inspection by resolving only that canonical direct child session through existing session-dir policy, parsing its JSONL with Pi’s parser, excluding the session header, and calling `reconstructVigilLifecycleFromEntries` on **that one file’s entries**.
+- [x] Make the one-level boundary structural: the inspector must not call itself, inspect a descendant’s session JSONL, recurse through lifecycle records, or accept arbitrary paths. Add a test fixture with nested records to prove this.
+- [x] Define DTOs such as:
 
   ```ts
   interface VigilDirectSubagentItem {
@@ -127,9 +127,9 @@ If Vigil cannot read/validate the direct child session/ledger needed to determin
   ```
 
   Exact names may improve, but include counts plus a bounded identity list and distinguish unavailable inspection from a verified empty summary.
-- [ ] Derive completed names/states from immutable completion records. For active direct descendants, reuse existing state derivation only through read-only process/session inspection; catch per-descendant storage/state failure into an explicit `unknown` item/count if that preserves useful aggregate visibility. Do not call reaping/spawning/renaming/append APIs.
-- [ ] Add a conservative controlled error for failure to resolve/read/parse the **intermediate child ledger** itself. Keep its text free of raw paths/unbounded parser messages.
-- [ ] Thread the inspector through `VigilServiceDeps`, context factory, runtime overrides, and deterministic harnesses without changing existing poll/search/read transcript-reader semantics.
+- [x] Derive completed names/states from immutable completion records. For active direct descendants, reuse existing state derivation only through read-only process/session inspection; catch per-descendant storage/state failure into an explicit `unknown` item/count if that preserves useful aggregate visibility. Do not call reaping/spawning/renaming/append APIs.
+- [x] Add a conservative controlled error for failure to resolve/read/parse the **intermediate child ledger** itself. Keep its text free of raw paths/unbounded parser messages.
+- [x] Thread the inspector through `VigilServiceDeps`, context factory, runtime overrides, and deterministic harnesses without changing existing poll/search/read transcript-reader semantics.
 
 ## Agent notes / assumptions
 
@@ -142,13 +142,13 @@ If Vigil cannot read/validate the direct child session/ledger needed to determin
 
 ## Todos
 
-- [ ] Add optional/additive shallow-summary fields to the list/wait-facing DTOs rather than changing existing ID/name/state semantics. Preserve `list` sorting and concise behavior.
-- [ ] Hydrate every root direct child included in `list` with an independent shallow inspection. Define/implement deterministic controlled behavior if one child cannot be inspected; recommended: retain the root child item with an explicit unavailable-inspection summary rather than failing an entire observational list. Document and test it.
-- [ ] Hydrate each existing `wait` cohort scan with shallow summary data. Preserve current direct-child state scan and progress timing; do not alter what counts as settled. Use the same scan results for final settled/pending output where possible to avoid redundant reads.
-- [ ] Extend wait-progress DTO/fingerprint/text so a changed direct-descendant count/state/item summary emits a factual status update before heartbeat. Keep the existing recent-message previews, 20 root-child status-block cap, and all output bounds.
-- [ ] Add compact, self-sufficient safe formatting helpers for list, wait-progress, and final wait snapshots/pending results, e.g. `direct subagents: none`, `2 incomplete (1 running, 1 waiting; 1 completed)`, followed by at most the display cap of direct items and an omitted-count line.
-- [ ] Sanitize and bound all direct-descendant names/IDs/state labels in text. Preserve raw stable IDs in structured details only where current API conventions already do so.
-- [ ] Confirm `poll`, `search`, `read`, launch, send, and completion behavior remain unchanged except the explicitly planned guarded completion path.
+- [x] Add optional/additive shallow-summary fields to the list/wait-facing DTOs rather than changing existing ID/name/state semantics. Preserve `list` sorting and concise behavior.
+- [x] Hydrate every root direct child included in `list` with an independent shallow inspection. Define/implement deterministic controlled behavior if one child cannot be inspected; recommended: retain the root child item with an explicit unavailable-inspection summary rather than failing an entire observational list. Document and test it.
+- [x] Hydrate each existing `wait` cohort scan with shallow summary data. Preserve current direct-child state scan and progress timing; do not alter what counts as settled. Use the same scan results for final settled/pending output where possible to avoid redundant reads.
+- [x] Extend wait-progress DTO/fingerprint/text so a changed direct-descendant count/state/item summary emits a factual status update before heartbeat. Keep the existing recent-message previews, 20 root-child status-block cap, and all output bounds.
+- [x] Add compact, self-sufficient safe formatting helpers for list, wait-progress, and final wait snapshots/pending results, e.g. `direct subagents: none`, `2 incomplete (1 running, 1 waiting; 1 completed)`, followed by at most the display cap of direct items and an omitted-count line.
+- [x] Sanitize and bound all direct-descendant names/IDs/state labels in text. Preserve raw stable IDs in structured details only where current API conventions already do so.
+- [x] Confirm `poll`, `search`, `read`, launch, send, and completion behavior remain unchanged except the explicitly planned guarded completion path.
 
 ## Agent notes / assumptions
 
@@ -161,17 +161,17 @@ If Vigil cannot read/validate the direct child session/ledger needed to determin
 
 ## Todos
 
-- [ ] Extend `CompleteInput`, schema, adapter dispatch, compact call formatter, and README with `allowIncompleteSubagents?: boolean`, default false.
-- [ ] Refactor `VigilService.complete` ordering safely:
+- [x] Extend `CompleteInput`, schema, adapter dispatch, compact call formatter, and README with `allowIncompleteSubagents?: boolean`, default false.
+- [x] Refactor `VigilService.complete` ordering safely:
   1. resolve canonical requested direct lifecycle and preserve existing completed/idempotent and running checks;
   2. read/validate its one-level descendant ledger before any direct-parent reaping, session-name update, or parent ledger append;
   3. if inspection fails, return controlled fail-closed verification error with no mutation;
   4. if `incomplete > 0` and flag is false, return actionable rejection with bounded counts and no mutation;
   5. if no incomplete descendants or explicit allow flag, perform the exact existing direct-parent reaping → rename → `vigil-complete` append flow;
   6. never call a descendant process runner, namer, ledger append, `send`, `complete`, or session writer.
-- [ ] Ensure the guard does not inspect/modify grandchildren beyond direct descendant ledger records. The override must not turn into a recursive operation.
-- [ ] Preserve immutable completion tombstone/idempotence: a repeated complete on an already completed parent returns its existing completion snapshot without a new descendant inspection/mutation requirement unless a documented safety reason requires otherwise.
-- [ ] Add self-sufficient error/text details that let an LLM act: identify the direct parent and counts; advise prompting the child versus passing the explicit override. Do not expose raw child session paths or unbounded descendant lists in an error.
+- [x] Ensure the guard does not inspect/modify grandchildren beyond direct descendant ledger records. The override must not turn into a recursive operation.
+- [x] Preserve immutable completion tombstone/idempotence: a repeated complete on an already completed parent returns its existing completion snapshot without a new descendant inspection/mutation requirement unless a documented safety reason requires otherwise.
+- [x] Add self-sufficient error/text details that let an LLM act: identify the direct parent and counts; advise prompting the child versus passing the explicit override. Do not expose raw child session paths or unbounded descendant lists in an error.
 
 ## Agent notes / assumptions
 
@@ -184,16 +184,16 @@ If Vigil cannot read/validate the direct child session/ledger needed to determin
 
 ## Todos
 
-- [ ] Add `allowIncompleteSubagents` to the Pi-compatible `complete` schema with an accurate description. Reject/ignore it for other actions by schema/dispatch design rather than silently changing lifecycle semantics.
-- [ ] Extend Slice 4.6 compact `renderCall` output for complete calls with an explicit, safe suffix such as `allow incomplete subagents` only when the boolean is true. Existing complete row output remains unchanged otherwise.
-- [ ] Update README:
+- [x] Add `allowIncompleteSubagents` to the Pi-compatible `complete` schema with an accurate description. Reject/ignore it for other actions by schema/dispatch design rather than silently changing lifecycle semantics.
+- [x] Extend Slice 4.6 compact `renderCall` output for complete calls with an explicit, safe suffix such as `allow incomplete subagents` only when the boolean is true. Existing complete row output remains unchanged otherwise.
+- [x] Update README:
   - describe immediate-child-only visibility and its session-local ownership model;
   - show a list/wait summary example and state all bounded counts/item display rules;
   - document default guarded completion, exact override behavior, fail-closed unavailable-ledger policy, and no recursive termination;
   - distinguish a child `waiting` orchestration state from a `completed` tombstone;
   - reiterate that deeper descendants are intentionally not traversed.
-- [ ] Ensure deterministic test coverage includes all red/green cases, safe output controls/long names, direct item cap/omitted count, resumed/branch ledger isolation, custom/malformed ledger entries, empty/missing session behavior, errors before mutation, wait cancellation/timeout, and no public result regression for flat children.
-- [ ] Run `npm test` and `npm run typecheck` after every coherent green/refactor phase. Keep tests deterministic—fake process/session readers and schedulers, no sleeps.
+- [x] Ensure deterministic test coverage includes all red/green cases, safe output controls/long names, direct item cap/omitted count, resumed/branch ledger isolation, custom/malformed ledger entries, empty/missing session behavior, errors before mutation, wait cancellation/timeout, and no public result regression for flat children.
+- [x] Run `npm test` and `npm run typecheck` after every coherent green/refactor phase. Keep tests deterministic—fake process/session readers and schedulers, no sleeps.
 
 ## Agent notes / assumptions
 
@@ -206,21 +206,21 @@ If Vigil cannot read/validate the direct child session/ledger needed to determin
 
 ## Todos
 
-- [ ] Extend opt-in authenticated live acceptance without relying on an LLM child to autonomously perform nested orchestration:
+- [x] Extend opt-in authenticated live acceptance without relying on an LLM child to autonomously perform nested orchestration:
   1. launch a real uniquely named root child and wait for it to settle;
   2. locate its retained child session under the isolated test session directory and append a valid synthetic direct-descendant Vigil lifecycle ledger into that intermediate session using Pi session APIs/test setup;
   3. prove the root adapter `list`/`wait` sees only that shallow descendant summary;
   4. prove root `complete` rejects until `allowIncompleteSubagents: true`, then completes only the root child and leaves the synthetic descendant session/ledger retained/unmodified;
   5. retain existing launch/send/search/read/list/rename/completion assertions and unique cleanup;
   6. do not spawn/kill a real nested child just for acceptance.
-- [ ] Run and record:
+- [x] Run and record:
   - `npm test`;
   - `npm run typecheck`;
   - `npm run test:acceptance` without opt-in, expecting the documented prerequisite error;
   - `PI_VIGIL_LIVE=1 npm run test:acceptance` when authenticated.
-- [ ] Confirm exact non-goals: no targeted wait selector, recursion, descendant kill/reap/rename/append, child-session write, process groups, watcher, registry, search change, LLM summary, or automatic cleanup.
-- [ ] Update this plan checkboxes/notes/deviations/test results and commit with code/tests.
-- [ ] Provide implementation-review handoff: commits, API/default, depth boundary, summary/unavailable policy, completion ordering/error/override behavior, tests/live result, and non-goals.
+- [x] Confirm exact non-goals: no targeted wait selector, recursion, descendant kill/reap/rename/append, child-session write, process groups, watcher, registry, search change, LLM summary, or automatic cleanup.
+- [x] Update this plan checkboxes/notes/deviations/test results and commit with code/tests.
+- [x] Provide implementation-review handoff: commits, API/default, depth boundary, summary/unavailable policy, completion ordering/error/override behavior, tests/live result, and non-goals.
 
 ## Future work (explicitly not this slice)
 
@@ -231,3 +231,9 @@ If Vigil cannot read/validate the direct child session/ledger needed to determin
 ## Progress notes
 
 - 2026-08-02: Plan created after accepted Slice 5 and deterministic wait recent-message previews. User approved one-level visibility for a direct child’s own direct Vigil children plus guarded completion; `allowIncompleteSubagents` explicitly allows only parent completion and never kills descendants. Red-green TDD is mandatory. No Slice 6 implementation has started.
+- 2026-08-02: Slice 6 implemented. Red tests added first in `descendant-inspector.test.ts`, `guarded-complete.test.ts`, `list-subagents.test.ts`, `wait.test.ts`, and `render-call.test.ts`. Production: `src/vigil/descendant-inspector.ts`, list/wait hydration, guarded `complete`, schema/render/README, live acceptance append test.
+- Red command (Phase 0): `npm test -- test/unit/vigil/descendant-inspector.test.ts` failed with missing module before green.
+- Green: `npm test` — 204 passed; `npm run typecheck` — clean.
+- Acceptance without opt-in: `npm run test:acceptance` fails with documented `PI_VIGIL_LIVE` prerequisite (expected).
+- Live acceptance with auth not run in this session (requires `PI_VIGIL_LIVE=1` and authenticated Pi).
+- Deviations: `setVigilRuntimeOverrides` now merges partial overrides so extension tests can set `descendantInspector` in `beforeEach` without losing per-test runner/reader overrides. Default deterministic harnesses use `createZeroDescendantInspector()`; production uses `createNodeChildSessionDescendantInspector`.

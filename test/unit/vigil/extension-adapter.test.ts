@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createZeroDescendantInspector } from "../../../src/vigil/descendant-inspector";
 import { resetVigilRuntimeOverrides, setVigilRuntimeOverrides } from "../../../src/vigil/runtime-overrides";
 import type { ChildSessionNamer, ChildSessionReader, ChildSessionTranscriptReader, ProcessRunner, VigilSessionActivity, WaitScheduler } from "../../../src/vigil/ports";
 import { readLatestAssistantTextFromFile, readChildSessionStateFromFile } from "../../../src/vigil/node-runtime";
@@ -13,6 +14,10 @@ import { createVigilTestHarness } from "../../helpers/vigil-test-harness";
 const fixturesDir = path.dirname(fileURLToPath(import.meta.url));
 
 describe("vigil extension adapter", () => {
+  beforeEach(() => {
+    setVigilRuntimeOverrides({ descendantInspector: createZeroDescendantInspector() });
+  });
+
   afterEach(() => {
     resetVigilRuntimeOverrides();
   });
@@ -267,13 +272,16 @@ describe("vigil extension adapter", () => {
     const listResult = await harness.execute({ action: "list" });
     const listed = listResult.details as VigilListResult;
     expect(listed.vigils).toHaveLength(1);
-    expect(listed.vigils[0]).toEqual({
-      id: launched.id,
-      sessionId: launched.sessionId,
-      name: "Listed task",
-      cwd: "/parent/project",
-      state: "waiting",
-    });
+    expect(listed.vigils[0]).toEqual(
+      expect.objectContaining({
+        id: launched.id,
+        sessionId: launched.sessionId,
+        name: "Listed task",
+        cwd: "/parent/project",
+        state: "waiting",
+        directSubagents: expect.objectContaining({ inspection: "available", total: 0 }),
+      }),
+    );
     expect(listed.vigils[0]).not.toHaveProperty("latestResponse");
   });
 

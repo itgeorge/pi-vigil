@@ -283,4 +283,88 @@ describe("live vigil acceptance", () => {
       expect(isProcessAlive(completePid)).toBe(false);
     }
   }, getAcceptanceTimeoutMs() + 120_000);
+
+  it("shows shallow direct-subagent summaries and guarded completion without mutating synthetic descendants", async () => {
+    const { createVigilTestHarness } = await import("../helpers/vigil-test-harness");
+
+    const marker = `VIGIL_SUBAGENT_${crypto.randomUUID()}`;
+    const launchName = `Nested parent ${crypto.randomUUID()}`;
+    const syntheticSubId = `vigil-${crypto.randomUUID()}`;
+    const harness = await createVigilTestHarness({ cwd: tempCwd });
+    const testModel = getVigilTestModel();
+
+    const launchResult = await harness.execute({
+      action: "launch",
+      name: launchName,
+      message: `Reply with exactly: ${marker}`,
+      model: testModel,
+      cwd: tempCwd,
+    });
+    expect((launchResult as { isError?: boolean }).isError).toBeFalsy();
+    const launched = launchResult.details as VigilSnapshot;
+
+    const launchRecord = harness.capturedEntries[0]?.data as VigilLaunchRecord;
+    launchedChildPids.push(launchRecord.pid);
+
+    const waitResult = await harness.execute({
+      action: "wait",
+      timeoutMs: getAcceptanceTimeoutMs(),
+      initialDelayMs: 250,
+      maxDelayMs: 5_000,
+    });
+    expect((waitResult as { isError?: boolean }).isError).toBeFalsy();
+    const waitDetails = waitResult.details as VigilWaitResult;
+    expect(waitDetails.outcome).toBe("settled");
+
+    const childSessionPath = await findChildSessionPath(launched.sessionId, tempCwd, sessionDir);
+    expect(childSessionPath).toBeTruthy();
+
+    const childSessionManager = SessionManager.open(childSessionPath!, sessionDir, tempCwd);
+    childSessionManager.appendCustomEntry("vigil-launch", {
+      id: syntheticSubId,
+      sessionId: syntheticSubId,
+      name: "Synthetic nested task",
+      pid: 999_999,
+      cwd: tempCwd,
+      sessionDir,
+      launchedAt: new Date().toISOString(),
+    } satisfies VigilLaunchRecord);
+
+    const listResult = await harness.execute({ action: "list" });
+    expect((listResult as { isError?: boolean }).isError).toBeFalsy();
+    const listed = listResult.details as VigilListResult;
+    const listedChild = listed.vigils.find((item) => item.id === launched.id);
+    expect(listedChild?.directSubagents).toEqual(
+      expect.objectContaining({ inspection: "available", incomplete: 1, waiting: 1 }),
+    );
+    expect((listResult.content[0] as { text?: string }).text).toContain("Synthetic nested task");
+
+    const waitWithSubs = await harness.execute({
+      action: "wait",
+      timeoutMs: 1_000,
+      progress: "status",
+    });
+    expect((waitWithSubs as { isError?: boolean }).isError).toBeFalsy();
+    expect((waitWithSubs.content[0] as { text?: string }).text).toContain("direct subagents");
+
+    const rejectedComplete = await harness.execute({ action: "complete", id: launched.id });
+    expect((rejectedComplete as { isError?: boolean }).isError).toBe(true);
+    expect((rejectedComplete.content[0] as { text?: string }).text).toContain("allowIncompleteSubagents");
+    expect(harness.capturedEntries.some((entry) => entry.customType === "vigil-complete")).toBe(false);
+
+    const childTextBeforeComplete = readFileSync(childSessionPath!, "utf8");
+
+    const allowedComplete = await harness.execute({
+      action: "complete",
+      id: launched.id,
+      allowIncompleteSubagents: true,
+    });
+    expect((allowedComplete as { isError?: boolean }).isError).toBeFalsy();
+    expect((allowedComplete.details as VigilSnapshot).state).toBe("completed");
+
+    const childTextAfterComplete = readFileSync(childSessionPath!, "utf8");
+    expect(childTextAfterComplete).toContain("Synthetic nested task");
+    expect(childTextAfterComplete).toContain(syntheticSubId);
+    expect(childTextAfterComplete).toBe(childTextBeforeComplete);
+  }, getAcceptanceTimeoutMs() + 120_000);
 });

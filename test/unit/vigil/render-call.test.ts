@@ -114,6 +114,9 @@ describe("formatVigilCallSummary", () => {
     expect(plainSummary({ action: "complete", id: SAMPLE_UUID }, entries)).toBe(
       "complete · Slice 4.5 implementation [vigil-bd02f54]",
     );
+    expect(
+      plainSummary({ action: "complete", id: SAMPLE_UUID, allowIncompleteSubagents: true }, entries),
+    ).toBe("complete · Slice 4.5 implementation [vigil-bd02f54] · allow incomplete subagents");
   });
 
   it("uses the completed display name after completion is recorded", () => {

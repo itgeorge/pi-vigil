@@ -31,6 +31,7 @@ export interface VigilCallArgs {
   maxDelayMs?: number;
   progress?: "status" | "none";
   progressIntervalMs?: number;
+  allowIncompleteSubagents?: boolean;
 }
 
 export type VigilDisplayNameLookup = ReadonlyMap<string, string>;
@@ -185,6 +186,9 @@ export function formatVigilCallSummary(
     case "poll":
     case "complete": {
       segments.push(formatIdIdentity(args.id, lookup));
+      if (action === "complete" && args.allowIncompleteSubagents) {
+        segments.push("allow incomplete subagents");
+      }
       break;
     }
     case "send": {
@@ -309,6 +313,9 @@ export function renderVigilCallText(
         parts.push(theme.fg("accent", identity.slice(bracketIndex)));
       } else {
         parts.push(theme.fg("accent", identity));
+      }
+      if (action === "complete" && args.allowIncompleteSubagents) {
+        parts.push(theme.fg("dim", " · allow incomplete subagents"));
       }
     } else if (summary.startsWith("list")) {
       parts.push(

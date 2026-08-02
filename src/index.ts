@@ -49,6 +49,7 @@ function createService(ctx: ExtensionContext) {
     childSessionReader: overrides.childSessionReader,
     childSessionTranscriptReader: overrides.childSessionTranscriptReader,
     childSessionNamer: overrides.childSessionNamer,
+    descendantInspector: overrides.descendantInspector,
     waitScheduler: overrides.waitScheduler,
   });
 }
@@ -133,6 +134,12 @@ export const vigilTool = defineTool({
       Type.Number({
         description:
           "Heartbeat cap for unchanged wait progress in milliseconds (default 30000, maximum 60000; ignored when progress is none)",
+      }),
+    ),
+    allowIncompleteSubagents: Type.Optional(
+      Type.Boolean({
+        description:
+          "For complete only: allow retiring a settled direct child even when its own direct Vigil subagents remain incomplete. Does not kill, complete, or modify descendants.",
       }),
     ),
   }),
@@ -250,6 +257,7 @@ export const vigilTool = defineTool({
       const result = await service.complete({
         vigilId: params.id,
         parentCwd: ctx.cwd,
+        allowIncompleteSubagents: params.allowIncompleteSubagents,
       });
 
       if (isVigilError(result)) {
