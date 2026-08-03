@@ -15,9 +15,7 @@ With Vigil, each of your Pi sessions can:
 - List running/waiting/completed subagents, search, and read through their sessions
 - And, yes, each launched subagent can launch it's own subagents
 
-Each launched agent gets its own Pi session by default.
-Pass `ephemeral: true` on `launch` for explicit single-turn children that do **not** create a child Pi session or `/resume` entry (bounded lifecycle/settle metadata is still stored in the parent Vigil session).
-You can use Pi `/resume` to manually review or continue persisted agent sessions only.
+Each launched agent gets its own Pi session *(unless you say otherwise)*. You can use Pi `/resume` to manually review or continue persisted agent sessions.
 All orchestration data lives inside the sessions.
 
 That's it.
