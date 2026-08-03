@@ -68,6 +68,8 @@ On parent `session_shutdown`, `shutdownSharedEphemeralChildObserver()` stops all
 
 ### Phase 4 re-review remediation (red → green)
 
+**Commit:** `476e273` — ephemeral settle durability, shutdown drain order, wait pending markers
+
 - **P1 settle durability fix:** `finalizeObservation` now invokes `onSettled` (parent `vigil-settle` append) before awaiting `terminateAndWait`.
 - **P1 shutdown fix:** `shutdown()` retains stream handlers through terminate/reap, then removes listeners and destroys stdout/stderr in `finally`; cleanup also destroys streams on normal settle close.
 - **P2 wait fix:** `waitPendingItems` preserves `...(snapshot.ephemeral ? { ephemeral: true as const } : {})`.
