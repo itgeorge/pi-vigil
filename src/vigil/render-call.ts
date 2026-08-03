@@ -33,6 +33,7 @@ export interface VigilCallArgs {
   progress?: "status" | "none";
   progressIntervalMs?: number;
   allowIncompleteSubagents?: boolean;
+  ephemeral?: boolean;
 }
 
 export type VigilDisplayNameLookup = ReadonlyMap<string, string>;
@@ -181,6 +182,9 @@ export function formatVigilCallSummary(
     case "launch": {
       const name = sanitizeCallField(args.name ?? "") || "launch";
       segments.push(name);
+      if (args.ephemeral) {
+        segments.push("ephemeral");
+      }
       segments.push(formatModelIndicator(args.model, "Pi default"));
       break;
     }
@@ -302,6 +306,9 @@ export function renderVigilCallText(
         : formatModelIndicator(undefined, "Pi default");
       parts.push(theme.fg("muted", " launch · "));
       parts.push(theme.fg("text", name));
+      if (args.ephemeral) {
+        parts.push(theme.fg("dim", " · ephemeral"));
+      }
       parts.push(theme.fg("dim", ` · ${model}`));
     } else if (summary.startsWith("send")) {
       parts.push(theme.fg("muted", " send · "));

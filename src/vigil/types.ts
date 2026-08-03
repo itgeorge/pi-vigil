@@ -18,6 +18,7 @@ export interface VigilSnapshot {
   latestResponse: string | null;
   completedAt?: string;
   directSubagents?: VigilDirectSubagentInspection;
+  ephemeral?: true;
 }
 
 export interface VigilLaunchRecord {
@@ -29,6 +30,16 @@ export interface VigilLaunchRecord {
   model?: string;
   sessionDir?: string;
   launchedAt: string;
+  ephemeral?: true;
+}
+
+export interface VigilSettleRecord {
+  id: string;
+  sessionId: string;
+  latestResponse: string | null;
+  settledAt: string;
+  stopReason?: string;
+  error?: string;
 }
 
 export interface VigilTurnRecord {
@@ -60,6 +71,7 @@ export interface VigilListItem {
   state: VigilState;
   completedAt?: string;
   directSubagents?: VigilDirectSubagentInspection;
+  ephemeral?: true;
 }
 
 export const DEFAULT_LIST_MAX_RESULTS = 20;
@@ -139,6 +151,7 @@ export interface LaunchInput {
   cwd?: string;
   model?: string;
   parentCwd: string;
+  ephemeral?: boolean;
 }
 
 export interface SendInput {
@@ -191,6 +204,18 @@ export type VigilReadOrError = import("./transcript").VigilReadResult | VigilErr
 
 export function isVigilError(result: unknown): result is VigilError {
   return typeof result === "object" && result !== null && "error" in result;
+}
+
+export function formatEphemeralObservationUnavailableError(vigilId: string): string {
+  return `Ephemeral Vigil child observation unavailable for ${vigilId}: parent restarted before settlement`;
+}
+
+export function formatEphemeralSendRejectedError(vigilId: string): string {
+  return `Ephemeral Vigil child is single-turn and cannot be resumed: ${vigilId}`;
+}
+
+export function formatEphemeralTranscriptUnavailableError(vigilId: string): string {
+  return `Ephemeral Vigil child has no retained transcript: ${vigilId}`;
 }
 
 export function createVigilId(): string {
@@ -278,6 +303,9 @@ export function formatListText(result: VigilListResult): string {
         `state: ${item.state}`,
         `cwd: ${item.cwd}`,
       ];
+      if (item.ephemeral) {
+        parts.push("ephemeral");
+      }
       if (item.completedAt) {
         parts.push(`completedAt: ${item.completedAt}`);
       }

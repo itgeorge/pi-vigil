@@ -2,9 +2,11 @@ import type { ChildSessionDescendantInspector } from "./descendant-inspector";
 import type { VigilLifecycleState } from "./lifecycle";
 import type { ChildSessionTranscript } from "./transcript";
 import type { VigilSessionActivity } from "./session-text";
+import type { EphemeralChildObserver } from "./ephemeral-observer";
 import type {
   VigilCompletionRecord,
   VigilLaunchRecord,
+  VigilSettleRecord,
   VigilTurnRecord,
 } from "./types";
 
@@ -68,6 +70,7 @@ export interface ChildSessionNamer {
 export interface ParentLedger {
   appendLaunch(record: VigilLaunchRecord): void;
   appendTurn(record: VigilTurnRecord): void;
+  appendSettle(record: VigilSettleRecord): void;
   appendComplete(record: VigilCompletionRecord): void;
   getLifecycle(vigilId: string): VigilLifecycleState | null;
   listLifecycleStates(includeCompleted: boolean): VigilLifecycleState[];
@@ -80,6 +83,7 @@ export interface VigilServiceDeps {
   childSessionNamer: ChildSessionNamer;
   parentLedger: ParentLedger;
   descendantInspector: ChildSessionDescendantInspector;
+  ephemeralChildObserver?: EphemeralChildObserver;
   createId?: () => string;
   sessionDir?: string;
   reapTimeoutMs?: number;

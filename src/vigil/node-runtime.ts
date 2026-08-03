@@ -13,10 +13,16 @@ import {
   type VigilDirectSubagentInspection,
 } from "./descendant-inspector";
 import {
+  createNodeEphemeralChildObserver,
+  createNoopEphemeralChildObserver,
+  type EphemeralChildObserver,
+} from "./ephemeral-observer";
+import {
   lifecycleStateToListItem,
   reconstructVigilLifecycleFromEntries,
   sortLifecycleStatesMostRecentFirst,
   deriveDiagnosticChildIdentity,
+  isEphemeralLifecycle,
   type VigilLifecycleState,
 } from "./lifecycle";
 import type {
@@ -70,12 +76,16 @@ import {
   type VigilListOrError,
   type VigilResult,
   type VigilRuntimeRecord,
+  type VigilSettleRecord,
   type VigilSnapshot,
   type VigilTurnRecord,
   type VigilWaitOrError,
   type VigilWaitPolicy,
   type VigilWaitResult,
   type WaitInput,
+  formatEphemeralObservationUnavailableError,
+  formatEphemeralSendRejectedError,
+  formatEphemeralTranscriptUnavailableError,
 } from "./types";
 
 const DEFAULT_REAP_TIMEOUT_MS = 5000;
@@ -93,11 +103,44 @@ export const MAX_WAIT_TIMEOUT_MS = 300_000;
 export const MAX_WAIT_DELAY_MS = 30_000;
 const REAP_POLL_INTERVAL_MS = 50;
 
+const EMPTY_EPHEMERAL_ACTIVITY: VigilSessionActivity = {
+  steps: 0,
+  messages: 0,
+  lastActivity: null,
+  lastActivityTimestamp: null,
+  recentMessages: [],
+};
+
+let sharedEphemeralChildObserver: EphemeralChildObserver | undefined;
+
+export function getSharedEphemeralChildObserver(
+  processRunner: ProcessRunner,
+  reapTimeoutMs?: number,
+): EphemeralChildObserver {
+  if (!sharedEphemeralChildObserver) {
+    sharedEphemeralChildObserver = createNodeEphemeralChildObserver({ processRunner, reapTimeoutMs });
+  }
+  return sharedEphemeralChildObserver;
+}
+
+export function resetSharedEphemeralChildObserverForTests(): void {
+  sharedEphemeralChildObserver = undefined;
+}
+
+export async function shutdownSharedEphemeralChildObserver(
+  options?: TerminateAndWaitOptions,
+): Promise<void> {
+  await sharedEphemeralChildObserver?.shutdown(options);
+  sharedEphemeralChildObserver = undefined;
+}
+
+export { buildPiEphemeralChildArgs } from "./ephemeral-observer";
+
 type WaitCohortScan = {
   lifecycle: VigilLifecycleState;
   snapshot: VigilSnapshot;
   activity: VigilSessionActivity;
-  directSubagents: VigilDirectSubagentInspection;
+  directSubagents?: VigilDirectSubagentInspection;
 };
 
 type CurrentSessionLifecycleAction = "poll" | "send" | "complete" | "wait";
@@ -107,10 +150,13 @@ function formatCurrentSessionLifecycleError(action: CurrentSessionLifecycleActio
 }
 
 export class VigilService {
-  private readonly deps: VigilServiceDeps;
+  private readonly deps: VigilServiceDeps & { ephemeralChildObserver: EphemeralChildObserver };
 
   constructor(deps: VigilServiceDeps) {
-    this.deps = deps;
+    this.deps = {
+      ...deps,
+      ephemeralChildObserver: deps.ephemeralChildObserver ?? createNoopEphemeralChildObserver(),
+    };
   }
 
   async launch(input: LaunchInput): Promise<VigilResult> {
@@ -129,6 +175,65 @@ export class VigilService {
     const turnStartedAt = new Date().toISOString();
 
     let pid: number;
+
+    if (input.ephemeral) {
+      const parentSessionId = this.deps.currentParentSessionId ?? sessionId;
+      try {
+        ({ pid } = await this.deps.ephemeralChildObserver.start({
+          vigilId: id,
+          parentSessionId,
+          message: input.message,
+          cwd,
+          model: input.model,
+          name: normalizedName,
+          onSettled: (result) => {
+            const current = this.deps.parentLedger.getLifecycle(id);
+            if (!current || current.settleRecord || current.completionRecord) {
+              return;
+            }
+            if (parentSessionId !== this.deps.currentParentSessionId) {
+              return;
+            }
+            const settleRecord: VigilSettleRecord = {
+              id,
+              sessionId,
+              latestResponse: result.latestResponse,
+              settledAt: result.settledAt,
+              ...(result.stopReason ? { stopReason: result.stopReason } : {}),
+              ...(result.error ? { error: result.error } : {}),
+            };
+            this.deps.parentLedger.appendSettle(settleRecord);
+          },
+        }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { error: `Failed to launch ephemeral Pi child: ${message}` };
+      }
+
+      const record: VigilLaunchRecord = {
+        id,
+        sessionId,
+        name: normalizedName,
+        pid,
+        cwd,
+        model: input.model,
+        launchedAt: turnStartedAt,
+        ephemeral: true,
+      };
+
+      this.deps.parentLedger.appendLaunch(record);
+
+      return {
+        id,
+        sessionId,
+        name: normalizedName,
+        cwd,
+        state: "running",
+        latestResponse: null,
+        ephemeral: true,
+      };
+    }
+
     try {
       ({ pid } = await this.deps.processRunner.spawnDetached({
         sessionId,
@@ -181,6 +286,14 @@ export class VigilService {
       return this.buildCompletedSnapshot(lifecycle);
     }
 
+    if (isEphemeralLifecycle(lifecycle)) {
+      const ephemeralSnapshot = this.resolveEphemeralActiveSnapshot(lifecycle);
+      if ("error" in ephemeralSnapshot) {
+        return ephemeralSnapshot;
+      }
+      return ephemeralSnapshot;
+    }
+
     return this.buildActiveSnapshot(lifecycle);
   }
 
@@ -201,6 +314,10 @@ export class VigilService {
 
     if (lifecycle.completionRecord) {
       return { error: `Vigil child is completed: ${input.vigilId}` };
+    }
+
+    if (isEphemeralLifecycle(lifecycle)) {
+      return { error: formatEphemeralSendRejectedError(input.vigilId) };
     }
 
     const record = lifecycle.runtimeRecord;
@@ -316,6 +433,13 @@ export class VigilService {
         break;
       }
 
+      if (isEphemeralLifecycle(lifecycle)) {
+        if (policy.id) {
+          return { error: formatEphemeralTranscriptUnavailableError(lifecycle.id) };
+        }
+        continue;
+      }
+
       const transcriptResult = await this.loadChildTranscript(lifecycle);
       if ("error" in transcriptResult) {
         return { error: `Child session transcript unavailable for vigil: ${lifecycle.id}` };
@@ -356,6 +480,10 @@ export class VigilService {
       return {
         error: `Completed vigil child excluded: ${policy.id} (pass includeCompleted: true)`,
       };
+    }
+
+    if (isEphemeralLifecycle(lifecycle)) {
+      return { error: formatEphemeralTranscriptUnavailableError(lifecycle.id) };
     }
 
     const transcriptResult = await this.loadChildTranscript(lifecycle);
@@ -529,19 +657,31 @@ export class VigilService {
     }
 
     const record = lifecycle.runtimeRecord;
-    const activeSnapshot = await this.buildActiveSnapshot(lifecycle);
+    let activeSnapshot: VigilSnapshot;
+
+    if (isEphemeralLifecycle(lifecycle)) {
+      const ephemeralSnapshot = this.resolveEphemeralActiveSnapshot(lifecycle);
+      if ("error" in ephemeralSnapshot) {
+        return ephemeralSnapshot;
+      }
+      activeSnapshot = ephemeralSnapshot;
+    } else {
+      activeSnapshot = await this.buildActiveSnapshot(lifecycle);
+    }
 
     if (activeSnapshot.state === "running") {
       return { error: `Vigil child is still running: ${input.vigilId}` };
     }
 
-    const descendantInspection = await this.inspectDirectSubagentsForLifecycle(lifecycle);
-    if (descendantInspection.inspection === "unavailable") {
-      return { error: descendantInspection.error };
-    }
+    if (!isEphemeralLifecycle(lifecycle)) {
+      const descendantInspection = await this.inspectDirectSubagentsForLifecycle(lifecycle);
+      if (descendantInspection.inspection === "unavailable") {
+        return { error: descendantInspection.error };
+      }
 
-    if (descendantInspection.incomplete > 0 && !input.allowIncompleteSubagents) {
-      return { error: formatIncompleteSubagentCompleteError(input.vigilId, descendantInspection) };
+      if (descendantInspection.incomplete > 0 && !input.allowIncompleteSubagents) {
+        return { error: formatIncompleteSubagentCompleteError(input.vigilId, descendantInspection) };
+      }
     }
 
     if (this.deps.processRunner.isAlive(record.pid)) {
@@ -555,23 +695,31 @@ export class VigilService {
       }
     }
 
-    const renameResult = await this.deps.childSessionNamer.markCompleted({
-      sessionId: record.sessionId,
-      cwd: record.cwd,
-      sessionDir: record.sessionDir ?? this.deps.sessionDir,
-    });
+    let completedName: string;
+    if (isEphemeralLifecycle(lifecycle)) {
+      completedName = `[completed] ${lifecycle.launchName}`;
+    } else {
+      const renameResult = await this.deps.childSessionNamer.markCompleted({
+        sessionId: record.sessionId,
+        cwd: record.cwd,
+        sessionDir: record.sessionDir ?? this.deps.sessionDir,
+      });
 
-    if ("error" in renameResult) {
-      return { error: renameResult.error };
+      if ("error" in renameResult) {
+        return { error: renameResult.error };
+      }
+      completedName = renameResult.completedName;
     }
 
     const completedAt = new Date().toISOString();
     const completionRecord: VigilCompletionRecord = {
       id: record.id,
       sessionId: record.sessionId,
-      name: renameResult.completedName,
+      name: completedName,
       cwd: record.cwd,
-      sessionDir: record.sessionDir ?? this.deps.sessionDir,
+      ...(record.sessionDir ?? this.deps.sessionDir
+        ? { sessionDir: record.sessionDir ?? this.deps.sessionDir }
+        : {}),
       completedAt,
     };
 
@@ -580,11 +728,12 @@ export class VigilService {
     return {
       id: record.id,
       sessionId: record.sessionId,
-      name: renameResult.completedName,
+      name: completedName,
       cwd: record.cwd,
       state: "completed",
       latestResponse: activeSnapshot.latestResponse,
       completedAt,
+      ...(isEphemeralLifecycle(lifecycle) ? { ephemeral: true as const } : {}),
     };
   }
 
@@ -647,6 +796,21 @@ export class VigilService {
         if (!lifecycle) {
           return { error: `Watched vigil record no longer resolves: ${vigilId}` };
         }
+
+        if (isEphemeralLifecycle(lifecycle)) {
+          const snapshot = lifecycle.completionRecord
+            ? await this.buildCompletedSnapshot(lifecycle)
+            : this.resolveEphemeralActiveSnapshot(lifecycle);
+          if ("error" in snapshot) {
+            return snapshot;
+          }
+          return {
+            lifecycle,
+            snapshot,
+            activity: EMPTY_EPHEMERAL_ACTIVITY,
+          };
+        }
+
         const record = lifecycle.runtimeRecord;
         const childState = await this.deps.childSessionReader.readChildSessionState({
           sessionId: record.sessionId,
@@ -671,18 +835,19 @@ export class VigilService {
   private toWaitProgressItem(
     snapshot: VigilSnapshot,
     activity: VigilSessionActivity,
-    directSubagents: VigilDirectSubagentInspection,
+    directSubagents?: VigilDirectSubagentInspection,
   ): VigilWaitProgressItem {
+    const progressActivity = snapshot.ephemeral ? EMPTY_EPHEMERAL_ACTIVITY : activity;
     return {
       id: snapshot.id,
       name: snapshot.name,
       state: snapshot.state,
-      steps: activity.steps,
-      messages: activity.messages,
-      lastActivity: activity.lastActivity,
-      lastActivityTimestamp: activity.lastActivityTimestamp,
-      recentMessages: activity.recentMessages,
-      directSubagents,
+      steps: progressActivity.steps,
+      messages: progressActivity.messages,
+      lastActivity: progressActivity.lastActivity,
+      lastActivityTimestamp: progressActivity.lastActivityTimestamp,
+      recentMessages: progressActivity.recentMessages,
+      ...(directSubagents ? { directSubagents } : {}),
     };
   }
 
@@ -788,26 +953,92 @@ export class VigilService {
     const items: VigilListItem[] = [];
 
     for (const lifecycle of states) {
-      const directSubagents = await this.inspectDirectSubagentsForLifecycle(lifecycle);
+      const directSubagents = isEphemeralLifecycle(lifecycle)
+        ? undefined
+        : await this.inspectDirectSubagentsForLifecycle(lifecycle);
       if (lifecycle.completionRecord) {
-        items.push({ ...lifecycleStateToListItem(lifecycle, "completed"), directSubagents });
+        items.push({
+          ...lifecycleStateToListItem(lifecycle, "completed"),
+          ...(directSubagents ? { directSubagents } : {}),
+        });
         continue;
       }
 
-      const activeSnapshot = await this.buildActiveSnapshot(lifecycle);
+      let activeState: "running" | "waiting";
+      if (isEphemeralLifecycle(lifecycle)) {
+        const ephemeralSnapshot = this.resolveEphemeralActiveSnapshot(lifecycle);
+        if ("error" in ephemeralSnapshot) {
+          activeState = "running";
+        } else {
+          activeState = ephemeralSnapshot.state === "running" ? "running" : "waiting";
+        }
+      } else {
+        const activeSnapshot = await this.buildActiveSnapshot(lifecycle);
+        activeState = activeSnapshot.state === "running" ? "running" : "waiting";
+      }
+
       items.push({
-        ...lifecycleStateToListItem(lifecycle, activeSnapshot.state === "running" ? "running" : "waiting"),
-        directSubagents,
+        ...lifecycleStateToListItem(lifecycle, activeState),
+        ...(directSubagents ? { directSubagents } : {}),
       });
     }
 
     return items;
   }
 
+  private resolveEphemeralActiveSnapshot(
+    lifecycle: VigilLifecycleState,
+  ): VigilSnapshot | { error: string } {
+    const record = lifecycle.runtimeRecord;
+
+    if (lifecycle.settleRecord) {
+      return {
+        id: record.id,
+        sessionId: record.sessionId,
+        name: lifecycle.launchName,
+        cwd: record.cwd,
+        state: "waiting",
+        latestResponse: lifecycle.settleRecord.latestResponse,
+        ephemeral: true,
+      };
+    }
+
+    const live = this.deps.ephemeralChildObserver.getLiveState(lifecycle.id);
+    if (live) {
+      return {
+        id: record.id,
+        sessionId: record.sessionId,
+        name: lifecycle.launchName,
+        cwd: record.cwd,
+        state: live.state,
+        latestResponse: live.latestResponse,
+        ephemeral: true,
+      };
+    }
+
+    return { error: formatEphemeralObservationUnavailableError(lifecycle.id) };
+  }
+
   private async buildActiveSnapshot(
     lifecycle: VigilLifecycleState,
     childState?: ChildSessionState,
   ): Promise<VigilSnapshot> {
+    if (isEphemeralLifecycle(lifecycle)) {
+      const ephemeralSnapshot = this.resolveEphemeralActiveSnapshot(lifecycle);
+      if ("error" in ephemeralSnapshot) {
+        return {
+          id: lifecycle.id,
+          sessionId: lifecycle.sessionId,
+          name: lifecycle.launchName,
+          cwd: lifecycle.cwd,
+          state: "running",
+          latestResponse: null,
+          ephemeral: true,
+        };
+      }
+      return ephemeralSnapshot;
+    }
+
     const record = lifecycle.runtimeRecord;
     const sessionState =
       childState ??
@@ -842,6 +1073,20 @@ export class VigilService {
   ): Promise<VigilSnapshot> {
     const completion = lifecycle.completionRecord!;
     const record = lifecycle.runtimeRecord;
+
+    if (isEphemeralLifecycle(lifecycle)) {
+      return {
+        id: record.id,
+        sessionId: record.sessionId,
+        name: completion.name,
+        cwd: record.cwd,
+        state: "completed",
+        latestResponse: lifecycle.settleRecord?.latestResponse ?? null,
+        completedAt: completion.completedAt,
+        ephemeral: true,
+      };
+    }
+
     const sessionState =
       childState ??
       (await this.deps.childSessionReader.readChildSessionState({
@@ -1204,6 +1449,9 @@ export function createSessionParentLedger(
     appendTurn(record) {
       appendEntry("vigil-turn", record);
     },
+    appendSettle(record) {
+      appendEntry("vigil-settle", record);
+    },
     appendComplete(record) {
       appendEntry("vigil-complete", record);
     },
@@ -1226,11 +1474,14 @@ export function createVigilServiceForContext(options: {
   childSessionTranscriptReader?: ChildSessionTranscriptReader;
   childSessionNamer?: ChildSessionNamer;
   descendantInspector?: import("./descendant-inspector").ChildSessionDescendantInspector;
+  ephemeralChildObserver?: EphemeralChildObserver;
   reapTimeoutMs?: number;
   waitScheduler?: WaitScheduler;
 }): VigilService {
   const processRunner = options.processRunner ?? createNodeProcessRunner();
   const childSessionReader = options.childSessionReader ?? createNodeChildSessionReader();
+  const ephemeralChildObserver =
+    options.ephemeralChildObserver ?? getSharedEphemeralChildObserver(processRunner, options.reapTimeoutMs);
   return new VigilService({
     processRunner,
     childSessionReader,
@@ -1241,6 +1492,7 @@ export function createVigilServiceForContext(options: {
       options.descendantInspector ??
       createNodeChildSessionDescendantInspector({ childSessionReader, processRunner }),
     parentLedger: createSessionParentLedger(options.sessionManager, options.appendEntry),
+    ephemeralChildObserver,
     sessionDir: options.sessionDir,
     reapTimeoutMs: options.reapTimeoutMs,
     waitScheduler: options.waitScheduler,

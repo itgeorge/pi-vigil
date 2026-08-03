@@ -5,7 +5,7 @@ import {
   type ExtensionContext,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { createVigilServiceForContext } from "./vigil/node-runtime";
+import { createVigilServiceForContext, shutdownSharedEphemeralChildObserver } from "./vigil/node-runtime";
 import { getVigilSessionDir } from "./vigil/config";
 import { getVigilRuntimeOverrides } from "./vigil/runtime-overrides";
 import {
@@ -52,6 +52,7 @@ function createService(ctx: ExtensionContext) {
     childSessionTranscriptReader: overrides.childSessionTranscriptReader,
     childSessionNamer: overrides.childSessionNamer,
     descendantInspector: overrides.descendantInspector,
+    ephemeralChildObserver: overrides.ephemeralChildObserver,
     waitScheduler: overrides.waitScheduler,
   });
 }
@@ -60,7 +61,7 @@ export const vigilTool = defineTool({
   name: "vigil",
   label: "Vigil",
   description:
-    "Launch, poll, continue, list, complete, foreground-wait, search, or read detached Pi child sessions. Wait observes the current active cohort or one targeted direct child with bounded polling and never changes child state.",
+    "Launch, poll, continue, list, complete, foreground-wait, search, or read detached Pi child sessions. Wait observes the current active cohort or one targeted direct child with bounded polling and never changes child state. Pass ephemeral: true on launch for a single-turn child that does not create a Pi session or /resume entry.",
   parameters: Type.Object({
     action: StringEnum(["launch", "poll", "send", "list", "complete", "wait", "search", "read"], {
       description:
@@ -84,6 +85,12 @@ export const vigilTool = defineTool({
     cwd: Type.Optional(
       Type.String({
         description: "Working directory for the child session (defaults to the parent cwd)",
+      }),
+    ),
+    ephemeral: Type.Optional(
+      Type.Boolean({
+        description:
+          "For launch only: run a single-turn ephemeral child with pi --no-session (no child JSONL or /resume entry). Parent Vigil lifecycle/settle metadata is still persisted.",
       }),
     ),
     id: Type.Optional(
@@ -179,6 +186,14 @@ export const vigilTool = defineTool({
   },
 
   async execute(_toolCallId, params, signal, onUpdate, ctx) {
+    if (params.ephemeral === true && params.action !== "launch") {
+      return {
+        content: [{ type: "text" as const, text: "ephemeral is only valid for launch" }],
+        details: { error: "ephemeral is only valid for launch" },
+        isError: true,
+      };
+    }
+
     const service = createService(ctx);
 
     if (params.action === "launch") {
@@ -204,6 +219,7 @@ export const vigilTool = defineTool({
         model: params.model,
         cwd: params.cwd,
         parentCwd: ctx.cwd,
+        ephemeral: params.ephemeral,
       });
 
       if (isVigilError(result)) {
@@ -433,6 +449,10 @@ export function registerVigilExtension(pi: ExtensionAPI): ToolDefinition {
   });
   pi.on("session_tree", (_event, ctx) => {
     refreshVigilDisplayNameCache(ctx);
+  });
+
+  pi.on("session_shutdown", async () => {
+    await shutdownSharedEphemeralChildObserver();
   });
 
   pi.registerTool(vigilTool);

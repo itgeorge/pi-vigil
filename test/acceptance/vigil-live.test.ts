@@ -451,6 +451,66 @@ describe("live vigil acceptance", () => {
     );
   }, getAcceptanceTimeoutMs() + 120_000);
 
+  it("launches an ephemeral child, settles through wait/poll, and leaves no child session", async () => {
+    const { createVigilTestHarness } = await import("../helpers/vigil-test-harness");
+
+    const marker = `VIGIL_EPHEMERAL_${crypto.randomUUID()}`;
+    const launchName = `Ephemeral child ${crypto.randomUUID()}`;
+    const harness = await createVigilTestHarness({ cwd: tempCwd });
+    const testModel = getVigilTestModel();
+
+    const launchResult = await harness.execute({
+      action: "launch",
+      name: launchName,
+      message: `Reply with exactly: ${marker}`,
+      model: testModel,
+      cwd: tempCwd,
+      ephemeral: true,
+    });
+
+    expect((launchResult as { isError?: boolean }).isError).toBeFalsy();
+    const launched = launchResult.details as VigilSnapshot;
+    expect(launched.ephemeral).toBe(true);
+    expect(launched.state).toBe("running");
+
+    const launchRecord = harness.capturedEntries.find((entry) => entry.customType === "vigil-launch")?.data as
+      | VigilLaunchRecord
+      | undefined;
+    expect(launchRecord?.ephemeral).toBe(true);
+    if (launchRecord?.pid) {
+      launchedChildPids.push(launchRecord.pid);
+    }
+
+    const waitResult = await harness.execute({
+      action: "wait",
+      id: launched.id,
+      timeoutMs: getAcceptanceTimeoutMs(),
+      initialDelayMs: 250,
+      maxDelayMs: 5_000,
+    });
+    expect((waitResult as { isError?: boolean }).isError).toBeFalsy();
+    const waitDetails = waitResult.details as VigilWaitResult;
+    expect(waitDetails.outcome).toBe("settled");
+    if (waitDetails.outcome === "settled") {
+      expect(waitDetails.settled[0]?.latestResponse).toContain(marker);
+    }
+
+    expect(harness.capturedEntries.some((entry) => entry.customType === "vigil-settle")).toBe(true);
+    expect(await findChildSessionPath(launched.sessionId, tempCwd, sessionDir)).toBeNull();
+
+    const sendRejected = await harness.execute({ action: "send", id: launched.id, message: "again" });
+    expect((sendRejected as { isError?: boolean }).isError).toBe(true);
+    const searchRejected = await harness.execute({ action: "search", query: marker, id: launched.id });
+    expect((searchRejected as { isError?: boolean }).isError).toBe(true);
+    const readRejected = await harness.execute({ action: "read", id: launched.id, entryId: "entry-1" });
+    expect((readRejected as { isError?: boolean }).isError).toBe(true);
+
+    const completeResult = await harness.execute({ action: "complete", id: launched.id });
+    expect((completeResult as { isError?: boolean }).isError).toBeFalsy();
+    expect((completeResult.details as VigilSnapshot).state).toBe("completed");
+    expect((completeResult.details as VigilSnapshot).name).toBe(`[completed] ${launchName}`);
+  }, getAcceptanceTimeoutMs() + 120_000);
+
   it("paginates list results with synthetic lifecycle records without launching real children", async () => {
     const { createVigilTestHarness } = await import("../helpers/vigil-test-harness");
 

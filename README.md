@@ -15,8 +15,9 @@ With Vigil, each of your Pi sessions can:
 - List running/waiting/completed subagents, search, and read through their sessions
 - And, yes, each launched subagent can launch it's own subagents
 
-Each launched agent gets its own Pi session.
-You can use Pi `/resume` to manually review or continue any of those agent sessions.
+Each launched agent gets its own Pi session by default.
+Pass `ephemeral: true` on `launch` for explicit single-turn children that do **not** create a child Pi session or `/resume` entry (bounded lifecycle/settle metadata is still stored in the parent Vigil session).
+You can use Pi `/resume` to manually review or continue persisted agent sessions only.
 All orchestration data lives inside the sessions.
 
 That's it.
@@ -46,7 +47,7 @@ V1 state model is session-only: parent-session custom entries record launches, f
 The extension registers a single tool:
 
 ```ts
-vigil({ action: "launch", name, message, model?, cwd? })
+vigil({ action: "launch", name, message, model?, cwd?, ephemeral?: true })
 vigil({ action: "poll", id })
 vigil({ action: "send", id, message, model? })
 vigil({ action: "list", includeCompleted?, maxResults?, skipToId? })
@@ -56,7 +57,11 @@ vigil({ action: "search", query, id?, includeCompleted?, maxResults? })
 vigil({ action: "read", id, entryId, before?, after?, includeCompleted? })
 ```
 
-`launch` requires a nonblank human-readable `name`, starts a detached Pi child (`pi --mode json -p --session-id <id> --name <name>`), appends a parent `vigil-launch` custom entry, and returns a `running` snapshot.
+`launch` requires a nonblank human-readable `name`, starts a detached Pi child, appends a parent `vigil-launch` custom entry, and returns a `running` snapshot.
+
+By default (`ephemeral` absent/false), Vigil launches `pi --mode json -p --session-id <id> --name <name>` and the child retains a normal Pi session JSONL plus a `/resume` entry.
+
+With `ephemeral: true`, Vigil launches `pi --mode json -p --no-session --name <name>` instead. The child has no session JSONL or `/resume` entry. A parent-owned internal JSON-output observer drains stdout for backpressure only, records one bounded `vigil-settle` entry when the child settles, and never streams token deltas to the parent model, TUI, RPC, or wait partial-result channel. Ephemeral children are single-turn: `send`, `search`, and `read` reject; `complete` skips child-session rename and descendant inspection; parent exit or crash before settlement loses any in-flight observer/result. On parent `session_shutdown`, Vigil stops observers and best-effort terminates/reaps each directly tracked ephemeral PID (never process groups or descendants).
 
 `send` continues the same child Pi session with a new prompt. It is allowed only while the current turn is `waiting`. If the settled one-shot Pi process is still alive, Vigil terminates and waits for that tracked PID before spawning the next turn. Each successful `send` appends one durable parent `vigil-turn` entry with the new tracked PID and optional model. `send` does not pass `--name`, so a child session renamed during work keeps its current Pi display name.
 
@@ -72,7 +77,7 @@ vigil({ action: "read", id, entryId, before?, after?, includeCompleted? })
 
 `list` reconstructs Vigil children from append-only entries in the current parent session file. By default it returns active (`running` / `waiting`) items only, sorted most recently updated first, capped at **20** items per page (`maxResults`, maximum **50**). Pass `includeCompleted: true` to include completed children. Pass `skipToId` with an exact direct canonical Vigil child id to begin the page **inclusively** at that item in the filtered, ordered list; use the prior page's `nextSkipToId` to retrieve older children. Unknown ids, whitespace-invalid ids, or ids excluded by `includeCompleted: false` return a controlled error. Structured list results add `omittedCount` and optional `nextSkipToId` (the first omitted eligible item when more exist). Text output reports truncation with actionable guidance when items are omitted. List pagination is a fresh observational scan on each call—not a transactional snapshot when the ledger changes between pages. List items are concise (`id`, `sessionId`, `name`, `cwd`, `state`, optional `completedAt`, optional `directSubagents`) and omit large `latestResponse` text; use `poll` for response bodies.
 
-Each listed direct child may include a **one-level** `directSubagents` summary of that child's own direct Vigil children (root grandchildren only). Counts (`total`, `incomplete`, `running`, `waiting`, `completed`, `unknown`) reflect the full shallow ledger inspection; `items` is capped at 20 display entries with `omittedCount`. Text output uses lines such as `direct subagents: none`, `direct subagents: 2 incomplete (1 running, 1 waiting; 1 completed)`, followed by bounded item lines. If the intermediate child ledger cannot be read, the root child is retained with `directSubagents: { inspection: "unavailable", error }` rather than failing the entire list. Deeper descendants are never traversed.
+Each listed direct child may include a **one-level** `directSubagents` summary of that child's own direct Vigil children (root grandchildren only). Ephemeral list items include an `ephemeral` marker in structured results and compact text; they omit `directSubagents`. Counts (`total`, `incomplete`, `running`, `waiting`, `completed`, `unknown`) reflect the full shallow ledger inspection; `items` is capped at 20 display entries with `omittedCount`. Text output uses lines such as `direct subagents: none`, `direct subagents: 2 incomplete (1 running, 1 waiting; 1 completed)`, followed by bounded item lines. If the intermediate child ledger cannot be read, the root child is retained with `directSubagents: { inspection: "unavailable", error }` rather than failing the entire list. Deeper descendants are never traversed.
 
 `wait` is a foreground, bounded convenience loop over the fixed active (`running` / `waiting`) child cohort from the current parent session, or over one targeted direct child when `id` is supplied. It scans immediately, then polls with capped exponential backoff until any watched child is `waiting` or is observed `completed`. A targeted wait accepts a direct child in any lifecycle state (`running`, `waiting`, or `completed`) and returns immediately when that child is already `waiting` or `completed`. It returns structured details with one normal outcome: `settled` (full snapshots, including `latestResponse`), `timeout` (concise pending list items), `empty`, or `cancelled` (concise pending list items). It never calls `send`, `complete`, reaping, spawning, renaming, or ledger append operations.
 

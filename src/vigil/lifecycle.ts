@@ -4,6 +4,7 @@ import type {
   VigilLaunchRecord,
   VigilListItem,
   VigilRuntimeRecord,
+  VigilSettleRecord,
   VigilState,
   VigilTurnRecord,
 } from "./types";
@@ -14,6 +15,7 @@ export interface VigilLifecycleState {
   cwd: string;
   launchName: string;
   runtimeRecord: VigilRuntimeRecord;
+  settleRecord: VigilSettleRecord | null;
   completionRecord: VigilCompletionRecord | null;
   lastUpdatedAt: string;
 }
@@ -62,11 +64,29 @@ function isValidCompletionRecord(data: unknown): data is VigilCompletionRecord {
   );
 }
 
+function isValidSettleRecord(data: unknown): data is VigilSettleRecord {
+  if (!isRecord(data)) {
+    return false;
+  }
+
+  return (
+    isNonEmptyString(data.id) &&
+    isNonEmptyString(data.sessionId) &&
+    (data.latestResponse === null || typeof data.latestResponse === "string") &&
+    isNonEmptyString(data.settledAt)
+  );
+}
+
 function matchesCanonicalIdentity(
   existing: VigilLifecycleState,
   data: { sessionId: string; cwd: string },
 ): boolean {
   return existing.sessionId === data.sessionId && existing.cwd === data.cwd;
+}
+
+export function isEphemeralLifecycle(state: VigilLifecycleState): boolean {
+  const record = state.runtimeRecord;
+  return "launchedAt" in record && record.ephemeral === true;
 }
 
 export function reconstructVigilLifecycleFromEntries(
@@ -95,6 +115,7 @@ export function reconstructVigilLifecycleFromEntries(
         cwd: data.cwd,
         launchName: data.name.trim(),
         runtimeRecord: data,
+        settleRecord: null,
         completionRecord: null,
         lastUpdatedAt: data.launchedAt,
       });
@@ -108,7 +129,7 @@ export function reconstructVigilLifecycleFromEntries(
       }
 
       const existing = byId.get(data.id);
-      if (!existing || existing.completionRecord) {
+      if (!existing || existing.completionRecord || isEphemeralLifecycle(existing)) {
         continue;
       }
 
@@ -118,6 +139,26 @@ export function reconstructVigilLifecycleFromEntries(
 
       existing.runtimeRecord = data;
       existing.lastUpdatedAt = data.sentAt;
+      continue;
+    }
+
+    if (entry.customType === "vigil-settle") {
+      const data = entry.data;
+      if (!isValidSettleRecord(data)) {
+        continue;
+      }
+
+      const existing = byId.get(data.id);
+      if (!existing || existing.settleRecord || existing.completionRecord) {
+        continue;
+      }
+
+      if (!matchesCanonicalIdentity(existing, { sessionId: data.sessionId, cwd: existing.cwd })) {
+        continue;
+      }
+
+      existing.settleRecord = data;
+      existing.lastUpdatedAt = data.settledAt;
       continue;
     }
 
@@ -187,6 +228,8 @@ export function lifecycleStateToListItem(
   state: VigilLifecycleState,
   activeState: "running" | "waiting" | "completed",
 ): VigilListItem {
+  const ephemeral = isEphemeralLifecycle(state) ? ({ ephemeral: true as const }) : {};
+
   if (state.completionRecord) {
     return {
       id: state.id,
@@ -195,6 +238,7 @@ export function lifecycleStateToListItem(
       cwd: state.cwd,
       state: "completed",
       completedAt: state.completionRecord.completedAt,
+      ...ephemeral,
     };
   }
 
@@ -204,5 +248,6 @@ export function lifecycleStateToListItem(
     name: state.launchName,
     cwd: state.cwd,
     state: activeState,
+    ...ephemeral,
   };
 }

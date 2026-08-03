@@ -215,6 +215,7 @@ describe("vigil lifecycle reconstruction", () => {
       cwd: "/parent/project",
       launchName: "Done",
       runtimeRecord: originalTurn,
+      settleRecord: null,
       completionRecord: originalCompletion,
       lastUpdatedAt: "2026-08-01T11:00:00.000Z",
     });

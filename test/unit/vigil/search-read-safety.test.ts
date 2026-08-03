@@ -184,6 +184,7 @@ describe("deriveDiagnosticChildIdentity", () => {
         launchedAt: "2026-08-01T10:00:00.000Z",
       },
       completionRecord: null,
+      settleRecord: null,
       lastUpdatedAt: "2026-08-01T10:00:00.000Z",
     };
     const active = deriveDiagnosticChildIdentity(activeLifecycle);
@@ -200,6 +201,7 @@ describe("deriveDiagnosticChildIdentity", () => {
         completedAt: "2026-08-01T11:00:00.000Z",
       },
       lastUpdatedAt: "2026-08-01T11:00:00.000Z",
+      settleRecord: null,
     });
     expect(completed.state).toBe("completed");
     expect(completed.name).toBe("[completed] Active");

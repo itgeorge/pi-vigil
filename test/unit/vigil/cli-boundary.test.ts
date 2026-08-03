@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPiChildArgs } from "../../../src/vigil/node-runtime";
+import { buildPiChildArgs, buildPiEphemeralChildArgs } from "../../../src/vigil/node-runtime";
 
 describe("buildPiChildArgs", () => {
   it("includes --name for launch and omits it for send", () => {
@@ -64,5 +64,14 @@ describe("buildPiChildArgs", () => {
       "/tmp/vigil-session-dir",
       "Run checks",
     ]);
+  });
+
+  it("builds ephemeral args with --no-session only", () => {
+    expect(
+      buildPiEphemeralChildArgs({
+        message: "Quick reply",
+        name: "Ephemeral",
+      }),
+    ).toEqual(["--mode", "json", "-p", "--no-session", "--name", "Ephemeral", "Quick reply"]);
   });
 });

@@ -1,4 +1,5 @@
 import type { ChildSessionDescendantInspector } from "./descendant-inspector.ts";
+import type { EphemeralChildObserver } from "./ephemeral-observer.ts";
 import type {
   ChildSessionNamer,
   ChildSessionReader,
@@ -13,6 +14,7 @@ export interface VigilRuntimeOverrides {
   childSessionTranscriptReader?: ChildSessionTranscriptReader;
   childSessionNamer?: ChildSessionNamer;
   descendantInspector?: ChildSessionDescendantInspector;
+  ephemeralChildObserver?: EphemeralChildObserver;
   waitScheduler?: WaitScheduler;
   sessionDir?: string;
 }
