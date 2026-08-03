@@ -91,6 +91,70 @@ describe("VigilService ephemeral actions", () => {
     expect((polled as VigilSnapshot).latestResponse).toBe("DONE");
   });
 
+  it("persists vigil-settle when observer settles synchronously during activate", async () => {
+    const observer = createFakeEphemeralChildObserver({
+      onStart(input) {
+        observer.pushStdout(input.vigilId, assistantSettledChunk("SYNC"));
+      },
+    });
+    const sessionManager = SessionManager.inMemory("/parent/default");
+    const settledEntries: unknown[] = [];
+    const appendEntry = (customType: string, data: unknown) => {
+      sessionManager.appendCustomEntry(customType, data);
+      if (customType === "vigil-settle") {
+        settledEntries.push(data);
+      }
+    };
+    const parentLedger = createSessionParentLedger(sessionManager, appendEntry);
+    const service = new VigilService({
+      processRunner: {
+        async spawnDetached() {
+          throw new Error("persisted spawn should not be used");
+        },
+        isAlive: () => false,
+        async terminateAndWait() {},
+      },
+      childSessionReader: {
+        async readChildSessionState() {
+          throw new Error("child session reader should not be used");
+        },
+      },
+      childSessionTranscriptReader: createEmptyChildSessionTranscriptReader(),
+      childSessionNamer: {
+        async markCompleted() {
+          throw new Error("child session rename should not run");
+        },
+      },
+      parentLedger,
+      descendantInspector: createZeroDescendantInspector(),
+      ephemeralChildObserver: observer,
+      createId: () => "vigil-ephemeral-sync",
+      currentParentSessionId: "parent-session-id",
+    });
+
+    const launched = await service.launch({
+      name: "Sync settle",
+      message: "Reply SYNC",
+      parentCwd: "/parent/default",
+      ephemeral: true,
+    });
+
+    expect(isVigilError(launched)).toBe(false);
+    expect(settledEntries).toHaveLength(1);
+
+    const polled = await service.poll("vigil-ephemeral-sync");
+    expect(isVigilError(polled)).toBe(false);
+    expect((polled as VigilSnapshot).state).toBe("waiting");
+    expect((polled as VigilSnapshot).latestResponse).toBe("SYNC");
+
+    const listed = await service.list();
+    expect(isVigilError(listed)).toBe(false);
+    if (!isVigilError(listed)) {
+      expect(listed.vigils[0]?.state).toBe("waiting");
+      expect(listed.vigils[0]?.ephemeral).toBe(true);
+    }
+  });
+
   it("rejects send, search, and read for ephemeral children", async () => {
     const { service, observer } = createEphemeralHarness();
     await service.launch({
@@ -221,5 +285,23 @@ describe("VigilService ephemeral actions", () => {
         expect(item.steps).toBe(0);
       }
     }
+  });
+
+  it("does not append vigil-settle after parent shutdown even if stdout arrives later", async () => {
+    const { service, observer, settledEntries } = createEphemeralHarness();
+    await service.launch({
+      name: "Shutdown race",
+      message: "Reply",
+      parentCwd: "/parent/default",
+      ephemeral: true,
+    });
+
+    await observer.shutdown();
+    observer.pushStdout("vigil-ephemeral-test", assistantSettledChunk("LATE"));
+
+    expect(settledEntries).toHaveLength(0);
+    expect(await service.poll("vigil-ephemeral-test")).toEqual({
+      error: formatEphemeralObservationUnavailableError("vigil-ephemeral-test"),
+    });
   });
 });

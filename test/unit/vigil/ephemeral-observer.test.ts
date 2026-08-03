@@ -95,7 +95,7 @@ describe("fake ephemeral child observer", () => {
     const observer = createFakeEphemeralChildObserver();
     const settled: string[] = [];
 
-    const { pid } = await observer.start({
+    const first = await observer.start({
       vigilId: "vigil-ephemeral-test",
       parentSessionId: "parent-session",
       message: "Reply",
@@ -106,7 +106,8 @@ describe("fake ephemeral child observer", () => {
       },
     });
 
-    expect(pid).toBe(9000);
+    expect(first.pid).toBe(9000);
+    first.activate();
     observer.pushStdout(
       "vigil-ephemeral-test",
       '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"Done"}],"stopReason":"stop"}}\n{"type":"agent_settled"}\n',
@@ -115,13 +116,14 @@ describe("fake ephemeral child observer", () => {
     expect(settled).toEqual(["Done"]);
     expect(observer.getLiveState("vigil-ephemeral-test")).toBeNull();
 
-    await observer.start({
+    const second = await observer.start({
       vigilId: "vigil-ephemeral-2",
       parentSessionId: "parent-session",
       message: "Again",
       cwd: "/parent/project",
       onSettled: () => settled.push("after-shutdown"),
     });
+    second.activate();
 
     await observer.shutdown();
     observer.pushStdout(
@@ -130,5 +132,30 @@ describe("fake ephemeral child observer", () => {
     );
     expect(observer.shutdownCalls).toBe(1);
     expect(settled).toEqual(["Done"]);
+  });
+
+  it("flushes a partial final JSON line when the fake child closes", async () => {
+    const observer = createFakeEphemeralChildObserver();
+    const settled: string[] = [];
+
+    const started = await observer.start({
+      vigilId: "vigil-partial-close",
+      parentSessionId: "parent-session",
+      message: "Reply",
+      cwd: "/parent/project",
+      name: "Quick",
+      onSettled: (result) => {
+        settled.push(result.latestResponse ?? "null");
+      },
+    });
+    started.activate();
+
+    observer.pushStdout(
+      "vigil-partial-close",
+      '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"Tail"}],"stopReason":"stop"}}',
+    );
+    observer.pushClose("vigil-partial-close");
+
+    expect(settled).toEqual(["Tail"]);
   });
 });

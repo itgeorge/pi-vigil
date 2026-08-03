@@ -178,8 +178,9 @@ export class VigilService {
 
     if (input.ephemeral) {
       const parentSessionId = this.deps.currentParentSessionId ?? sessionId;
+      let activate: () => void;
       try {
-        ({ pid } = await this.deps.ephemeralChildObserver.start({
+        ({ pid, activate } = await this.deps.ephemeralChildObserver.start({
           vigilId: id,
           parentSessionId,
           message: input.message,
@@ -222,6 +223,7 @@ export class VigilService {
       };
 
       this.deps.parentLedger.appendLaunch(record);
+      activate();
 
       return {
         id,

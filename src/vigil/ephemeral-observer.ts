@@ -29,8 +29,13 @@ export interface EphemeralLaunchInput {
   onSettled: (result: EphemeralObserverSettleResult) => void;
 }
 
+export interface EphemeralStartResult {
+  pid: number;
+  activate(): void;
+}
+
 export interface EphemeralChildObserver {
-  start(input: EphemeralLaunchInput): Promise<{ pid: number }>;
+  start(input: EphemeralLaunchInput): Promise<EphemeralStartResult>;
   getLiveState(vigilId: string): EphemeralLiveState | null;
   isObserving(vigilId: string): boolean;
   shutdown(options?: TerminateAndWaitOptions): Promise<void>;
@@ -269,6 +274,9 @@ type ActiveObservation = {
   onSettled: (result: EphemeralObserverSettleResult) => void;
   child: ChildProcess;
   cleanup: () => void;
+  lineBuffer: EphemeralJsonLineBuffer;
+  handleLines: (lines: string[]) => void;
+  activated: boolean;
 };
 
 export function createNodeEphemeralChildObserver(options: {
@@ -317,9 +325,9 @@ export function createNodeEphemeralChildObserver(options: {
   };
 
   const attachStreamHandlers = (observation: ActiveObservation): void => {
-    const lineBuffer = new EphemeralJsonLineBuffer();
+    observation.lineBuffer = new EphemeralJsonLineBuffer();
 
-    const handleLines = (lines: string[]) => {
+    observation.handleLines = (lines: string[]) => {
       for (const line of lines) {
         const event = parseEphemeralJsonLine(line);
         if (!event) {
@@ -334,7 +342,9 @@ export function createNodeEphemeralChildObserver(options: {
     };
 
     const onStdout = (chunk: Buffer | string) => {
-      handleLines(lineBuffer.feed(typeof chunk === "string" ? chunk : chunk.toString("utf8")));
+      observation.handleLines(
+        observation.lineBuffer.feed(typeof chunk === "string" ? chunk : chunk.toString("utf8")),
+      );
     };
 
     const onStderr = () => {
@@ -348,6 +358,39 @@ export function createNodeEphemeralChildObserver(options: {
       observation.child.stdout?.off("data", onStdout);
       observation.child.stderr?.off("data", onStderr);
     };
+  };
+
+  const activateObservation = (observation: ActiveObservation): void => {
+    if (observation.activated) {
+      return;
+    }
+    observation.activated = true;
+    attachStreamHandlers(observation);
+
+    observation.child.on("close", (code, signal) => {
+      if (observation.settled) {
+        observations.delete(observation.vigilId);
+        observation.cleanup();
+        return;
+      }
+
+      observation.handleLines(observation.lineBuffer.flushPartial());
+      if (observation.settled) {
+        observations.delete(observation.vigilId);
+        observation.cleanup();
+        return;
+      }
+
+      void finalizeObservation(
+        observation,
+        code === 0
+          ? undefined
+          : `ephemeral child exited (${signal ?? `code ${code ?? "unknown"}`})`,
+      ).finally(() => {
+        observations.delete(observation.vigilId);
+        observation.cleanup();
+      });
+    });
   };
 
   return {
@@ -395,35 +438,16 @@ export function createNodeEphemeralChildObserver(options: {
         onSettled: input.onSettled,
         child,
         cleanup: () => undefined,
+        lineBuffer: new EphemeralJsonLineBuffer(),
+        handleLines: () => undefined,
+        activated: false,
       };
 
-      attachStreamHandlers(observation);
-
-      child.on("close", (code, signal) => {
-        if (observation.settled) {
-          observations.delete(input.vigilId);
-          observation.cleanup();
-          return;
-        }
-
-        const trailing = new EphemeralJsonLineBuffer();
-        const stdout = observation.child.stdout;
-        if (stdout) {
-          stdout.read();
-        }
-        void finalizeObservation(
-          observation,
-          code === 0
-            ? undefined
-            : `ephemeral child exited (${signal ?? `code ${code ?? "unknown"}`})`,
-        ).finally(() => {
-          observations.delete(input.vigilId);
-          observation.cleanup();
-        });
-      });
-
       observations.set(input.vigilId, observation);
-      return { pid };
+      return {
+        pid,
+        activate: () => activateObservation(observation),
+      };
     },
 
     getLiveState(vigilId) {
@@ -462,7 +486,7 @@ export function createNodeEphemeralChildObserver(options: {
 export function createNoopEphemeralChildObserver(): EphemeralChildObserver {
   return {
     async start() {
-      return { pid: 0 };
+      return { pid: 0, activate() {} };
     },
     getLiveState() {
       return null;
@@ -488,11 +512,32 @@ export function createFakeEphemeralChildObserver(options?: FakeEphemeralChildObs
 } {
   const started: EphemeralLaunchInput[] = [];
   const states = new Map<string, ParsedEphemeralObserverState>();
+  const lineBuffers = new Map<string, EphemeralJsonLineBuffer>();
+  const activated = new Set<string>();
   let nextPid = 9000;
   let shutdownRequested = false;
   let shutdownCalls = 0;
 
   const notified = new Set<string>();
+
+  const processLines = (vigilId: string, lines: string[]) => {
+    for (const line of lines) {
+      const state = states.get(vigilId);
+      if (!state || (state.settled && notified.has(vigilId))) {
+        return;
+      }
+      const event = parseEphemeralJsonLine(line);
+      if (!event) {
+        continue;
+      }
+      const next = applyEphemeralJsonEvent(state, event);
+      states.set(vigilId, next);
+      if (next.settled) {
+        settle(vigilId);
+        return;
+      }
+    }
+  };
 
   const settle = (vigilId: string) => {
     if (notified.has(vigilId)) {
@@ -532,11 +577,20 @@ export function createFakeEphemeralChildObserver(options?: FakeEphemeralChildObs
         throw new Error("Cannot start ephemeral child after parent shutdown");
       }
       started.push(input);
-      options?.onStart?.(input);
       states.set(input.vigilId, createInitialEphemeralObserverState());
+      lineBuffers.set(input.vigilId, new EphemeralJsonLineBuffer());
       const pid = nextPid;
       nextPid += 1;
-      return { pid };
+      return {
+        pid,
+        activate: () => {
+          if (activated.has(input.vigilId)) {
+            return;
+          }
+          activated.add(input.vigilId);
+          options?.onStart?.(input);
+        },
+      };
     },
     getLiveState(vigilId) {
       const state = states.get(vigilId);
@@ -553,34 +607,36 @@ export function createFakeEphemeralChildObserver(options?: FakeEphemeralChildObs
       shutdownCalls += 1;
       shutdownRequested = true;
       states.clear();
+      lineBuffers.clear();
+      activated.clear();
     },
     pushStdout(vigilId, chunk) {
-      const buffer = new EphemeralJsonLineBuffer();
-      for (const line of buffer.feed(chunk)) {
-        const state = states.get(vigilId);
-        if (!state || (state.settled && notified.has(vigilId))) {
-          return;
-        }
-        const event = parseEphemeralJsonLine(line);
-        if (!event) {
-          continue;
-        }
-        const next = applyEphemeralJsonEvent(state, event);
-        states.set(vigilId, next);
-        if (next.settled) {
-          settle(vigilId);
-        }
+      let buffer = lineBuffers.get(vigilId);
+      if (!buffer) {
+        buffer = new EphemeralJsonLineBuffer();
+        lineBuffers.set(vigilId, buffer);
       }
+      processLines(vigilId, buffer.feed(chunk));
     },
     pushClose(vigilId, code = 0) {
       const state = states.get(vigilId);
       if (!state || state.settled) {
         return;
       }
-      if (code !== 0) {
-        state.error = state.error ?? `ephemeral child exited (code ${code})`;
+
+      const buffer = lineBuffers.get(vigilId);
+      if (buffer) {
+        processLines(vigilId, buffer.flushPartial());
       }
-      states.set(vigilId, { ...state, settled: true });
+
+      const current = states.get(vigilId);
+      if (!current || current.settled) {
+        return;
+      }
+      if (code !== 0) {
+        current.error = current.error ?? `ephemeral child exited (code ${code})`;
+      }
+      states.set(vigilId, { ...current, settled: true });
       settle(vigilId);
     },
   };

@@ -38,6 +38,32 @@ On parent `session_shutdown`, `shutdownSharedEphemeralChildObserver()` stops all
 - No child JSONL/`/resume`; parent stores bounded `vigil-launch` + `vigil-settle` (+ optional `vigil-complete`) only.
 - Parent exit/crash before settlement loses in-flight observer/results.
 - Ephemeral children launching nested Vigil children unsupported (no durable child ledger).
+
+### Phase 4 validation findings (independent review)
+
+- **P1 (blocking):** Ephemeral observer attached stdout handlers during `start()` before parent `vigil-launch` was appended; a synchronous `onSettled` saw no lifecycle and permanently dropped `vigil-settle`.
+- **P2 (blocking):** `EphemeralJsonLineBuffer.flushPartial()` was unused on child close; a final JSON line without trailing newline was dropped.
+- **P3 (substantive, fixed by P1):** `list` could report `running` for a synchronously settled ephemeral child when settle metadata was lost.
+- **P4 (coverage gap):** Added shutdown-after-launch test proving late stdout does not append `vigil-settle` and poll returns observation unavailable.
+
+### Phase 4 remediation (red → green)
+
+- **P1 fix:** `EphemeralChildObserver.start()` now returns `{ pid, activate() }`; `VigilService.launch` appends `vigil-launch` before calling `activate()`, so lifecycle exists before stdout may settle.
+- **P2 fix:** Node observer stores the line buffer on the observation, calls `flushPartial()` through the parser on child `close` before finalization; fake observer mirrors buffer/flush behavior for tests.
+- **New tests:**
+  - `persists vigil-settle when observer settles synchronously during activate` (`ephemeral-service.test.ts`)
+  - `flushes a partial final JSON line when the fake child closes` (`ephemeral-observer.test.ts`)
+  - `does not append vigil-settle after parent shutdown even if stdout arrives later` (`ephemeral-service.test.ts`)
+- **Post-remediation validation:**
+  - Focused: `npm test -- test/unit/vigil/ephemeral-observer.test.ts test/unit/vigil/ephemeral-service.test.ts` → **14/14** OK
+  - Full: `npm run check` → typecheck OK, **284/284** unit tests OK, pack verify OK
+  - Acceptance guard: `npm run test:acceptance` without opt-in → expected guard error
+  - Live: `PI_VIGIL_LIVE=1 npm run test:acceptance` → **4/4** OK
+
+### Remaining risks
+
+- Extremely fast real Pi children could still emit stdout between spawn and `activate()` if platform scheduling reorders; `activate()` is invoked synchronously immediately after `appendLaunch` in the same turn.
+- Parent crash between `appendLaunch` and settlement still yields observation-unavailable until/unless settle is persisted.
 - Internal stdout drain only; no user/model-visible token streaming.
 
 ---
@@ -128,11 +154,11 @@ On parent `session_shutdown`, `shutdownSharedEphemeralChildObserver()` stops all
 
 ## Todos
 
-- [ ] Have an independent Composer validation agent inspect the committed implementation without editing it. It must run focused ephemeral tests, full deterministic tests/typecheck/package check, inspect the persisted/ephemeral action matrix, exercise output bounds and cleanup paths, and run opt-in live acceptance when available. Record commands/results/failures.
-- [ ] Have an independent GPT-5.5 reviewer inspect implementation, tests, validation findings, and this plan. It must report only substantive findings ranked by severity, including: asynchronous/detached semantics, stdout backpressure/bounds/parser safety, stale-session writes, shutdown cleanup, parent-ledger durability, action restrictions, persistent-child regressions, and user-visible documentation accuracy.
-- [ ] Return confirmed validation/review findings to the original Composer implementation session for focused red-green remediation. Do not hand-edit implementation except emergency recovery explicitly recorded here.
-- [ ] Re-run affected tests, full deterministic validation, package check, and opt-in live acceptance after remediation. Re-review nontrivial remediation before acceptance.
-- [ ] Update this plan with commits, red/green evidence, validation/review results, final ephemeral lifecycle contract, intentional limitations, and remaining risks.
+- [x] Have an independent Composer validation agent inspect the committed implementation without editing it. It must run focused ephemeral tests, full deterministic tests/typecheck/package check, inspect the persisted/ephemeral action matrix, exercise output bounds and cleanup paths, and run opt-in live acceptance when available. Record commands/results/failures.
+- [x] Have an independent GPT-5.5 reviewer inspect implementation, tests, validation findings, and this plan. It must report only substantive findings ranked by severity, including: asynchronous/detached semantics, stdout backpressure/bounds/parser safety, stale-session writes, shutdown cleanup, parent-ledger durability, action restrictions, persistent-child regressions, and user-visible documentation accuracy.
+- [x] Return confirmed validation/review findings to the original Composer implementation session for focused red-green remediation. Do not hand-edit implementation except emergency recovery explicitly recorded here.
+- [x] Re-run affected tests, full deterministic validation, package check, and opt-in live acceptance after remediation. Re-review nontrivial remediation before acceptance.
+- [x] Update this plan with commits, red/green evidence, validation/review results, final ephemeral lifecycle contract, intentional limitations, and remaining risks.
 
 ## Explicit non-goals
 
