@@ -283,6 +283,11 @@ export function createNodeEphemeralChildObserver(options: {
   piExecutable?: string;
   processRunner: Pick<ProcessRunner, "isAlive" | "terminateAndWait">;
   reapTimeoutMs?: number;
+  spawnChild?: (
+    piExecutable: string,
+    args: string[],
+    spawnOptions: { cwd: string },
+  ) => ChildProcess;
 }): EphemeralChildObserver {
   const piExecutable = options.piExecutable ?? "pi";
   const observations = new Map<string, ActiveObservation>();
@@ -309,6 +314,10 @@ export function createNodeEphemeralChildObserver(options: {
           : {}),
     };
 
+    if (!shutdownRequested) {
+      observation.onSettled(result);
+    }
+
     if (options.processRunner.isAlive(observation.pid)) {
       try {
         await options.processRunner.terminateAndWait(observation.pid, {
@@ -317,10 +326,6 @@ export function createNodeEphemeralChildObserver(options: {
       } catch {
         // Best-effort direct PID cleanup only.
       }
-    }
-
-    if (!shutdownRequested) {
-      observation.onSettled(result);
     }
   };
 
@@ -357,6 +362,8 @@ export function createNodeEphemeralChildObserver(options: {
     observation.cleanup = () => {
       observation.child.stdout?.off("data", onStdout);
       observation.child.stderr?.off("data", onStderr);
+      observation.child.stdout?.destroy();
+      observation.child.stderr?.destroy();
     };
   };
 
@@ -408,11 +415,16 @@ export function createNodeEphemeralChildObserver(options: {
         name: input.name,
       });
 
-      const child = spawn(piExecutable, args, {
-        cwd: input.cwd,
-        detached: true,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+      const spawnChild =
+        options.spawnChild ??
+        ((executable, spawnArgs, spawnOptions) =>
+          spawn(executable, spawnArgs, {
+            cwd: spawnOptions.cwd,
+            detached: true,
+            stdio: ["ignore", "pipe", "pipe"],
+          }));
+
+      const child = spawnChild(piExecutable, args, { cwd: input.cwd });
 
       const pid = await new Promise<number>((resolve, reject) => {
         child.on("error", reject);
@@ -468,15 +480,16 @@ export function createNodeEphemeralChildObserver(options: {
       const active = [...observations.values()];
       await Promise.all(
         active.map(async (observation) => {
-          observation.cleanup();
-          if (options.processRunner.isAlive(observation.pid)) {
-            try {
+          try {
+            if (options.processRunner.isAlive(observation.pid)) {
               await options.processRunner.terminateAndWait(observation.pid, terminateOptions);
-            } catch {
-              // Best-effort direct PID cleanup only.
             }
+          } catch {
+            // Best-effort direct PID cleanup only.
+          } finally {
+            observation.cleanup();
+            observations.delete(observation.vigilId);
           }
-          observations.delete(observation.vigilId);
         }),
       );
     },

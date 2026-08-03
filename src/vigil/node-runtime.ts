@@ -903,6 +903,7 @@ export class VigilService {
       state: snapshot.state,
       directSubagents,
       ...(snapshot.completedAt ? { completedAt: snapshot.completedAt } : {}),
+      ...(snapshot.ephemeral ? { ephemeral: true as const } : {}),
     }));
   }
 

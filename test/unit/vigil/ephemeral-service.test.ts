@@ -1,8 +1,13 @@
+import { EventEmitter, PassThrough } from "node:stream";
+import type { ChildProcess } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { createZeroDescendantInspector } from "../../../src/vigil/descendant-inspector";
-import { createFakeEphemeralChildObserver } from "../../../src/vigil/ephemeral-observer";
-import type { ChildSessionNamer, ChildSessionReader, ProcessRunner } from "../../../src/vigil/ports";
+import {
+  createFakeEphemeralChildObserver,
+  createNodeEphemeralChildObserver,
+} from "../../../src/vigil/ephemeral-observer";
+import type { ChildSessionNamer, ChildSessionReader, ProcessRunner, WaitScheduler } from "../../../src/vigil/ports";
 import { createEmptyChildSessionTranscriptReader, createSessionParentLedger, VigilService } from "../../../src/vigil/node-runtime";
 import {
   formatEphemeralObservationUnavailableError,
@@ -10,11 +15,33 @@ import {
   formatEphemeralTranscriptUnavailableError,
   isVigilError,
   type VigilSnapshot,
+  type VigilWaitResult,
 } from "../../../src/vigil/types";
 
-function createEphemeralHarness(options?: { parentSessionId?: string }) {
+function createMockChildProcess(pid = 12_345): ChildProcess {
+  const child = new EventEmitter() as ChildProcess;
+  const stdout = new PassThrough();
+  const stderr = new PassThrough();
+  Object.assign(child, { stdout, stderr, pid });
+  child.unref = () => child;
+  queueMicrotask(() => {
+    child.emit("spawn");
+  });
+  return child;
+}
+
+function assistantSettledStdout(text: string): string {
+  return `{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"${text}"}],"stopReason":"stop"}}\n{"type":"agent_settled"}\n`;
+}
+
+function createEphemeralHarness(options?: {
+  parentSessionId?: string;
+  waitScheduler?: WaitScheduler;
+  processRunner?: ProcessRunner;
+  observer?: ReturnType<typeof createFakeEphemeralChildObserver>;
+}) {
   const sessionManager = SessionManager.inMemory("/parent/default");
-  const observer = createFakeEphemeralChildObserver();
+  const observer = options?.observer ?? createFakeEphemeralChildObserver();
   const settledEntries: unknown[] = [];
   const appendEntry = (customType: string, data: unknown) => {
     sessionManager.appendCustomEntry(customType, data);
@@ -25,7 +52,7 @@ function createEphemeralHarness(options?: { parentSessionId?: string }) {
 
   const parentLedger = createSessionParentLedger(sessionManager, appendEntry);
 
-  const processRunner: ProcessRunner = {
+  const processRunner: ProcessRunner = options?.processRunner ?? {
     async spawnDetached() {
       throw new Error("persisted spawn should not be used for ephemeral launch");
     },
@@ -57,6 +84,7 @@ function createEphemeralHarness(options?: { parentSessionId?: string }) {
     ephemeralChildObserver: observer,
     createId: () => "vigil-ephemeral-test",
     currentParentSessionId: options?.parentSessionId ?? "parent-session-id",
+    ...(options?.waitScheduler ? { waitScheduler: options.waitScheduler } : {}),
   });
 
   return { service, observer, sessionManager, settledEntries };
@@ -303,5 +331,162 @@ describe("VigilService ephemeral actions", () => {
     expect(await service.poll("vigil-ephemeral-test")).toEqual({
       error: formatEphemeralObservationUnavailableError("vigil-ephemeral-test"),
     });
+  });
+
+  it("keeps poll durable during delayed terminateAndWait after settle", async () => {
+    let releaseTerminate!: () => void;
+    const terminateGate = new Promise<void>((resolve) => {
+      releaseTerminate = resolve;
+    });
+
+    const sessionManager = SessionManager.inMemory("/parent/default");
+    const appendEntry = (customType: string, data: unknown) => {
+      sessionManager.appendCustomEntry(customType, data);
+    };
+    const parentLedger = createSessionParentLedger(sessionManager, appendEntry);
+    const mockChild = createMockChildProcess();
+
+    const processRunner: ProcessRunner = {
+      async spawnDetached() {
+        throw new Error("persisted spawn should not be used");
+      },
+      isAlive: () => true,
+      async terminateAndWait() {
+        await terminateGate;
+      },
+    };
+
+    const service = new VigilService({
+      processRunner,
+      childSessionReader: {
+        async readChildSessionState() {
+          throw new Error("child session reader should not be used");
+        },
+      },
+      childSessionTranscriptReader: createEmptyChildSessionTranscriptReader(),
+      childSessionNamer: {
+        async markCompleted() {
+          throw new Error("child session rename should not run");
+        },
+      },
+      parentLedger,
+      descendantInspector: createZeroDescendantInspector(),
+      ephemeralChildObserver: createNodeEphemeralChildObserver({
+        processRunner,
+        spawnChild: () => mockChild,
+      }),
+      createId: () => "vigil-ephemeral-delay",
+      currentParentSessionId: "parent-session-id",
+    });
+
+    const launched = await service.launch({
+      name: "Delayed reap",
+      message: "Reply",
+      parentCwd: "/parent/default",
+      ephemeral: true,
+    });
+    expect(isVigilError(launched)).toBe(false);
+
+    (mockChild.stdout as PassThrough).write(assistantSettledStdout("DELAYED"));
+    await Promise.resolve();
+
+    const polled = await service.poll("vigil-ephemeral-delay");
+    expect(isVigilError(polled)).toBe(false);
+    expect((polled as VigilSnapshot).state).toBe("waiting");
+    expect((polled as VigilSnapshot).latestResponse).toBe("DELAYED");
+
+    const waitPromise = service.wait({
+      id: "vigil-ephemeral-delay",
+      timeoutMs: 100,
+      initialDelayMs: 10,
+      maxDelayMs: 20,
+    });
+    const waitResult = await waitPromise;
+    expect(isVigilError(waitResult)).toBe(false);
+    if (!isVigilError(waitResult) && waitResult.outcome === "settled") {
+      expect(waitResult.settled[0]?.latestResponse).toBe("DELAYED");
+    }
+
+    releaseTerminate();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  it("includes ephemeral marker on timeout and cancelled wait pending items", async () => {
+    class FakeScheduler implements WaitScheduler {
+      time = 0;
+
+      now(): number {
+        return this.time;
+      }
+
+      async sleep(ms: number, signal?: AbortSignal): Promise<"elapsed" | "cancelled"> {
+        this.time += ms;
+        return signal?.aborted ? "cancelled" : "elapsed";
+      }
+    }
+
+    const scheduler = new FakeScheduler();
+    const { service } = createEphemeralHarness({ waitScheduler: scheduler });
+
+    await service.launch({
+      name: "Running task",
+      message: "Reply",
+      parentCwd: "/parent/default",
+      ephemeral: true,
+    });
+
+    const timeoutResult = await service.wait({
+      id: "vigil-ephemeral-test",
+      timeoutMs: 250,
+      initialDelayMs: 100,
+      maxDelayMs: 200,
+    });
+
+    expect(isVigilError(timeoutResult)).toBe(false);
+    if (!isVigilError(timeoutResult) && timeoutResult.outcome === "timeout") {
+      expect(timeoutResult.pending).toEqual([
+        expect.objectContaining({ id: "vigil-ephemeral-test", state: "running", ephemeral: true }),
+      ]);
+      expect(timeoutResult.pending[0]).not.toHaveProperty("latestResponse");
+    }
+
+    const controller = new AbortController();
+    const abortScheduler = new (class implements WaitScheduler {
+      time = 0;
+      sleepCount = 0;
+
+      now(): number {
+        return this.time;
+      }
+
+      async sleep(ms: number, signal?: AbortSignal): Promise<"elapsed" | "cancelled"> {
+        this.sleepCount += 1;
+        this.time += ms;
+        if (this.sleepCount === 1) {
+          controller.abort();
+        }
+        return signal?.aborted ? "cancelled" : "elapsed";
+      }
+    })();
+
+    const { service: cancelService } = createEphemeralHarness({ waitScheduler: abortScheduler });
+    await cancelService.launch({
+      name: "Cancel task",
+      message: "Reply",
+      parentCwd: "/parent/default",
+      ephemeral: true,
+    });
+
+    const cancelledResult = await cancelService.wait(
+      { id: "vigil-ephemeral-test", timeoutMs: 5_000, initialDelayMs: 100, maxDelayMs: 500 },
+      controller.signal,
+    );
+
+    expect(isVigilError(cancelledResult)).toBe(false);
+    if (!isVigilError(cancelledResult) && cancelledResult.outcome === "cancelled") {
+      expect(cancelledResult.pending).toEqual([
+        expect.objectContaining({ id: "vigil-ephemeral-test", state: "running", ephemeral: true }),
+      ]);
+    }
   });
 });

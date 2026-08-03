@@ -1,3 +1,5 @@
+import { EventEmitter, PassThrough } from "node:stream";
+import type { ChildProcess } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import {
   MAX_EPHEMERAL_JSON_LINE_BYTES,
@@ -7,9 +9,27 @@ import {
   buildPiEphemeralChildArgs,
   createFakeEphemeralChildObserver,
   createInitialEphemeralObserverState,
+  createNodeEphemeralChildObserver,
   deriveEphemeralLiveState,
   parseEphemeralJsonLine,
+  type EphemeralObserverSettleResult,
 } from "../../../src/vigil/ephemeral-observer";
+
+function createMockChildProcess(pid = 12_345): ChildProcess {
+  const child = new EventEmitter() as ChildProcess;
+  const stdout = new PassThrough();
+  const stderr = new PassThrough();
+  Object.assign(child, { stdout, stderr, pid });
+  child.unref = () => child;
+  queueMicrotask(() => {
+    child.emit("spawn");
+  });
+  return child;
+}
+
+function assistantSettledStdout(text: string): string {
+  return `{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"${text}"}],"stopReason":"stop"}}\n{"type":"agent_settled"}\n`;
+}
 
 describe("ephemeral JSON output parser", () => {
   it("parses split JSON lines and settles on agent_settled with bounded final response", () => {
@@ -157,5 +177,120 @@ describe("fake ephemeral child observer", () => {
     observer.pushClose("vigil-partial-close");
 
     expect(settled).toEqual(["Tail"]);
+  });
+});
+
+describe("node ephemeral child observer", () => {
+  it("persists onSettled before delayed terminateAndWait so poll does not see unavailable", async () => {
+    let releaseTerminate!: () => void;
+    const terminateGate = new Promise<void>((resolve) => {
+      releaseTerminate = resolve;
+    });
+    let terminateEntered = false;
+    const mockChild = createMockChildProcess();
+    const settled: EphemeralObserverSettleResult[] = [];
+
+    const observer = createNodeEphemeralChildObserver({
+      processRunner: {
+        isAlive: () => true,
+        async terminateAndWait() {
+          terminateEntered = true;
+          await terminateGate;
+        },
+      },
+      spawnChild: () => mockChild,
+    });
+
+    const started = await observer.start({
+      vigilId: "vigil-delayed-reap",
+      parentSessionId: "parent-session",
+      message: "Reply",
+      cwd: "/parent/project",
+      name: "Quick",
+      onSettled: (result) => {
+        settled.push(result);
+      },
+    });
+
+    started.activate();
+    (mockChild.stdout as PassThrough).write(assistantSettledStdout("DURABLE"));
+    await Promise.resolve();
+
+    expect(settled).toHaveLength(1);
+    expect(settled[0]?.latestResponse).toBe("DURABLE");
+    expect(terminateEntered).toBe(true);
+    expect(observer.getLiveState("vigil-delayed-reap")).toBeNull();
+
+    releaseTerminate();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  it("retains stdout/stderr handlers through terminateAndWait during shutdown", async () => {
+    let releaseTerminate!: () => void;
+    const terminateGate = new Promise<void>((resolve) => {
+      releaseTerminate = resolve;
+    });
+    const mockChild = createMockChildProcess();
+    let stdoutListenerCountDuringTerminate = 0;
+
+    const observer = createNodeEphemeralChildObserver({
+      processRunner: {
+        isAlive: () => true,
+        async terminateAndWait() {
+          stdoutListenerCountDuringTerminate = mockChild.stdout?.listenerCount("data") ?? 0;
+          await terminateGate;
+        },
+      },
+      spawnChild: () => mockChild,
+    });
+
+    const started = await observer.start({
+      vigilId: "vigil-shutdown-order",
+      parentSessionId: "parent-session",
+      message: "Reply",
+      cwd: "/parent/project",
+      onSettled: () => {},
+    });
+    started.activate();
+
+    const shutdownPromise = observer.shutdown();
+    await Promise.resolve();
+
+    expect(stdoutListenerCountDuringTerminate).toBeGreaterThan(0);
+
+    releaseTerminate();
+    await shutdownPromise;
+
+    expect(mockChild.stdout?.listenerCount("data")).toBe(0);
+    expect(mockChild.stdout?.destroyed).toBe(true);
+    expect(mockChild.stderr?.destroyed).toBe(true);
+  });
+
+  it("cleans up stream handlers after terminateAndWait failure during shutdown", async () => {
+    const mockChild = createMockChildProcess();
+
+    const observer = createNodeEphemeralChildObserver({
+      processRunner: {
+        isAlive: () => true,
+        async terminateAndWait() {
+          throw new Error("Process 12345 did not exit within 5000ms");
+        },
+      },
+      spawnChild: () => mockChild,
+    });
+
+    const started = await observer.start({
+      vigilId: "vigil-shutdown-failure",
+      parentSessionId: "parent-session",
+      message: "Reply",
+      cwd: "/parent/project",
+      onSettled: () => {},
+    });
+    started.activate();
+
+    await observer.shutdown();
+
+    expect(mockChild.stdout?.listenerCount("data")).toBe(0);
+    expect(mockChild.stdout?.destroyed).toBe(true);
   });
 });

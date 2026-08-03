@@ -60,6 +60,29 @@ On parent `session_shutdown`, `shutdownSharedEphemeralChildObserver()` stops all
   - Acceptance guard: `npm run test:acceptance` without opt-in → expected guard error
   - Live: `PI_VIGIL_LIVE=1 npm run test:acceptance` → **4/4** OK
 
+### Phase 4 re-review findings (GPT-5.5, second pass)
+
+- **P1 (blocking):** `finalizeObservation` set `settled` then awaited `terminateAndWait` before `onSettled`, so concurrent `poll`/`wait` saw observation unavailable while reap was in flight.
+- **P1 (blocking):** `shutdown()` removed stdout/stderr data handlers before the direct child PID was dead, risking pipe backpressure during terminate/reap.
+- **P2 (substantive):** `waitPendingItems` omitted the `ephemeral` marker on timeout/cancelled pending items.
+
+### Phase 4 re-review remediation (red → green)
+
+- **P1 settle durability fix:** `finalizeObservation` now invokes `onSettled` (parent `vigil-settle` append) before awaiting `terminateAndWait`.
+- **P1 shutdown fix:** `shutdown()` retains stream handlers through terminate/reap, then removes listeners and destroys stdout/stderr in `finally`; cleanup also destroys streams on normal settle close.
+- **P2 wait fix:** `waitPendingItems` preserves `...(snapshot.ephemeral ? { ephemeral: true as const } : {})`.
+- **New tests:**
+  - `persists onSettled before delayed terminateAndWait so poll does not see unavailable` (`ephemeral-observer.test.ts`)
+  - `retains stdout/stderr handlers through terminateAndWait during shutdown` (`ephemeral-observer.test.ts`)
+  - `cleans up stream handlers after terminateAndWait failure during shutdown` (`ephemeral-observer.test.ts`)
+  - `keeps poll durable during delayed terminateAndWait after settle` (`ephemeral-service.test.ts`)
+  - `includes ephemeral marker on timeout and cancelled wait pending items` (`ephemeral-service.test.ts`)
+- **Post-remediation validation:**
+  - Focused: `npm test -- test/unit/vigil/ephemeral-observer.test.ts test/unit/vigil/ephemeral-service.test.ts` → **19/19** OK
+  - Full: `npm run check` → typecheck OK, **289/289** unit tests OK, pack verify OK
+  - Acceptance guard: `npm run test:acceptance` without opt-in → expected guard error
+  - Live: `PI_VIGIL_LIVE=1 npm run test:acceptance` → **4/4** OK
+
 ### Remaining risks
 
 - Extremely fast real Pi children could still emit stdout between spawn and `activate()` if platform scheduling reorders; `activate()` is invoked synchronously immediately after `appendLaunch` in the same turn.
