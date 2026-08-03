@@ -12,7 +12,7 @@ Do not begin implementation before the user explicitly approves proceeding after
 
 ## Implementation status (primary agent)
 
-**Commit:** (pending) — ephemeral detached child subagents implementation
+**Commit:** `e6ce7b9` — ephemeral detached child subagents implementation
 
 ### Persisted-child contract preserved (unchanged)
 
