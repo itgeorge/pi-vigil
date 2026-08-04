@@ -2,6 +2,12 @@
 
 Minimal Pi extension for asynchronous, turn-based subagents.
 
+# Install
+
+```bash
+pi install npm:pi-vigil
+```
+
 # Why Vigil?
 
 To paraphrase *(and steal Pi's original tagline)*:
