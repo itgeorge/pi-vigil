@@ -36,7 +36,15 @@ export interface VigilCallArgs {
   ephemeral?: boolean;
 }
 
-export type VigilDisplayNameLookup = ReadonlyMap<string, string>;
+export interface VigilLifecycleDisplayEntry {
+  name: string;
+  model?: string;
+}
+
+export type VigilLifecycleLookup = ReadonlyMap<string, VigilLifecycleDisplayEntry>;
+
+/** @deprecated Use VigilLifecycleLookup */
+export type VigilDisplayNameLookup = VigilLifecycleLookup;
 
 export function sanitizeCallField(value: string): string {
   const lineBroken = value.replace(/\n/g, " ");
@@ -62,41 +70,47 @@ export function formatVigilShortId(id: string): string {
   return `vigil-${suffix.slice(0, VIGIL_SHORT_ID_HEX_LENGTH)}`;
 }
 
-export function buildVigilDisplayNameIndex(entries: SessionEntry[]): VigilDisplayNameLookup {
+export function buildVigilLifecycleDisplayIndex(entries: SessionEntry[]): VigilLifecycleLookup {
   const lifecycle = reconstructVigilLifecycleFromEntries(entries);
-  const index = new Map<string, string>();
+  const index = new Map<string, VigilLifecycleDisplayEntry>();
 
   for (const state of lifecycle.values()) {
-    const name = state.completionRecord?.name ?? state.launchName;
-    index.set(state.id, name);
+    index.set(state.id, {
+      name: state.completionRecord?.name ?? state.launchName,
+      model: state.runtimeRecord.model,
+    });
   }
 
   return index;
 }
 
+export function buildVigilDisplayNameIndex(entries: SessionEntry[]): VigilLifecycleLookup {
+  return buildVigilLifecycleDisplayIndex(entries);
+}
+
 export function createVigilDisplayNameCache(): {
   refreshFromEntries: (entries: SessionEntry[]) => void;
   refreshFromBranch: (getBranch: () => SessionEntry[]) => void;
-  lookup: () => VigilDisplayNameLookup;
+  lookup: () => VigilLifecycleLookup;
 } {
-  let index: VigilDisplayNameLookup = new Map();
+  let index: VigilLifecycleLookup = new Map();
 
   return {
     refreshFromEntries(entries) {
-      index = buildVigilDisplayNameIndex(entries);
+      index = buildVigilLifecycleDisplayIndex(entries);
     },
     refreshFromBranch(getBranch) {
-      index = buildVigilDisplayNameIndex(getBranch());
+      index = buildVigilLifecycleDisplayIndex(getBranch());
     },
     lookup: () => index,
   };
 }
 
-function resolveDisplayName(
+function resolveLifecycleEntry(
   id: string | undefined,
-  lookup: VigilDisplayNameLookup | ((id: string) => string | undefined),
-): string | undefined {
-  if (!id) {
+  lookup: VigilLifecycleLookup | ((id: string) => VigilLifecycleDisplayEntry | undefined),
+): VigilLifecycleDisplayEntry | undefined {
+  if (!id?.trim()) {
     return undefined;
   }
 
@@ -105,6 +119,25 @@ function resolveDisplayName(
   }
 
   return lookup.get(id);
+}
+
+function resolveDisplayName(
+  id: string | undefined,
+  lookup: VigilLifecycleLookup | ((id: string) => VigilLifecycleDisplayEntry | undefined),
+): string | undefined {
+  return resolveLifecycleEntry(id, lookup)?.name;
+}
+
+function resolveSendModel(
+  args: VigilCallArgs,
+  lookup: VigilLifecycleLookup | ((id: string) => VigilLifecycleDisplayEntry | undefined),
+): string | undefined {
+  const explicit = args.model?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  return resolveLifecycleEntry(args.id, lookup)?.model;
 }
 
 function formatWaitTimeoutLabel(timeoutMs: number): string {
@@ -128,7 +161,7 @@ function formatQuotedExcerpt(message: string | undefined): string | undefined {
 
 function formatIdIdentity(
   id: string | undefined,
-  lookup: VigilDisplayNameLookup | ((id: string) => string | undefined),
+  lookup: VigilLifecycleLookup | ((id: string) => VigilLifecycleDisplayEntry | undefined),
 ): string {
   if (!id?.trim()) {
     return "";
@@ -173,7 +206,7 @@ function resolveTextComponent(lastComponent?: Component): Text {
 
 export function formatVigilCallSummary(
   args: VigilCallArgs,
-  lookup: VigilDisplayNameLookup | ((id: string) => string | undefined) = new Map(),
+  lookup: VigilLifecycleLookup | ((id: string) => VigilLifecycleDisplayEntry | undefined) = new Map(),
 ): string {
   const action = args.action ?? "vigil";
   const segments: string[] = [action];
@@ -206,7 +239,7 @@ export function formatVigilCallSummary(
       if (excerpt) {
         summary += ` — ${excerpt}`;
       }
-      const model = formatModelIndicator(args.model);
+      const model = formatModelIndicator(resolveSendModel(args, lookup));
       if (model) {
         summary += ` · ${model}`;
       }
@@ -290,7 +323,7 @@ export interface VigilCallRenderContext {
 export function renderVigilCallText(
   args: VigilCallArgs,
   theme: Theme,
-  lookup: VigilDisplayNameLookup | ((id: string) => string | undefined) = new Map(),
+  lookup: VigilLifecycleLookup | ((id: string) => VigilLifecycleDisplayEntry | undefined) = new Map(),
   renderContext: VigilCallRenderContext = {},
 ): Text {
   const text = resolveTextComponent(renderContext.lastComponent);
@@ -317,7 +350,7 @@ export function renderVigilCallText(
       if (excerpt) {
         parts.push(theme.fg("dim", ` — ${excerpt}`));
       }
-      const model = formatModelIndicator(args.model);
+      const model = formatModelIndicator(resolveSendModel(args, lookup));
       if (model) {
         parts.push(theme.fg("dim", ` · ${model}`));
       }

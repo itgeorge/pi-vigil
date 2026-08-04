@@ -77,6 +77,36 @@ describe("vigil extension adapter", () => {
     expect(rendered).toContain(`[${formatVigilShortId(launched.id)}]`);
   });
 
+  it("launch appends the parent thinking level to an explicit model", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+    harness.ctx.thinkingLevel = "high";
+
+    setVigilRuntimeOverrides({
+      processRunner: {
+        spawnDetached: async (input) => {
+          expect(input.model).toBe("cursor/composer-2.5-fast:high");
+          return { pid: 5151 };
+        },
+        isAlive: () => true,
+        terminateAndWait: async () => undefined,
+      },
+    });
+
+    const result = await harness.execute({
+      action: "launch",
+      name: "Thinking child",
+      message: "Do work",
+      model: "cursor/composer-2.5-fast",
+    });
+
+    expect((result as { isError?: boolean }).isError).toBeFalsy();
+    expect(harness.capturedEntries[0]?.data).toEqual(
+      expect.objectContaining({
+        model: "cursor/composer-2.5-fast:high",
+      }),
+    );
+  });
+
   it("launch returns a running snapshot and appends a vigil-launch parent entry", async () => {
     const harness = await createVigilTestHarness({ cwd: "/parent/project" });
 
@@ -177,8 +207,63 @@ describe("vigil extension adapter", () => {
     });
   });
 
+  it("send appends the parent thinking level to an explicit continuation model", async () => {
+    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+    harness.ctx.thinkingLevel = "high";
+    const launchPid = 8181;
+    const sendPid = 8282;
+    let spawnCount = 0;
+
+    setVigilRuntimeOverrides({
+      processRunner: {
+        spawnDetached: async (input) => {
+          spawnCount += 1;
+          if (spawnCount === 1) {
+            return { pid: launchPid };
+          }
+          expect(input.model).toBe("openai-codex/gpt-5.5:high");
+          return { pid: sendPid };
+        },
+        isAlive: (pid) => pid === launchPid,
+        terminateAndWait: async () => undefined,
+      },
+      childSessionReader: {
+        readChildSessionState: async () => ({
+          latestResponse: "First answer.",
+          turnComplete: true,
+          lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+          activity: emptyActivity,
+        }),
+      },
+    });
+
+    const launchResult = await harness.execute({
+      action: "launch",
+      name: "Continue work",
+      message: "Start work",
+      cwd: "/child/worktree",
+      model: "openai-codex/gpt-5.5",
+    });
+    const launched = launchResult.details as VigilSnapshot;
+
+    const sendResult = await harness.execute({
+      action: "send",
+      id: launched.id,
+      message: "Continue the work",
+      model: "openai-codex/gpt-5.5",
+    });
+
+    expect((sendResult as { isError?: boolean }).isError).toBeFalsy();
+    expect(harness.capturedEntries.find((entry) => entry.customType === "vigil-turn")?.data).toEqual(
+      expect.objectContaining({
+        model: "openai-codex/gpt-5.5:high",
+      }),
+    );
+  });
+
   it("send returns a running snapshot and appends a vigil-turn parent entry", async () => {
     const harness = await createVigilTestHarness({ cwd: "/parent/project" });
+    harness.ctx.thinkingLevel = "high";
     const launchPid = 8181;
     const sendPid = 8282;
     let spawnCount = 0;
@@ -227,7 +312,7 @@ describe("vigil extension adapter", () => {
       action: "send",
       id: launched.id,
       message: "Continue the work",
-      model: "openai-codex/gpt-5.5:high",
+      model: "openai-codex/gpt-5.5",
     });
 
     expect((sendResult as { isError?: boolean }).isError).toBeFalsy();

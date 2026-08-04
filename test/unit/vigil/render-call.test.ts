@@ -157,7 +157,7 @@ describe("formatVigilCallSummary", () => {
     );
   });
 
-  it("renders send message excerpt and model only when supplied", () => {
+  it("renders send message excerpt and model when supplied explicitly", () => {
     const entries = [
       {
         type: "custom" as const,
@@ -188,6 +188,40 @@ describe("formatVigilCallSummary", () => {
       ),
     ).toBe(
       'send · Slice 4.5 implementation [vigil-bd02f54] — "Address reviewer feedback" · model cursor/composer-2.5-fast',
+    );
+  });
+
+  it("renders send with the child lifecycle model when continuation model is omitted", () => {
+    const entries = [
+      {
+        type: "custom" as const,
+        id: "entry-1",
+        parentId: null,
+        timestamp: "2026-08-01T10:00:00.000Z",
+        customType: "vigil-launch",
+        data: {
+          id: SAMPLE_UUID,
+          sessionId: SAMPLE_UUID,
+          name: "Slice 4.5 implementation",
+          pid: 100,
+          cwd: "/parent/project",
+          model: "cursor/composer-2.5-fast:high",
+          launchedAt: "2026-08-01T10:00:00.000Z",
+        },
+      },
+    ];
+
+    expect(
+      plainSummary(
+        {
+          action: "send",
+          id: SAMPLE_UUID,
+          message: "Address reviewer feedback",
+        },
+        entries,
+      ),
+    ).toBe(
+      'send · Slice 4.5 implementation [vigil-bd02f54] — "Address reviewer feedback" · model cursor/composer-2.5-fast:high',
     );
   });
 
@@ -567,7 +601,9 @@ describe("buildVigilDisplayNameIndex", () => {
     ];
 
     const index = buildVigilDisplayNameIndex(entries);
-    expect([...index.entries()]).toEqual([["vigil-valid", "Valid"]]);
+    expect([...index.entries()]).toEqual([
+      ["vigil-valid", { name: "Valid", model: undefined }],
+    ]);
   });
 });
 

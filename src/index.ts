@@ -7,6 +7,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createVigilServiceForContext, shutdownSharedEphemeralChildObserver } from "./vigil/node-runtime";
 import { getVigilSessionDir } from "./vigil/config";
+import { appendThinkingLevelToModel } from "./vigil/model";
 import { getVigilRuntimeOverrides } from "./vigil/runtime-overrides";
 import {
   createVigilDisplayNameCache,
@@ -216,7 +217,7 @@ export const vigilTool = defineTool({
       const result = await service.launch({
         name: params.name,
         message: params.message,
-        model: params.model,
+        model: appendThinkingLevelToModel(params.model, ctx.thinkingLevel),
         cwd: params.cwd,
         parentCwd: ctx.cwd,
         ephemeral: params.ephemeral,
@@ -335,7 +336,7 @@ export const vigilTool = defineTool({
       const result = await service.send({
         vigilId: params.id,
         message: params.message,
-        model: params.model,
+        model: appendThinkingLevelToModel(params.model, ctx.thinkingLevel),
         parentCwd: ctx.cwd,
       });
 
