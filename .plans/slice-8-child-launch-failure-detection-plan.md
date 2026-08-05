@@ -195,14 +195,14 @@ npm run check
 
 ## Todos
 
-- [ ] Add `src/vigil/persisted-bootstrap-observer.ts` and `test/unit/vigil/persisted-bootstrap-observer.test.ts` with `createFakePersistedBootstrapObserver` for service tests.
-- [ ] **RED:** observer `start` + `activate` + simulated stderr `Error: Model "bad" not found` + child `close` ⇒ `onFailed`/`waitForOutcome` ⇒ `{ status: "failed", error: ... }`.
+- [x] Add `src/vigil/persisted-bootstrap-observer.ts` and `test/unit/vigil/persisted-bootstrap-observer.test.ts` with `createFakePersistedBootstrapObserver` for service tests.
+- [x] **RED:** observer `start` + `activate` + simulated stderr `Error: Model "bad" not found` + child `close` ⇒ `onFailed`/`waitForOutcome` ⇒ `{ status: "failed", error: ... }`.
   - Expected RED: module missing or status `"started"`.
-- [ ] **RED:** child `close` with no session and no stderr ⇒ failed with generic bootstrap error.
-- [ ] **RED:** session-appears signal (fake callback) before exit ⇒ `{ status: "started" }`, no `vigil-fail`.
-- [ ] **RED:** `waitForOutcome` with no signal before timeout ⇒ `{ status: "timeout" }`.
-- [ ] **RED:** `activate()` is required before stream handlers attach (mirror ephemeral race guard).
-- [ ] **GREEN:** implement node observer + fake; wire bounded stderr drain.
+- [x] **RED:** child `close` with no session and no stderr ⇒ failed with generic bootstrap error.
+- [x] **RED:** session-appears signal (fake callback) before exit ⇒ `{ status: "started" }`, no `vigil-fail`.
+- [x] **RED:** `waitForOutcome` with no signal before timeout ⇒ `{ status: "timeout" }`.
+- [x] **RED:** `activate()` is required before stream handlers attach (mirror ephemeral race guard).
+- [x] **GREEN:** implement node observer + fake; wire bounded stderr drain.
 
 ## Agent notes / assumptions
 
@@ -393,7 +393,7 @@ npm run check
 | Phase | RED (test → message) | GREEN (command → result) |
 |---|---|---|
 | 0 | `child-failure.test.ts` → Cannot find module `child-failure` | `npm test -- test/unit/vigil/child-failure.test.ts` → 4 passed |
-| 1 | | |
+| 1 | `persisted-bootstrap-observer.test.ts` → Cannot find module | `npm test -- test/unit/vigil/persisted-bootstrap-observer.test.ts` → 6 passed |
 | 2 | | |
 | 3 | | |
 | 4 | | |
