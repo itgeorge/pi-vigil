@@ -72,26 +72,6 @@ function resolveOutcomeWaiters(
   observation.outcomeWaiters = [];
 }
 
-function waitForObservationOutcome(
-  observation: ActiveObservation,
-  timeoutMs: number,
-): Promise<PersistedBootstrapOutcome> {
-  if (observation.outcome) {
-    return Promise.resolve(observation.outcome);
-  }
-
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      resolve({ status: "timeout" });
-    }, timeoutMs);
-
-    observation.outcomeWaiters.push((outcome) => {
-      clearTimeout(timer);
-      resolve(outcome);
-    });
-  });
-}
-
 export function createNodePersistedBootstrapObserver(options: {
   processRunner: Pick<ProcessRunner, "isAlive" | "terminateAndWait">;
   piExecutable?: string;
@@ -173,6 +153,39 @@ export function createNodePersistedBootstrapObserver(options: {
     });
   };
 
+  const appendStderr = (observation: ActiveObservation, chunk: Buffer | string): void => {
+    const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    observation.stderr = boundStderrExcerpt(
+      observation.stderr + text,
+      MAX_STDERR_EXCERPT_CHARS,
+    );
+  };
+
+  const tryFinalizeFromStderr = (observation: ActiveObservation): boolean => {
+    const parsed = parsePiStderrFailure(observation.stderr);
+    if (!parsed) {
+      return false;
+    }
+
+    finalizeFailed(observation, parsed);
+    return true;
+  };
+
+  const attachStderrCapture = (observation: ActiveObservation): void => {
+    const onStderr = (chunk: Buffer | string) => {
+      appendStderr(observation, chunk);
+      if (observation.activated && !observation.finalized) {
+        tryFinalizeFromStderr(observation);
+      }
+    };
+
+    observation.child.stderr?.on("data", onStderr);
+    observation.cleanup = () => {
+      observation.child.stderr?.off("data", onStderr);
+      observation.child.stderr?.destroy();
+    };
+  };
+
   const finalizeOnClose = async (observation: ActiveObservation): Promise<void> => {
     if (observation.finalized) {
       return;
@@ -194,26 +207,57 @@ export function createNodePersistedBootstrapObserver(options: {
     finalizeFailed(observation, error);
   };
 
-  const attachStreamHandlers = (observation: ActiveObservation): void => {
-    const onStderr = (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
-      observation.stderr = boundStderrExcerpt(
-        observation.stderr + text,
-        MAX_STDERR_EXCERPT_CHARS,
-      );
+  const reconcileOutcomeOnTimeout = async (
+    observation: ActiveObservation,
+  ): Promise<PersistedBootstrapOutcome> => {
+    if (observation.finalized && observation.outcome) {
+      return observation.outcome;
+    }
 
-      const parsed = parsePiStderrFailure(observation.stderr);
-      if (parsed) {
-        void finalizeFailed(observation, parsed);
-      }
-    };
+    const sessionExists = await evaluateSessionExists(observation);
+    if (sessionExists) {
+      finalizeStarted(observation);
+      return { status: "started" };
+    }
 
-    observation.child.stderr?.on("data", onStderr);
+    const parsed = observation.stderr ? parsePiStderrFailure(observation.stderr) : null;
+    if (parsed) {
+      finalizeFailed(observation, parsed);
+      return { status: "failed", error: parsed };
+    }
 
-    observation.cleanup = () => {
-      observation.child.stderr?.off("data", onStderr);
-      observation.child.stderr?.destroy();
-    };
+    if (!options.processRunner.isAlive(observation.pid)) {
+      const error =
+        classifyPersistedBootstrapFailure({
+          alive: false,
+          sessionExists: false,
+          stderr: observation.stderr || undefined,
+        }) ?? "Pi child exited before session was created";
+      finalizeFailed(observation, error);
+      return { status: "failed", error };
+    }
+
+    return { status: "timeout" };
+  };
+
+  const waitForObservationOutcome = (
+    observation: ActiveObservation,
+    timeoutMs: number,
+  ): Promise<PersistedBootstrapOutcome> => {
+    if (observation.outcome) {
+      return Promise.resolve(observation.outcome);
+    }
+
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        void reconcileOutcomeOnTimeout(observation).then(resolve);
+      }, timeoutMs);
+
+      observation.outcomeWaiters.push((outcome) => {
+        clearTimeout(timer);
+        resolve(outcome);
+      });
+    });
   };
 
   const activateObservation = (observation: ActiveObservation): void => {
@@ -221,7 +265,10 @@ export function createNodePersistedBootstrapObserver(options: {
       return;
     }
     observation.activated = true;
-    attachStreamHandlers(observation);
+
+    if (tryFinalizeFromStderr(observation)) {
+      return;
+    }
 
     if (observation.closed) {
       void finalizeOnClose(observation);
@@ -318,6 +365,8 @@ export function createNodePersistedBootstrapObserver(options: {
         onFailed: input.onFailed,
         cleanup: () => undefined,
       };
+
+      attachStderrCapture(observation);
 
       observation.child.on("close", () => {
         observation.closed = true;

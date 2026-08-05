@@ -15,6 +15,7 @@ import {
   type VigilTurnRecord,
   type VigilWaitResult,
 } from "../../src/vigil/types";
+import { DEFAULT_BOOTSTRAP_FAIL_FAST_TIMEOUT_MS } from "../../src/vigil/child-failure";
 import {
   getAcceptanceTimeoutMs,
   getVigilTestModel,
@@ -523,8 +524,24 @@ describe("live vigil acceptance", () => {
       cwd: tempCwd,
     });
 
-    expect((launchResult as { isError?: boolean }).isError).toBe(true);
-    const text = launchResult.content[0]?.type === "text" ? launchResult.content[0].text : "";
+    let errorResult = launchResult;
+    if (!(launchResult as { isError?: boolean }).isError) {
+      const launched = launchResult.details as VigilSnapshot;
+      expect(launched.state).toBe("running");
+
+      const deadline = Date.now() + DEFAULT_BOOTSTRAP_FAIL_FAST_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        const pollResult = await harness.execute({ action: "poll", id: launched.id });
+        if ((pollResult as { isError?: boolean }).isError) {
+          errorResult = pollResult;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+
+    expect((errorResult as { isError?: boolean }).isError).toBe(true);
+    const text = errorResult.content[0]?.type === "text" ? errorResult.content[0].text : "";
     expect(text).toMatch(/not found|Vigil child failed/i);
     expect(harness.capturedEntries.some((entry) => entry.customType === "vigil-launch")).toBe(true);
     expect(harness.capturedEntries.some((entry) => entry.customType === "vigil-fail")).toBe(true);
