@@ -17,6 +17,12 @@ import {
   createNoopEphemeralChildObserver,
   type EphemeralChildObserver,
 } from "./ephemeral-observer";
+import { formatVigilChildFailedError, DEFAULT_BOOTSTRAP_FAIL_FAST_TIMEOUT_MS } from "./child-failure";
+import {
+  createNodePersistedBootstrapObserver,
+  createProcessRunnerPersistedBootstrapObserver,
+  type PersistedBootstrapObserver,
+} from "./persisted-bootstrap-observer";
 import {
   lifecycleStateToListItem,
   reconstructVigilLifecycleFromEntries,
@@ -151,12 +157,18 @@ function formatCurrentSessionLifecycleError(action: CurrentSessionLifecycleActio
 }
 
 export class VigilService {
-  private readonly deps: VigilServiceDeps & { ephemeralChildObserver: EphemeralChildObserver };
+  private readonly deps: VigilServiceDeps & {
+    ephemeralChildObserver: EphemeralChildObserver;
+    persistedBootstrapObserver: PersistedBootstrapObserver;
+  };
 
   constructor(deps: VigilServiceDeps) {
     this.deps = {
       ...deps,
       ephemeralChildObserver: deps.ephemeralChildObserver ?? createNoopEphemeralChildObserver(),
+      persistedBootstrapObserver:
+        deps.persistedBootstrapObserver ??
+        createProcessRunnerPersistedBootstrapObserver(deps.processRunner),
     };
   }
 
@@ -237,8 +249,10 @@ export class VigilService {
       };
     }
 
+    let activate: () => void;
     try {
-      ({ pid } = await this.deps.processRunner.spawnDetached({
+      ({ pid, activate } = await this.deps.persistedBootstrapObserver.start({
+        vigilId: id,
         sessionId,
         message: input.message,
         cwd,
@@ -263,6 +277,15 @@ export class VigilService {
     };
 
     this.deps.parentLedger.appendLaunch(record);
+    activate();
+
+    const outcome = await this.deps.persistedBootstrapObserver.waitForOutcome(id, {
+      timeoutMs: this.deps.bootstrapFailFastTimeoutMs ?? DEFAULT_BOOTSTRAP_FAIL_FAST_TIMEOUT_MS,
+    });
+
+    if (outcome.status === "failed") {
+      return { error: formatVigilChildFailedError(id, outcome.error) };
+    }
 
     return {
       id,
@@ -1487,6 +1510,8 @@ export function createVigilServiceForContext(options: {
   childSessionNamer?: ChildSessionNamer;
   descendantInspector?: import("./descendant-inspector").ChildSessionDescendantInspector;
   ephemeralChildObserver?: EphemeralChildObserver;
+  persistedBootstrapObserver?: PersistedBootstrapObserver;
+  bootstrapFailFastTimeoutMs?: number;
   reapTimeoutMs?: number;
   waitScheduler?: WaitScheduler;
 }): VigilService {
@@ -1494,6 +1519,26 @@ export function createVigilServiceForContext(options: {
   const childSessionReader = options.childSessionReader ?? createNodeChildSessionReader();
   const ephemeralChildObserver =
     options.ephemeralChildObserver ?? getSharedEphemeralChildObserver(processRunner, options.reapTimeoutMs);
+  const parentLedger = createSessionParentLedger(options.sessionManager, options.appendEntry);
+  const persistedBootstrapObserver =
+    options.persistedBootstrapObserver ??
+    createNodePersistedBootstrapObserver({
+      processRunner,
+      sessionExists: async ({ sessionId, cwd, sessionDir }) => {
+        const sessionPath = await findChildSessionPath(sessionId, cwd, sessionDir);
+        return sessionPath !== null;
+      },
+      onFailed: (input) => {
+        parentLedger.appendFail({
+          id: input.vigilId,
+          sessionId: input.sessionId,
+          failedAt: new Date().toISOString(),
+          error: input.error,
+          source: input.source,
+          ...(input.stderrExcerpt ? { stderrExcerpt: input.stderrExcerpt } : {}),
+        });
+      },
+    });
   return new VigilService({
     processRunner,
     childSessionReader,
@@ -1503,8 +1548,10 @@ export function createVigilServiceForContext(options: {
     descendantInspector:
       options.descendantInspector ??
       createNodeChildSessionDescendantInspector({ childSessionReader, processRunner }),
-    parentLedger: createSessionParentLedger(options.sessionManager, options.appendEntry),
+    parentLedger,
     ephemeralChildObserver,
+    persistedBootstrapObserver,
+    bootstrapFailFastTimeoutMs: options.bootstrapFailFastTimeoutMs,
     sessionDir: options.sessionDir,
     reapTimeoutMs: options.reapTimeoutMs,
     waitScheduler: options.waitScheduler,

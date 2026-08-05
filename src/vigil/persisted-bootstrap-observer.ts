@@ -346,8 +346,10 @@ export function createFakePersistedBootstrapObserver(
   pushStderr: (vigilId: string, chunk: string) => void;
   pushClose: (vigilId: string, code?: number) => void;
   signalSessionExists: (vigilId: string) => void;
+  started: PersistedBootstrapStartInput[];
 } {
   const states = new Map<string, FakeObservationState>();
+  const started: PersistedBootstrapStartInput[] = [];
   let nextPid = 9100;
   let shutdownRequested = false;
 
@@ -420,11 +422,18 @@ export function createFakePersistedBootstrapObserver(
     pushStderr: (vigilId: string, chunk: string) => void;
     pushClose: (vigilId: string, code?: number) => void;
     signalSessionExists: (vigilId: string) => void;
+    started: PersistedBootstrapStartInput[];
   } = {
+    get started() {
+      return started;
+    },
+
     async start(input) {
       if (shutdownRequested) {
         throw new Error("Cannot start persisted bootstrap child after parent shutdown");
       }
+
+      started.push(input);
 
       states.set(input.vigilId, {
         activated: false,
@@ -528,6 +537,28 @@ export function createNoopPersistedBootstrapObserver(): PersistedBootstrapObserv
   return {
     async start() {
       return { pid: 0, activate() {} };
+    },
+    async waitForOutcome() {
+      return { status: "timeout" };
+    },
+    async shutdown() {},
+  };
+}
+
+export function createProcessRunnerPersistedBootstrapObserver(
+  processRunner: ProcessRunner,
+): PersistedBootstrapObserver {
+  return {
+    async start(input) {
+      const { pid } = await processRunner.spawnDetached({
+        sessionId: input.sessionId,
+        message: input.message,
+        cwd: input.cwd,
+        model: input.model,
+        sessionDir: input.sessionDir,
+        name: input.name,
+      });
+      return { pid, activate() {} };
     },
     async waitForOutcome() {
       return { status: "timeout" };

@@ -54,6 +54,8 @@ function createService(ctx: ExtensionContext) {
     childSessionNamer: overrides.childSessionNamer,
     descendantInspector: overrides.descendantInspector,
     ephemeralChildObserver: overrides.ephemeralChildObserver,
+    persistedBootstrapObserver: overrides.persistedBootstrapObserver,
+    bootstrapFailFastTimeoutMs: overrides.bootstrapFailFastTimeoutMs,
     waitScheduler: overrides.waitScheduler,
   });
 }

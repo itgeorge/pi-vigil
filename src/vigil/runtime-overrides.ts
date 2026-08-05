@@ -1,5 +1,6 @@
 import type { ChildSessionDescendantInspector } from "./descendant-inspector.ts";
 import type { EphemeralChildObserver } from "./ephemeral-observer.ts";
+import type { PersistedBootstrapObserver } from "./persisted-bootstrap-observer.ts";
 import type {
   ChildSessionNamer,
   ChildSessionReader,
@@ -15,6 +16,8 @@ export interface VigilRuntimeOverrides {
   childSessionNamer?: ChildSessionNamer;
   descendantInspector?: ChildSessionDescendantInspector;
   ephemeralChildObserver?: EphemeralChildObserver;
+  persistedBootstrapObserver?: PersistedBootstrapObserver;
+  bootstrapFailFastTimeoutMs?: number;
   waitScheduler?: WaitScheduler;
   sessionDir?: string;
 }

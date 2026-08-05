@@ -230,15 +230,15 @@ npm run check
 
 ## Todos
 
-- [ ] Add `test/unit/vigil/launch-failure.test.ts` using fake bootstrap observer.
-- [ ] **RED:** persisted `launch` returns `{ error }` when observer reports `failed` within bootstrap window.
+- [x] Add `test/unit/vigil/launch-failure.test.ts` using fake bootstrap observer.
+- [x] **RED:** persisted `launch` returns `{ error }` when observer reports `failed` within bootstrap window.
   - Expected RED: `isVigilError(result)` is false; snapshot state `"running"`.
-- [ ] **RED:** extension adapter `execute({ action: "launch", ... })` maps bootstrap failure to `isError: true` with the same message (via existing `isVigilError` path).
-- [ ] **RED:** failed launch still appends `vigil-launch` **and** `vigil-fail` (audit trail), but tool result is error.
-- [ ] **RED:** `launch` returns running snapshot when observer reports `timeout` (slow-start tolerance).
-- [ ] **RED:** spawn throw still returns `Failed to launch Pi child: ...` (regression).
-- [ ] **RED:** ephemeral `launch` path does not use persisted bootstrap observer (regression).
-- [ ] **GREEN:** integrate observer into `VigilService.launch` for non-ephemeral children.
+- [x] **RED:** extension adapter `execute({ action: "launch", ... })` maps bootstrap failure to `isError: true` with the same message (via existing `isVigilError` path).
+- [x] **RED:** failed launch still appends `vigil-launch` **and** `vigil-fail` (audit trail), but tool result is error.
+- [x] **RED:** `launch` returns running snapshot when observer reports `timeout` (slow-start tolerance).
+- [x] **RED:** spawn throw still returns `Failed to launch Pi child: ...` (regression).
+- [x] **RED:** ephemeral `launch` path does not use persisted bootstrap observer (regression).
+- [x] **GREEN:** integrate observer into `VigilService.launch` for non-ephemeral children.
 
 ## Agent notes / assumptions
 
@@ -395,7 +395,7 @@ npm run check
 | 0 | `child-failure.test.ts` → Cannot find module `child-failure` | `npm test -- test/unit/vigil/child-failure.test.ts` → 4 passed |
 | 1 | `persisted-bootstrap-observer.test.ts` → Cannot find module | `npm test -- test/unit/vigil/persisted-bootstrap-observer.test.ts` → 6 passed |
 | 2 | `lifecycle.test.ts` → failRecord undefined / failed not excluded | `npm test -- test/unit/vigil/lifecycle.test.ts` → 9 passed |
-| 3 | | |
+| 3 | `launch-failure.test.ts` → running snapshot / module missing | `npm test -- test/unit/vigil/launch-failure.test.ts` → 6 passed |
 | 4 | | |
 | 5 | | |
 | 6 | | |

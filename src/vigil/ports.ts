@@ -3,6 +3,7 @@ import type { VigilLifecycleState } from "./lifecycle";
 import type { ChildSessionTranscript } from "./transcript";
 import type { VigilSessionActivity } from "./session-text";
 import type { EphemeralChildObserver } from "./ephemeral-observer";
+import type { PersistedBootstrapObserver } from "./persisted-bootstrap-observer";
 import type {
   VigilCompletionRecord,
   VigilFailRecord,
@@ -86,6 +87,8 @@ export interface VigilServiceDeps {
   parentLedger: ParentLedger;
   descendantInspector: ChildSessionDescendantInspector;
   ephemeralChildObserver?: EphemeralChildObserver;
+  persistedBootstrapObserver?: PersistedBootstrapObserver;
+  bootstrapFailFastTimeoutMs?: number;
   createId?: () => string;
   sessionDir?: string;
   reapTimeoutMs?: number;
