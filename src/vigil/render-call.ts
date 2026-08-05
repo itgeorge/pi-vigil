@@ -8,6 +8,11 @@ import {
   DEFAULT_WAIT_PROGRESS_MODE,
   DEFAULT_WAIT_TIMEOUT_MS,
 } from "./node-runtime";
+import {
+  appendThemedExpandableDetailBlock,
+  formatExpandHint,
+  formatLaunchMessageDetailBlock,
+} from "./render-detail";
 import { escapeTerminalControls } from "./transcript";
 
 export const MAX_CALL_FIELD_CHARS = 120;
@@ -432,7 +437,16 @@ export function renderVigilCallText(
     }
 
     let rendered = parts.join("");
-    if (renderContext.expanded) {
+    const launchDetail = formatLaunchMessageDetailBlock(args);
+
+    if (launchDetail) {
+      if (renderContext.expanded) {
+        rendered += appendThemedExpandableDetailBlock(launchDetail, theme);
+        rendered += `\n\n${formatVigilCallExpandedArgs(args)}`;
+      } else {
+        rendered += `\n${formatExpandHint(theme)}`;
+      }
+    } else if (renderContext.expanded) {
       rendered += `\n\n${formatVigilCallExpandedArgs(args)}`;
     }
     text.setText(rendered);

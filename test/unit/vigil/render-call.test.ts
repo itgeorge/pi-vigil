@@ -373,13 +373,36 @@ describe("renderVigilCallText", () => {
     };
 
     const collapsed = renderPlainText(args);
-    expect(collapsed).toBe("vigil launch · Slice 4.5 implementation · model cursor/composer-2.5-fast");
+    expect(collapsed).toContain(
+      "vigil launch · Slice 4.5 implementation · model cursor/composer-2.5-fast",
+    );
+    expect(collapsed).toContain("to expand");
     expect(collapsed).not.toContain("Implement the reviewer feedback");
 
     const expanded = renderPlainText(args, [], { expanded: true });
-    expect(expanded.startsWith(collapsed)).toBe(true);
+    expect(expanded).toContain(
+      "vigil launch · Slice 4.5 implementation · model cursor/composer-2.5-fast",
+    );
+    expect(expanded).toContain("launch message:");
+    expect(expanded).toContain("Implement the reviewer feedback in full.");
     expect(expanded).toContain('"message": "Implement the reviewer feedback in full."');
     expect(expanded).toContain('"model": "cursor/composer-2.5-fast"');
+  });
+
+  it("shows a launch prompt preview on expanded renderCall without echoing it in the collapsed row", () => {
+    const args: VigilCallArgs = {
+      action: "launch",
+      name: "Research API",
+      message: "Hidden launch prompt",
+    };
+
+    const collapsed = renderPlainText(args);
+    expect(collapsed).toContain("to expand");
+    expect(collapsed).not.toContain("Hidden launch prompt");
+
+    const expanded = renderPlainText(args, [], { expanded: true });
+    expect(expanded).toContain("launch message:");
+    expect(expanded).toContain("Hidden launch prompt");
   });
 
   it("reuses a Text lastComponent but falls back when setText is unavailable", () => {
@@ -473,6 +496,8 @@ describe("vigil renderCall integration", () => {
     expect(collapsed).not.toContain("Full launch prompt body");
 
     const expanded = renderHarnessCall(harness, args, { expanded: true });
+    expect(expanded).toContain("launch message:");
+    expect(expanded).toContain("Full launch prompt body");
     expect(expanded).toContain('"message": "Full launch prompt body"');
     expect(expanded).toContain('"action": "launch"');
   });

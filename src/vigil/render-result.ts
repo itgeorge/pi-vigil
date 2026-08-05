@@ -1,10 +1,14 @@
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import { keyHint, keyText } from "@earendil-works/pi-coding-agent";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
 import type { VigilCallArgs } from "./render-call";
-import { MAX_ENTRY_DETAIL_CHARS, escapeTerminalControls, sanitizeDisplayMultiline } from "./transcript";
+import {
+  appendThemedExpandableDetailBlock,
+  formatExpandHint,
+  formatExpandableMutationDetailBlock,
+} from "./render-detail";
+import { escapeTerminalControls } from "./transcript";
 import { formatMutationSnapshotText, type VigilSnapshot } from "./types";
 
 const MUTATION_ACTIONS = new Set(["launch", "send", "complete"]);
@@ -14,18 +18,6 @@ export interface VigilResultRenderContext {
   expanded?: boolean;
   isPartial?: boolean;
   isError?: boolean;
-}
-
-function formatExpandHint(theme: Theme): string {
-  try {
-    return keyHint("app.tools.expand", "to expand");
-  } catch {
-    const key = keyText("app.tools.expand");
-    if (key) {
-      return theme.fg("dim", key) + theme.fg("muted", " to expand");
-    }
-    return theme.fg("muted", "to expand");
-  }
 }
 
 function isVigilSnapshot(details: unknown): details is VigilSnapshot {
@@ -58,44 +50,6 @@ function resolveTextComponent(lastComponent?: Component): Text {
   return new Text("", 0, 0);
 }
 
-function hasExpandableDetail(
-  action: VigilCallArgs["action"],
-  args: VigilCallArgs,
-  details: VigilSnapshot | undefined,
-): boolean {
-  if (action === "launch") {
-    return typeof args.message === "string" && args.message.length > 0;
-  }
-  if (action === "send") {
-    return typeof args.message === "string" && args.message.length > 0;
-  }
-  if (action === "complete") {
-    return typeof details?.latestResponse === "string" && details.latestResponse.length > 0;
-  }
-  return false;
-}
-
-function formatExpandableDetailBlock(
-  action: VigilCallArgs["action"],
-  args: VigilCallArgs,
-  details: VigilSnapshot | undefined,
-): string | undefined {
-  if (action === "launch" && typeof args.message === "string" && args.message.length > 0) {
-    return `launch message:\n${sanitizeDisplayMultiline(args.message, MAX_ENTRY_DETAIL_CHARS)}`;
-  }
-  if (action === "send" && typeof args.message === "string" && args.message.length > 0) {
-    return `sent message:\n${sanitizeDisplayMultiline(args.message, MAX_ENTRY_DETAIL_CHARS)}`;
-  }
-  if (
-    action === "complete" &&
-    typeof details?.latestResponse === "string" &&
-    details.latestResponse.length > 0
-  ) {
-    return `latest response:\n${sanitizeDisplayMultiline(details.latestResponse, MAX_ENTRY_DETAIL_CHARS)}`;
-  }
-  return undefined;
-}
-
 export function renderVigilResultText(
   result: AgentToolResult<unknown>,
   args: VigilCallArgs,
@@ -114,13 +68,9 @@ export function renderVigilResultText(
     const compactText = details ? formatMutationSnapshotText(details) : getSafeFallbackResultText(result);
     let rendered = theme.fg("toolOutput", compactText);
 
-    const detailBlock = formatExpandableDetailBlock(args.action, args, details);
+    const detailBlock = formatExpandableMutationDetailBlock(args.action, args, details);
     if (renderContext.expanded && detailBlock) {
-      const [label, ...bodyLines] = detailBlock.split("\n");
-      rendered += `\n\n${theme.fg("dim", label ?? "")}`;
-      if (bodyLines.length > 0) {
-        rendered += `\n${theme.fg("text", bodyLines.join("\n"))}`;
-      }
+      rendered += appendThemedExpandableDetailBlock(detailBlock, theme);
     } else if (!renderContext.expanded && detailBlock) {
       rendered += `\n${formatExpandHint(theme)}`;
     }
