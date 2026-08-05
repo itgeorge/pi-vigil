@@ -127,6 +127,57 @@ describe("VigilService search/read lifecycle-only diagnostics", () => {
     expect((read as VigilReadResult).state).toBe("running");
   });
 
+  it("keeps transcript-unavailable errors for failed persisted children on search/read", async () => {
+    const sessionManager = SessionManager.inMemory("/parent/default");
+    const appendEntry = (customType: string, data: unknown) => {
+      sessionManager.appendCustomEntry(customType, data);
+    };
+    appendEntry("vigil-launch", launch);
+    appendEntry("vigil-fail", {
+      id: launch.id,
+      sessionId: launch.sessionId,
+      failedAt: "2026-08-01T10:00:01.000Z",
+      error: "bootstrap failed",
+      source: "bootstrap",
+    });
+
+    const missingReader: ChildSessionTranscriptReader = {
+      async readChildTranscript() {
+        return { error: "Child session not found: vigil-diag" };
+      },
+    };
+
+    const service = new VigilService({
+      processRunner: {
+        async spawnDetached() {
+          return { pid: 9000 };
+        },
+        isAlive: () => false,
+        async terminateAndWait() {},
+      },
+      childSessionReader: {
+        async readChildSessionState() {
+          throw new Error("child state reader must not be used by search/read");
+        },
+      },
+      childSessionTranscriptReader: missingReader,
+      childSessionNamer: {
+        async markCompleted() {
+          return { completedName: "[completed] Task" };
+        },
+      },
+      descendantInspector: createZeroDescendantInspector(),
+      parentLedger: createSessionParentLedger(sessionManager, appendEntry),
+    });
+
+    expect(await service.search({ query: "FINDME", id: launch.id })).toEqual({
+      error: "Child session transcript unavailable for vigil: vigil-diag",
+    });
+    expect(await service.read({ id: launch.id, entryId: "entry-1" })).toEqual({
+      error: "Child session transcript unavailable for vigil: vigil-diag",
+    });
+  });
+
   it("returns controlled transcript errors for reader failures and rejected promises", async () => {
     const errorReader: ChildSessionTranscriptReader = {
       async readChildTranscript() {
@@ -185,6 +236,7 @@ describe("deriveDiagnosticChildIdentity", () => {
       },
       completionRecord: null,
       settleRecord: null,
+      failRecord: null,
       lastUpdatedAt: "2026-08-01T10:00:00.000Z",
     };
     const active = deriveDiagnosticChildIdentity(activeLifecycle);
@@ -202,8 +254,22 @@ describe("deriveDiagnosticChildIdentity", () => {
       },
       lastUpdatedAt: "2026-08-01T11:00:00.000Z",
       settleRecord: null,
+      failRecord: null,
     });
     expect(completed.state).toBe("completed");
     expect(completed.name).toBe("[completed] Active");
+
+    const failed = deriveDiagnosticChildIdentity({
+      ...activeLifecycle,
+      failRecord: {
+        id: "vigil-a",
+        sessionId: "vigil-a",
+        failedAt: "2026-08-01T10:30:00.000Z",
+        error: "bootstrap failed",
+        source: "bootstrap",
+      },
+      lastUpdatedAt: "2026-08-01T10:30:00.000Z",
+    });
+    expect(failed.state).toBe("failed");
   });
 });

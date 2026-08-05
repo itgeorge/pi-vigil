@@ -304,7 +304,9 @@ describe("VigilService.launch failure detection", () => {
     bootstrapObserver.pushStderr(vigilId!, 'Error: Model "bad" not found\n');
 
     const launchResult = await launchPromise;
-    expect(launchResult.isError).toBe(true);
-    expect(launchResult.content[0]?.text).toContain('Model "bad" not found');
+    expect((launchResult as { isError?: boolean }).isError).toBe(true);
+    const text =
+      launchResult.content[0]?.type === "text" ? launchResult.content[0].text : "";
+    expect(text).toContain('Model "bad" not found');
   });
 });

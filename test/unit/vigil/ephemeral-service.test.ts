@@ -83,6 +83,7 @@ function createEphemeralHarness(options?: {
     descendantInspector: createZeroDescendantInspector(),
     ephemeralChildObserver: observer,
     createId: () => "vigil-ephemeral-test",
+    bootstrapFailFastTimeoutMs: 25,
     currentParentSessionId: options?.parentSessionId ?? "parent-session-id",
     ...(options?.waitScheduler ? { waitScheduler: options.waitScheduler } : {}),
   });

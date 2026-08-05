@@ -34,8 +34,14 @@ export interface EphemeralStartResult {
   activate(): void;
 }
 
+export type EphemeralBootstrapOutcome =
+  | { status: "started" }
+  | { status: "failed"; error: string }
+  | { status: "timeout" };
+
 export interface EphemeralChildObserver {
   start(input: EphemeralLaunchInput): Promise<EphemeralStartResult>;
+  waitForOutcome(vigilId: string, options: { timeoutMs: number }): Promise<EphemeralBootstrapOutcome>;
   getLiveState(vigilId: string): EphemeralLiveState | null;
   isObserving(vigilId: string): boolean;
   shutdown(options?: TerminateAndWaitOptions): Promise<void>;
@@ -277,6 +283,8 @@ type ActiveObservation = {
   lineBuffer: EphemeralJsonLineBuffer;
   handleLines: (lines: string[]) => void;
   activated: boolean;
+  outcome: EphemeralBootstrapOutcome | null;
+  outcomeWaiters: Array<(outcome: EphemeralBootstrapOutcome) => void>;
 };
 
 export function createNodeEphemeralChildObserver(options: {
@@ -291,7 +299,17 @@ export function createNodeEphemeralChildObserver(options: {
 }): EphemeralChildObserver {
   const piExecutable = options.piExecutable ?? "pi";
   const observations = new Map<string, ActiveObservation>();
+  const completedOutcomes = new Map<string, EphemeralBootstrapOutcome>();
   let shutdownRequested = false;
+
+  const resolveOutcome = (observation: ActiveObservation, outcome: EphemeralBootstrapOutcome): void => {
+    observation.outcome = outcome;
+    completedOutcomes.set(observation.vigilId, outcome);
+    for (const waiter of observation.outcomeWaiters) {
+      waiter(outcome);
+    }
+    observation.outcomeWaiters = [];
+  };
 
   const finalizeObservation = async (
     observation: ActiveObservation,
@@ -317,6 +335,11 @@ export function createNodeEphemeralChildObserver(options: {
     if (!shutdownRequested) {
       observation.onSettled(result);
     }
+
+    const outcome: EphemeralBootstrapOutcome = result.error
+      ? { status: "failed", error: result.error }
+      : { status: "started" };
+    resolveOutcome(observation, outcome);
 
     if (options.processRunner.isAlive(observation.pid)) {
       try {
@@ -453,6 +476,8 @@ export function createNodeEphemeralChildObserver(options: {
         lineBuffer: new EphemeralJsonLineBuffer(),
         handleLines: () => undefined,
         activated: false,
+        outcome: null,
+        outcomeWaiters: [],
       };
 
       observations.set(input.vigilId, observation);
@@ -475,6 +500,32 @@ export function createNodeEphemeralChildObserver(options: {
       return observation !== undefined && !observation.settled;
     },
 
+    waitForOutcome(vigilId, waitOptions) {
+      const completed = completedOutcomes.get(vigilId);
+      if (completed) {
+        return Promise.resolve(completed);
+      }
+
+      const observation = observations.get(vigilId);
+      if (!observation) {
+        return Promise.resolve({ status: "timeout" });
+      }
+      if (observation.outcome) {
+        return Promise.resolve(observation.outcome);
+      }
+
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          resolve({ status: "timeout" });
+        }, waitOptions.timeoutMs);
+
+        observation.outcomeWaiters.push((outcome) => {
+          clearTimeout(timer);
+          resolve(outcome);
+        });
+      });
+    },
+
     async shutdown(terminateOptions) {
       shutdownRequested = true;
       const active = [...observations.values()];
@@ -492,6 +543,7 @@ export function createNodeEphemeralChildObserver(options: {
           }
         }),
       );
+      completedOutcomes.clear();
     },
   };
 }
@@ -500,6 +552,9 @@ export function createNoopEphemeralChildObserver(): EphemeralChildObserver {
   return {
     async start() {
       return { pid: 0, activate() {} };
+    },
+    async waitForOutcome() {
+      return { status: "timeout" };
     },
     getLiveState() {
       return null;
@@ -532,6 +587,8 @@ export function createFakeEphemeralChildObserver(options?: FakeEphemeralChildObs
   let shutdownCalls = 0;
 
   const notified = new Set<string>();
+  const completedOutcomes = new Map<string, EphemeralBootstrapOutcome>();
+  const outcomeWaiters = new Map<string, Array<(outcome: EphemeralBootstrapOutcome) => void>>();
 
   const processLines = (vigilId: string, lines: string[]) => {
     for (const line of lines) {
@@ -563,6 +620,14 @@ export function createFakeEphemeralChildObserver(options?: FakeEphemeralChildObs
     }
     notified.add(vigilId);
     const live = deriveEphemeralLiveState(state);
+    const outcome: EphemeralBootstrapOutcome = state.error
+      ? { status: "failed", error: state.error }
+      : { status: "started" };
+    completedOutcomes.set(vigilId, outcome);
+    for (const waiter of outcomeWaiters.get(vigilId) ?? []) {
+      waiter(outcome);
+    }
+    outcomeWaiters.delete(vigilId);
     if (!shutdownRequested) {
       input.onSettled({
         latestResponse: live.latestResponse,
@@ -616,12 +681,33 @@ export function createFakeEphemeralChildObserver(options?: FakeEphemeralChildObs
       const state = states.get(vigilId);
       return state !== undefined && !state.settled;
     },
+    waitForOutcome(vigilId, waitOptions) {
+      const completed = completedOutcomes.get(vigilId);
+      if (completed) {
+        return Promise.resolve(completed);
+      }
+
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          resolve({ status: "timeout" });
+        }, waitOptions.timeoutMs);
+
+        const waiters = outcomeWaiters.get(vigilId) ?? [];
+        waiters.push((outcome) => {
+          clearTimeout(timer);
+          resolve(outcome);
+        });
+        outcomeWaiters.set(vigilId, waiters);
+      });
+    },
     async shutdown() {
       shutdownCalls += 1;
       shutdownRequested = true;
       states.clear();
       lineBuffers.clear();
       activated.clear();
+      completedOutcomes.clear();
+      outcomeWaiters.clear();
     },
     pushStdout(vigilId, chunk) {
       let buffer = lineBuffers.get(vigilId);

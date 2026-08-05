@@ -30,6 +30,7 @@ describe("fake persisted bootstrap observer", () => {
       vigilId: "vigil-bootstrap-fail",
       sessionId: "vigil-bootstrap-fail",
       cwd: "/parent/project",
+      message: "hello",
     });
     started.activate();
     observer.pushStderr("vigil-bootstrap-fail", 'Error: Model "bad" not found\n');
@@ -50,6 +51,7 @@ describe("fake persisted bootstrap observer", () => {
       vigilId: "vigil-generic-fail",
       sessionId: "vigil-generic-fail",
       cwd: "/parent/project",
+      message: "hello",
     });
     started.activate();
     observer.pushClose("vigil-generic-fail", 1);
@@ -70,6 +72,7 @@ describe("fake persisted bootstrap observer", () => {
       vigilId: "vigil-bootstrap-ok",
       sessionId: "vigil-bootstrap-ok",
       cwd: "/parent/project",
+      message: "hello",
     });
     started.activate();
     observer.signalSessionExists("vigil-bootstrap-ok");
@@ -88,6 +91,7 @@ describe("fake persisted bootstrap observer", () => {
       vigilId: "vigil-bootstrap-timeout",
       sessionId: "vigil-bootstrap-timeout",
       cwd: "/parent/project",
+      message: "hello",
     });
     started.activate();
 
@@ -103,6 +107,7 @@ describe("fake persisted bootstrap observer", () => {
       vigilId: "vigil-activate-guard",
       sessionId: "vigil-activate-guard",
       cwd: "/parent/project",
+      message: "hello",
     });
     observer.pushStderr("vigil-activate-guard", 'Error: Model "bad" not found\n');
     observer.pushClose("vigil-activate-guard", 1);
@@ -145,5 +150,34 @@ describe("node persisted bootstrap observer", () => {
       error: 'Model "bad" not found',
     });
     expect(failures[0]?.stderrExcerpt).toContain('Model "bad" not found');
+  });
+
+  it("fails when child stays alive without session past watchdog timeout", async () => {
+    const failures: PersistedBootstrapFailureInput[] = [];
+    const mockChild = createMockChildProcess();
+    const observer = createNodePersistedBootstrapObserver({
+      processRunner: {
+        isAlive: () => true,
+        async terminateAndWait() {},
+      },
+      spawnChild: () => mockChild,
+      sessionExists: async () => false,
+      onFailed: (input) => failures.push(input),
+      bootstrapWatchdogTimeoutMs: 25,
+    });
+
+    const started = await observer.start({
+      vigilId: "vigil-watchdog-fail",
+      sessionId: "vigil-watchdog-fail",
+      cwd: "/parent/project",
+      message: "hello",
+    });
+    started.activate();
+
+    await expect(observer.waitForOutcome("vigil-watchdog-fail", { timeoutMs: 200 })).resolves.toEqual({
+      status: "failed",
+      error: "Pi child did not create a session before bootstrap watchdog timeout",
+    });
+    expect(failures[0]?.error).toContain("bootstrap watchdog timeout");
   });
 });

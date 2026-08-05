@@ -6,6 +6,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createVigilServiceForContext, shutdownSharedEphemeralChildObserver } from "./vigil/node-runtime";
+import { createProcessRunnerPersistedBootstrapObserver } from "./vigil/persisted-bootstrap-observer";
 import { getVigilSessionDir } from "./vigil/config";
 import { appendThinkingLevelToModel } from "./vigil/model";
 import { getVigilRuntimeOverrides } from "./vigil/runtime-overrides";
@@ -43,18 +44,21 @@ function refreshVigilDisplayNameCache(ctx: ExtensionContext): void {
 
 function createService(ctx: ExtensionContext) {
   const overrides = getVigilRuntimeOverrides();
+  const processRunner = overrides.processRunner;
   return createVigilServiceForContext({
     parentCwd: ctx.cwd,
     sessionManager: ctx.sessionManager,
     appendEntry: appendEntryForTool,
     sessionDir: overrides.sessionDir ?? getVigilSessionDir(),
-    processRunner: overrides.processRunner,
+    processRunner,
     childSessionReader: overrides.childSessionReader,
     childSessionTranscriptReader: overrides.childSessionTranscriptReader,
     childSessionNamer: overrides.childSessionNamer,
     descendantInspector: overrides.descendantInspector,
     ephemeralChildObserver: overrides.ephemeralChildObserver,
-    persistedBootstrapObserver: overrides.persistedBootstrapObserver,
+    persistedBootstrapObserver:
+      overrides.persistedBootstrapObserver ??
+      (processRunner ? createProcessRunnerPersistedBootstrapObserver(processRunner) : undefined),
     bootstrapFailFastTimeoutMs: overrides.bootstrapFailFastTimeoutMs,
     waitScheduler: overrides.waitScheduler,
   });

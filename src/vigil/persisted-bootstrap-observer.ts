@@ -3,6 +3,7 @@ import type { ProcessRunner, TerminateAndWaitOptions } from "./ports";
 import {
   boundStderrExcerpt,
   classifyPersistedBootstrapFailure,
+  DEFAULT_BOOTSTRAP_WATCHDOG_TIMEOUT_MS,
   MAX_STDERR_EXCERPT_CHARS,
   parsePiStderrFailure,
 } from "./child-failure";
@@ -50,6 +51,7 @@ type ActiveObservation = {
   outcome: PersistedBootstrapOutcome | null;
   outcomeWaiters: Array<(outcome: PersistedBootstrapOutcome) => void>;
   sessionCheckTimer?: NodeJS.Timeout;
+  bootstrapWatchdogTimer?: NodeJS.Timeout;
   cleanup: () => void;
 };
 
@@ -97,22 +99,33 @@ export function createNodePersistedBootstrapObserver(options: {
   }) => Promise<boolean>;
   onFailed: (input: PersistedBootstrapFailureInput) => void;
   sessionPollIntervalMs?: number;
+  bootstrapWatchdogTimeoutMs?: number;
 }): PersistedBootstrapObserver {
   const piExecutable = options.piExecutable ?? "pi";
   const sessionPollIntervalMs = options.sessionPollIntervalMs ?? DEFAULT_SESSION_POLL_INTERVAL_MS;
+  const bootstrapWatchdogTimeoutMs =
+    options.bootstrapWatchdogTimeoutMs ?? DEFAULT_BOOTSTRAP_WATCHDOG_TIMEOUT_MS;
   const observations = new Map<string, ActiveObservation>();
   const completedOutcomes = new Map<string, PersistedBootstrapOutcome>();
   let shutdownRequested = false;
+
+  const clearObservationTimers = (observation: ActiveObservation): void => {
+    if (observation.sessionCheckTimer) {
+      clearInterval(observation.sessionCheckTimer);
+      observation.sessionCheckTimer = undefined;
+    }
+    if (observation.bootstrapWatchdogTimer) {
+      clearTimeout(observation.bootstrapWatchdogTimer);
+      observation.bootstrapWatchdogTimer = undefined;
+    }
+  };
 
   const finalizeStarted = (observation: ActiveObservation): void => {
     if (observation.finalized) {
       return;
     }
     observation.finalized = true;
-    if (observation.sessionCheckTimer) {
-      clearInterval(observation.sessionCheckTimer);
-      observation.sessionCheckTimer = undefined;
-    }
+    clearObservationTimers(observation);
     resolveOutcomeWaiters(observation, { status: "started" });
     completedOutcomes.set(observation.vigilId, { status: "started" });
     observations.delete(observation.vigilId);
@@ -124,10 +137,7 @@ export function createNodePersistedBootstrapObserver(options: {
       return;
     }
     observation.finalized = true;
-    if (observation.sessionCheckTimer) {
-      clearInterval(observation.sessionCheckTimer);
-      observation.sessionCheckTimer = undefined;
-    }
+    clearObservationTimers(observation);
 
     const stderrExcerpt = observation.stderr
       ? boundStderrExcerpt(observation.stderr, MAX_STDERR_EXCERPT_CHARS)
@@ -214,6 +224,20 @@ export function createNodePersistedBootstrapObserver(options: {
         }
       });
     }, sessionPollIntervalMs);
+
+    observation.bootstrapWatchdogTimer = setTimeout(() => {
+      void evaluateSessionExists(observation).then((exists) => {
+        if (observation.finalized || exists) {
+          return;
+        }
+        if (options.processRunner.isAlive(observation.pid)) {
+          finalizeFailed(
+            observation,
+            "Pi child did not create a session before bootstrap watchdog timeout",
+          );
+        }
+      });
+    }, bootstrapWatchdogTimeoutMs);
 
     observation.child.on("close", () => {
       void finalizeOnClose(observation);
@@ -311,9 +335,7 @@ export function createNodePersistedBootstrapObserver(options: {
           } catch {
             // Best-effort direct PID cleanup only.
           } finally {
-            if (observation.sessionCheckTimer) {
-              clearInterval(observation.sessionCheckTimer);
-            }
+            clearObservationTimers(observation);
             observation.cleanup();
             observations.delete(observation.vigilId);
           }
