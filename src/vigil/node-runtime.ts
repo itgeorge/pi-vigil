@@ -558,7 +558,7 @@ export class VigilService {
 
     const emitProgressIfNeeded = (
       scan: WaitCohortScan[],
-      options?: { force?: boolean },
+      options?: { force?: boolean; afterPoll?: boolean },
     ) => {
       if (policy.progress !== "status" || !onProgress) {
         return;
@@ -580,7 +580,12 @@ export class VigilService {
       );
       const fingerprint = fingerprintWaitProgress(progressItems);
       const heartbeatDue = waitedMs > 0 && scheduler.now() - lastProgressAt >= policy.progressIntervalMs;
-      if (!options?.force && fingerprint === lastFingerprint && !heartbeatDue) {
+      if (
+        !options?.force &&
+        !options?.afterPoll &&
+        fingerprint === lastFingerprint &&
+        !heartbeatDue
+      ) {
         return;
       }
 
@@ -631,7 +636,7 @@ export class VigilService {
       if ("error" in scan) {
         return scan;
       }
-      emitProgressIfNeeded(scan);
+      emitProgressIfNeeded(scan, { afterPoll: true });
       if (scan.some(({ snapshot }) => snapshot.state !== "running")) {
         return this.settledWaitResult(startedAt, scheduler, scan);
       }

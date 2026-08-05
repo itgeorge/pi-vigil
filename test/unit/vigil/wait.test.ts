@@ -314,7 +314,7 @@ describe("VigilService.wait progress", () => {
 
     expectWait(result);
     expect(result.outcome).toBe("timeout");
-    expect(updates).toHaveLength(1);
+    expect(updates).toHaveLength(2);
     expect(updates[0]).toEqual(
       expect.objectContaining({
         waitedMs: 0,
@@ -330,6 +330,7 @@ describe("VigilService.wait progress", () => {
         ],
       }),
     );
+    expect(updates[1]).toEqual(expect.objectContaining({ waitedMs: 100 }));
   });
 
   it("is silent under progress none but returns the same final outcome", async () => {
@@ -351,7 +352,36 @@ describe("VigilService.wait progress", () => {
     expect(scheduler.sleeps).toEqual([]);
   });
 
-  it("emits on fingerprint change before heartbeat expiry and suppresses duplicate unchanged scans", async () => {
+  it("emits after every poll even when child progress fingerprint is unchanged", async () => {
+    const { service } = createHarness({
+      records: [launchRecord("vigil-fingerprint", 1)],
+      stateFor: () => ({
+        latestResponse: null,
+        turnComplete: false,
+        activity: defaultActivity({
+          steps: 1,
+          messages: 1,
+          lastActivity: "user message",
+          lastActivityTimestamp: "2026-08-01T12:00:01.000Z",
+        }),
+      }),
+    });
+    const updates: unknown[] = [];
+
+    const result = await service.wait(
+      { timeoutMs: 500, initialDelayMs: 100, maxDelayMs: 100, progressIntervalMs: 10_000 },
+      undefined,
+      (progress) => updates.push(progress),
+    );
+
+    expectWait(result);
+    expect(result.outcome).toBe("timeout");
+    expect(updates.map((update) => (update as { waitedMs: number }).waitedMs)).toEqual([
+      0, 100, 200, 300, 400, 500,
+    ]);
+  });
+
+  it("emits on fingerprint change before heartbeat expiry", async () => {
     const { service, scheduler } = createHarness({
       records: [launchRecord("vigil-fingerprint", 1)],
       stateFor: () => ({
@@ -392,8 +422,8 @@ describe("VigilService.wait progress", () => {
 
     expectWait(result);
     expect(result.outcome).toBe("timeout");
-    expect(updates.map((update) => (update as { waitedMs: number }).waitedMs)).toEqual([0, 200]);
-    expect(updates.map((update) => (update as { nextPollInMs: number }).nextPollInMs)).toEqual([200, 50]);
+    expect(updates.map((update) => (update as { waitedMs: number }).waitedMs)).toEqual([0, 200, 250]);
+    expect(updates.map((update) => (update as { nextPollInMs: number }).nextPollInMs)).toEqual([200, 50, 0]);
     expect(scheduler.sleeps).toEqual([200, 50]);
   });
 

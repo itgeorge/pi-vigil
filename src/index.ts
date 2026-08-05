@@ -149,7 +149,7 @@ export const vigilTool = defineTool({
     progressIntervalMs: Type.Optional(
       Type.Number({
         description:
-          "Heartbeat cap for unchanged wait progress in milliseconds (default 30000, maximum 60000; ignored when progress is none)",
+          "Heartbeat cap for unchanged child-state progress between polls in milliseconds (default 30000, maximum 60000; ignored when progress is none). Elapsed timing still updates after every wait poll.",
       }),
     ),
     allowIncompleteSubagents: Type.Optional(
