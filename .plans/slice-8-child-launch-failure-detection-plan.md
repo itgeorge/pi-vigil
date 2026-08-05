@@ -405,6 +405,20 @@ npm run check
 | 10 | `complete` on failed child → completed snapshot | `poll-failure.test.ts` + `search-read-safety.test.ts` → pass |
 | 11 | watchdog → stays running | `persisted-bootstrap-observer.test.ts` watchdog test → 7 passed |
 | 12 | live invalid model (PI_VIGIL_LIVE=1) | `npm run check` → 337 unit tests passed |
+| Review fixes (2026-08-05) | ephemeral settle-error stayed in active cohort; close-before-activate miss; watchdog no terminate; list mislabeled running; skipToId failed message | `npm run check` → 344 unit tests passed |
+
+---
+
+## Review fix log (Grok review, 2026-08-05)
+
+| Item | Fix |
+|---|---|
+| P0 ephemeral settle-error in active cohort | `isEphemeralSettleFailure` / `isLifecycleFailure`; exclude from `listLifecycleStatesFromSessionManager` and wait cohort; list shows `state: "failed"` with `includeCompleted` |
+| P1 close-before-activate | Node observer tracks `closed`; attach `close` at start; `activate()` calls `finalizeOnClose` when already closed |
+| P1 shared persisted observer + shutdown + parentSessionId guard | `getSharedPersistedBootstrapObserver`, `shutdownSharedPersistedBootstrapObserver` on `session_shutdown`; per-start `onFailed` with `appendBootstrapFailIfCurrent` guard |
+| P1 watchdog terminate | Best-effort `terminateAndWait` before `finalizeFailed` on watchdog timeout |
+| P1 list ephemeral error → failed | `buildListItemsFromStates` maps settle/resolve errors to `failed` |
+| P2 skipToId failed message | `Failed vigil child excluded: … (pass includeCompleted: true)` |
 
 ---
 

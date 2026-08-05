@@ -6,7 +6,10 @@ import {
 } from "../../../src/vigil/node-runtime";
 import { reconstructVigilLifecycleFromEntries } from "../../../src/vigil/lifecycle";
 import type { VigilCompletionRecord, VigilFailRecord, VigilLaunchRecord, VigilTurnRecord } from "../../../src/vigil/types";
-import { deriveDiagnosticChildIdentity } from "../../../src/vigil/lifecycle";
+import {
+  deriveDiagnosticChildIdentity,
+  isEphemeralSettleFailure,
+} from "../../../src/vigil/lifecycle";
 
 function appendLaunch(sessionManager: SessionManager, record: VigilLaunchRecord): void {
   sessionManager.appendCustomEntry("vigil-launch", record);
@@ -292,6 +295,72 @@ describe("vigil lifecycle reconstruction", () => {
 
     const lifecycle = getLifecycleFromSessionManager(sessionManager, "vigil-failed");
     expect(lifecycle?.failRecord?.error).toBe("first failure");
+  });
+
+  it("treats ephemeral settle error as lifecycle failure", () => {
+    const sessionManager = SessionManager.inMemory("/parent/project");
+    appendLaunch(sessionManager, {
+      id: "vigil-ephemeral-fail",
+      sessionId: "vigil-ephemeral-fail",
+      name: "Ephemeral fail",
+      pid: 100,
+      cwd: "/parent/project",
+      launchedAt: "2026-08-01T10:00:00.000Z",
+      ephemeral: true,
+    });
+    sessionManager.appendCustomEntry("vigil-settle", {
+      id: "vigil-ephemeral-fail",
+      sessionId: "vigil-ephemeral-fail",
+      latestResponse: null,
+      settledAt: "2026-08-01T10:00:01.000Z",
+      error: "ephemeral child exited (code 1)",
+    });
+
+    const lifecycle = getLifecycleFromSessionManager(sessionManager, "vigil-ephemeral-fail");
+    expect(isEphemeralSettleFailure(lifecycle!)).toBe(true);
+    expect(deriveDiagnosticChildIdentity(lifecycle!)).toEqual({
+      id: "vigil-ephemeral-fail",
+      sessionId: "vigil-ephemeral-fail",
+      name: "Ephemeral fail",
+      state: "failed",
+    });
+  });
+
+  it("excludes ephemeral settle-error children from default lifecycle listing", () => {
+    const sessionManager = SessionManager.inMemory("/parent/project");
+    appendLaunch(sessionManager, {
+      id: "vigil-ephemeral-active",
+      sessionId: "vigil-ephemeral-active",
+      name: "Active",
+      pid: 100,
+      cwd: "/parent/project",
+      launchedAt: "2026-08-01T12:00:00.000Z",
+      ephemeral: true,
+    });
+    appendLaunch(sessionManager, {
+      id: "vigil-ephemeral-fail",
+      sessionId: "vigil-ephemeral-fail",
+      name: "Failed",
+      pid: 101,
+      cwd: "/parent/project",
+      launchedAt: "2026-08-01T10:00:00.000Z",
+      ephemeral: true,
+    });
+    sessionManager.appendCustomEntry("vigil-settle", {
+      id: "vigil-ephemeral-fail",
+      sessionId: "vigil-ephemeral-fail",
+      latestResponse: null,
+      settledAt: "2026-08-01T10:00:01.000Z",
+      error: "ephemeral child exited (code 1)",
+    });
+
+    expect(listLifecycleStatesFromSessionManager(sessionManager, false).map((state) => state.id)).toEqual([
+      "vigil-ephemeral-active",
+    ]);
+    expect(listLifecycleStatesFromSessionManager(sessionManager, true).map((state) => state.id)).toEqual([
+      "vigil-ephemeral-active",
+      "vigil-ephemeral-fail",
+    ]);
   });
 
   it("excludes failed children from default lifecycle listing", () => {

@@ -155,6 +155,93 @@ describe("ephemeral failure surfacing", () => {
     }
   });
 
+  it("excludes ephemeral settle-error child from default active cohort", async () => {
+    const sessionManager = SessionManager.inMemory("/parent/default");
+    sessionManager.appendCustomEntry("vigil-launch", {
+      id: "vigil-ephemeral-fail",
+      sessionId: "vigil-ephemeral-fail",
+      name: "Ephemeral",
+      pid: 100,
+      cwd: "/parent/default",
+      launchedAt: "2026-08-01T10:00:00.000Z",
+      ephemeral: true,
+    });
+    sessionManager.appendCustomEntry("vigil-settle", {
+      id: "vigil-ephemeral-fail",
+      sessionId: "vigil-ephemeral-fail",
+      latestResponse: null,
+      settledAt: "2026-08-01T10:00:01.000Z",
+      error: "ephemeral child exited (code 1)",
+    });
+    sessionManager.appendCustomEntry("vigil-launch", {
+      id: "vigil-ephemeral-active",
+      sessionId: "vigil-ephemeral-active",
+      name: "Active",
+      pid: 101,
+      cwd: "/parent/default",
+      launchedAt: "2026-08-01T12:00:00.000Z",
+      ephemeral: true,
+    });
+    sessionManager.appendCustomEntry("vigil-settle", {
+      id: "vigil-ephemeral-active",
+      sessionId: "vigil-ephemeral-active",
+      latestResponse: "Done",
+      settledAt: "2026-08-01T12:00:01.000Z",
+    });
+
+    const service = new VigilService({
+      processRunner: {
+        async spawnDetached() {
+          return { pid: 102 };
+        },
+        isAlive: () => false,
+        async terminateAndWait() {},
+      },
+      childSessionReader: {
+        async readChildSessionState() {
+          return {
+            latestResponse: null,
+            turnComplete: false,
+            lastConversationTimestamp: null,
+            activity: { steps: 0, messages: 0, lastActivity: null, lastActivityTimestamp: null, recentMessages: [] },
+          };
+        },
+      },
+      childSessionTranscriptReader: createEmptyChildSessionTranscriptReader(),
+      childSessionNamer: {
+        async markCompleted() {
+          return { completedName: "[completed]" };
+        },
+      },
+      descendantInspector: createZeroDescendantInspector(),
+      parentLedger: createSessionParentLedger(sessionManager, (customType, data) => {
+        sessionManager.appendCustomEntry(customType, data);
+      }),
+      ephemeralChildObserver: createFakeEphemeralChildObserver(),
+      waitScheduler: new ImmediateScheduler(),
+    });
+
+    const activeList = await service.list();
+    expect(isVigilError(activeList)).toBe(false);
+    if (!isVigilError(activeList)) {
+      expect(activeList.vigils.map((item) => item.id)).toEqual(["vigil-ephemeral-active"]);
+    }
+
+    const cohortWait = await service.wait({ id: "vigil-ephemeral-active", timeoutMs: 1000 });
+    expect(isVigilError(cohortWait)).toBe(false);
+  });
+
+  it("lists ephemeral settle-error child as failed with includeCompleted", async () => {
+    const service = createEphemeralFailureService("ephemeral child exited (code 1)");
+    const result = await service.list({ includeCompleted: true });
+    expect(isVigilError(result)).toBe(false);
+    if (!isVigilError(result)) {
+      const failed = result.vigils.find((item) => item.id === "vigil-ephemeral-fail");
+      expect(failed?.state).toBe("failed");
+      expect(failed?.ephemeral).toBe(true);
+    }
+  });
+
   it("returns launch error when ephemeral observer settles with error within bootstrap window", async () => {
     const ephemeralObserver = createFakeEphemeralChildObserver();
     const sessionManager = SessionManager.inMemory("/parent/default");

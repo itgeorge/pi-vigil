@@ -25,6 +25,8 @@ export interface PersistedBootstrapStartInput {
   model?: string;
   sessionDir?: string;
   name?: string;
+  parentSessionId?: string;
+  onFailed?: (input: PersistedBootstrapFailureInput) => void;
 }
 
 export type PersistedBootstrapOutcome =
@@ -46,12 +48,14 @@ type ActiveObservation = {
   pid: number;
   child: ChildProcess;
   activated: boolean;
+  closed: boolean;
   stderr: string;
   finalized: boolean;
   outcome: PersistedBootstrapOutcome | null;
   outcomeWaiters: Array<(outcome: PersistedBootstrapOutcome) => void>;
   sessionCheckTimer?: NodeJS.Timeout;
   bootstrapWatchdogTimer?: NodeJS.Timeout;
+  onFailed?: (input: PersistedBootstrapFailureInput) => void;
   cleanup: () => void;
 };
 
@@ -97,9 +101,10 @@ export function createNodePersistedBootstrapObserver(options: {
     cwd: string;
     sessionDir?: string;
   }) => Promise<boolean>;
-  onFailed: (input: PersistedBootstrapFailureInput) => void;
+  onFailed?: (input: PersistedBootstrapFailureInput) => void;
   sessionPollIntervalMs?: number;
   bootstrapWatchdogTimeoutMs?: number;
+  reapTimeoutMs?: number;
 }): PersistedBootstrapObserver {
   const piExecutable = options.piExecutable ?? "pi";
   const sessionPollIntervalMs = options.sessionPollIntervalMs ?? DEFAULT_SESSION_POLL_INTERVAL_MS;
@@ -144,7 +149,8 @@ export function createNodePersistedBootstrapObserver(options: {
       : undefined;
 
     if (!shutdownRequested) {
-      options.onFailed({
+      const reportFailed = observation.onFailed ?? options.onFailed;
+      reportFailed?.({
         vigilId: observation.vigilId,
         sessionId: observation.sessionId,
         error,
@@ -217,6 +223,11 @@ export function createNodePersistedBootstrapObserver(options: {
     observation.activated = true;
     attachStreamHandlers(observation);
 
+    if (observation.closed) {
+      void finalizeOnClose(observation);
+      return;
+    }
+
     observation.sessionCheckTimer = setInterval(() => {
       void evaluateSessionExists(observation).then((exists) => {
         if (exists) {
@@ -226,11 +237,18 @@ export function createNodePersistedBootstrapObserver(options: {
     }, sessionPollIntervalMs);
 
     observation.bootstrapWatchdogTimer = setTimeout(() => {
-      void evaluateSessionExists(observation).then((exists) => {
+      void evaluateSessionExists(observation).then(async (exists) => {
         if (observation.finalized || exists) {
           return;
         }
         if (options.processRunner.isAlive(observation.pid)) {
+          try {
+            await options.processRunner.terminateAndWait(observation.pid, {
+              timeoutMs: options.reapTimeoutMs,
+            });
+          } catch {
+            // Best-effort direct PID cleanup only.
+          }
           finalizeFailed(
             observation,
             "Pi child did not create a session before bootstrap watchdog timeout",
@@ -238,10 +256,6 @@ export function createNodePersistedBootstrapObserver(options: {
         }
       });
     }, bootstrapWatchdogTimeoutMs);
-
-    observation.child.on("close", () => {
-      void finalizeOnClose(observation);
-    });
   };
 
   return {
@@ -296,12 +310,21 @@ export function createNodePersistedBootstrapObserver(options: {
         pid,
         child,
         activated: false,
+        closed: false,
         stderr: "",
         finalized: false,
         outcome: null,
         outcomeWaiters: [],
+        onFailed: input.onFailed,
         cleanup: () => undefined,
       };
+
+      observation.child.on("close", () => {
+        observation.closed = true;
+        if (observation.activated) {
+          void finalizeOnClose(observation);
+        }
+      });
 
       observations.set(input.vigilId, observation);
       return {

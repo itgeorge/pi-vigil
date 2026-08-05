@@ -5,7 +5,7 @@ import {
   type ExtensionContext,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { createVigilServiceForContext, shutdownSharedEphemeralChildObserver } from "./vigil/node-runtime";
+import { createVigilServiceForContext, shutdownSharedEphemeralChildObserver, shutdownSharedPersistedBootstrapObserver } from "./vigil/node-runtime";
 import { createProcessRunnerPersistedBootstrapObserver } from "./vigil/persisted-bootstrap-observer";
 import { getVigilSessionDir } from "./vigil/config";
 import { appendThinkingLevelToModel } from "./vigil/model";
@@ -460,6 +460,7 @@ export function registerVigilExtension(pi: ExtensionAPI): ToolDefinition {
 
   pi.on("session_shutdown", async () => {
     await shutdownSharedEphemeralChildObserver();
+    await shutdownSharedPersistedBootstrapObserver();
   });
 
   pi.registerTool(vigilTool);

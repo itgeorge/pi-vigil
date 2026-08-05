@@ -29,6 +29,8 @@ import {
   sortLifecycleStatesMostRecentFirst,
   deriveDiagnosticChildIdentity,
   isEphemeralLifecycle,
+  isEphemeralSettleFailure,
+  isLifecycleFailure,
   type VigilLifecycleState,
 } from "./lifecycle";
 import type {
@@ -119,6 +121,7 @@ const EMPTY_EPHEMERAL_ACTIVITY: VigilSessionActivity = {
 };
 
 let sharedEphemeralChildObserver: EphemeralChildObserver | undefined;
+let sharedPersistedBootstrapObserver: PersistedBootstrapObserver | undefined;
 
 export function getSharedEphemeralChildObserver(
   processRunner: ProcessRunner,
@@ -132,6 +135,43 @@ export function getSharedEphemeralChildObserver(
 
 export function resetSharedEphemeralChildObserverForTests(): void {
   sharedEphemeralChildObserver = undefined;
+}
+
+export function getSharedPersistedBootstrapObserver(
+  processRunner: ProcessRunner,
+  options?: {
+    sessionExists?: (input: {
+      sessionId: string;
+      cwd: string;
+      sessionDir?: string;
+    }) => Promise<boolean>;
+    reapTimeoutMs?: number;
+  },
+): PersistedBootstrapObserver {
+  if (!sharedPersistedBootstrapObserver) {
+    sharedPersistedBootstrapObserver = createNodePersistedBootstrapObserver({
+      processRunner,
+      sessionExists:
+        options?.sessionExists ??
+        (async ({ sessionId, cwd, sessionDir }) => {
+          const sessionPath = await findChildSessionPath(sessionId, cwd, sessionDir);
+          return sessionPath !== null;
+        }),
+      reapTimeoutMs: options?.reapTimeoutMs,
+    });
+  }
+  return sharedPersistedBootstrapObserver;
+}
+
+export function resetSharedPersistedBootstrapObserverForTests(): void {
+  sharedPersistedBootstrapObserver = undefined;
+}
+
+export async function shutdownSharedPersistedBootstrapObserver(
+  options?: TerminateAndWaitOptions,
+): Promise<void> {
+  await sharedPersistedBootstrapObserver?.shutdown(options);
+  sharedPersistedBootstrapObserver = undefined;
 }
 
 export async function shutdownSharedEphemeralChildObserver(
@@ -258,6 +298,7 @@ export class VigilService {
     }
 
     let activate: () => void;
+    const parentSessionId = this.deps.currentParentSessionId ?? sessionId;
     try {
       ({ pid, activate } = await this.deps.persistedBootstrapObserver.start({
         vigilId: id,
@@ -267,6 +308,10 @@ export class VigilService {
         model: input.model,
         sessionDir: this.deps.sessionDir,
         name: normalizedName,
+        parentSessionId,
+        onFailed: (failure) => {
+          this.appendBootstrapFailIfCurrent(id, sessionId, parentSessionId, failure);
+        },
       }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -384,6 +429,7 @@ export class VigilService {
     let pid: number;
     let activate: () => void;
     const turnStartedAt = new Date().toISOString();
+    const parentSessionId = this.deps.currentParentSessionId ?? record.sessionId;
     try {
       ({ pid, activate } = await this.deps.persistedBootstrapObserver.start({
         vigilId: record.id,
@@ -392,6 +438,10 @@ export class VigilService {
         cwd: record.cwd,
         model: input.model,
         sessionDir: record.sessionDir ?? this.deps.sessionDir,
+        parentSessionId,
+        onFailed: (failure) => {
+          this.appendBootstrapFailIfCurrent(record.id, record.sessionId, parentSessionId, failure);
+        },
       }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -448,6 +498,11 @@ export class VigilService {
         if (lifecycle.completionRecord && !policy.includeCompleted) {
           return {
             error: `Completed vigil child excluded: ${policy.skipToId} (pass includeCompleted: true)`,
+          };
+        }
+        if (isLifecycleFailure(lifecycle) && !policy.includeCompleted) {
+          return {
+            error: `Failed vigil child excluded: ${policy.skipToId} (pass includeCompleted: true)`,
           };
         }
         return { error: `Unknown vigil id: ${policy.skipToId}` };
@@ -801,6 +856,29 @@ export class VigilService {
     };
   }
 
+  private appendBootstrapFailIfCurrent(
+    vigilId: string,
+    sessionId: string,
+    parentSessionId: string,
+    failure: { error: string; stderrExcerpt?: string },
+  ): void {
+    const current = this.deps.parentLedger.getLifecycle(vigilId);
+    if (!current || current.failRecord || current.completionRecord) {
+      return;
+    }
+    if (parentSessionId !== this.deps.currentParentSessionId) {
+      return;
+    }
+    this.deps.parentLedger.appendFail({
+      id: vigilId,
+      sessionId,
+      failedAt: new Date().toISOString(),
+      error: failure.error,
+      source: "bootstrap",
+      ...(failure.stderrExcerpt ? { stderrExcerpt: failure.stderrExcerpt } : {}),
+    });
+  }
+
   private resolveLifecycleFailure(lifecycle: VigilLifecycleState): { error: string } | null {
     if (lifecycle.failRecord) {
       return { error: formatVigilChildFailedError(lifecycle.id, lifecycle.failRecord.error) };
@@ -1053,7 +1131,7 @@ export class VigilService {
         continue;
       }
 
-      if (lifecycle.failRecord) {
+      if (lifecycle.failRecord || isEphemeralSettleFailure(lifecycle)) {
         items.push({
           ...lifecycleStateToListItem(lifecycle, "failed"),
           ...(directSubagents ? { directSubagents } : {}),
@@ -1061,11 +1139,11 @@ export class VigilService {
         continue;
       }
 
-      let activeState: "running" | "waiting";
+      let activeState: "running" | "waiting" | "failed";
       if (isEphemeralLifecycle(lifecycle)) {
         const ephemeralSnapshot = this.resolveEphemeralActiveSnapshot(lifecycle);
         if ("error" in ephemeralSnapshot) {
-          activeState = "running";
+          activeState = "failed";
         } else {
           activeState = ephemeralSnapshot.state === "running" ? "running" : "waiting";
         }
@@ -1075,7 +1153,10 @@ export class VigilService {
       }
 
       items.push({
-        ...lifecycleStateToListItem(lifecycle, activeState),
+        ...lifecycleStateToListItem(
+          lifecycle,
+          activeState === "failed" ? "failed" : activeState,
+        ),
         ...(directSubagents ? { directSubagents } : {}),
       });
     }
@@ -1531,7 +1612,7 @@ export function listLifecycleStatesFromSessionManager(
     return sorted;
   }
 
-  return sorted.filter((state) => !state.completionRecord && !state.failRecord);
+  return sorted.filter((state) => !state.completionRecord && !isLifecycleFailure(state));
 }
 
 export function findLatestTurnInSessionManager(
@@ -1593,22 +1674,8 @@ export function createVigilServiceForContext(options: {
   const parentLedger = createSessionParentLedger(options.sessionManager, options.appendEntry);
   const persistedBootstrapObserver =
     options.persistedBootstrapObserver ??
-    createNodePersistedBootstrapObserver({
-      processRunner,
-      sessionExists: async ({ sessionId, cwd, sessionDir }) => {
-        const sessionPath = await findChildSessionPath(sessionId, cwd, sessionDir);
-        return sessionPath !== null;
-      },
-      onFailed: (input) => {
-        parentLedger.appendFail({
-          id: input.vigilId,
-          sessionId: input.sessionId,
-          failedAt: new Date().toISOString(),
-          error: input.error,
-          source: input.source,
-          ...(input.stderrExcerpt ? { stderrExcerpt: input.stderrExcerpt } : {}),
-        });
-      },
+    getSharedPersistedBootstrapObserver(processRunner, {
+      reapTimeoutMs: options.reapTimeoutMs,
     });
   return new VigilService({
     processRunner,

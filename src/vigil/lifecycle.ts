@@ -107,6 +107,14 @@ export function isEphemeralLifecycle(state: VigilLifecycleState): boolean {
   return "launchedAt" in record && record.ephemeral === true;
 }
 
+export function isEphemeralSettleFailure(state: VigilLifecycleState): boolean {
+  return isEphemeralLifecycle(state) && Boolean(state.settleRecord?.error);
+}
+
+export function isLifecycleFailure(state: VigilLifecycleState): boolean {
+  return Boolean(state.failRecord) || isEphemeralSettleFailure(state);
+}
+
 export function reconstructVigilLifecycleFromEntries(
   entries: SessionEntry[],
 ): Map<string, VigilLifecycleState> {
@@ -264,6 +272,15 @@ export function deriveDiagnosticChildIdentity(state: VigilLifecycleState): {
     };
   }
 
+  if (isEphemeralSettleFailure(state)) {
+    return {
+      id: state.id,
+      sessionId: state.sessionId,
+      name: state.launchName,
+      state: "failed",
+    };
+  }
+
   return {
     id: state.id,
     sessionId: state.sessionId,
@@ -290,7 +307,7 @@ export function lifecycleStateToListItem(
     };
   }
 
-  if (state.failRecord) {
+  if (state.failRecord || isEphemeralSettleFailure(state)) {
     return {
       id: state.id,
       sessionId: state.sessionId,

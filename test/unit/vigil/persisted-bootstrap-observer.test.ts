@@ -1,6 +1,6 @@
 import { EventEmitter, PassThrough } from "node:stream";
 import type { ChildProcess } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createFakePersistedBootstrapObserver,
   createNodePersistedBootstrapObserver,
@@ -150,6 +150,64 @@ describe("node persisted bootstrap observer", () => {
       error: 'Model "bad" not found',
     });
     expect(failures[0]?.stderrExcerpt).toContain('Model "bad" not found');
+  });
+
+  it("finalizes immediately on activate when child already closed", async () => {
+    const failures: PersistedBootstrapFailureInput[] = [];
+    const mockChild = createMockChildProcess();
+    const observer = createNodePersistedBootstrapObserver({
+      processRunner: {
+        isAlive: () => false,
+        async terminateAndWait() {},
+      },
+      spawnChild: () => mockChild,
+      sessionExists: async () => false,
+      onFailed: (input) => failures.push(input),
+    });
+
+    const started = await observer.start({
+      vigilId: "vigil-close-before-activate",
+      sessionId: "vigil-close-before-activate",
+      cwd: "/parent/project",
+      message: "hello",
+    });
+    mockChild.emit("close", 1, null);
+    started.activate();
+
+    await expect(observer.waitForOutcome("vigil-close-before-activate", { timeoutMs: 100 })).resolves.toEqual({
+      status: "failed",
+      error: "Pi child exited before session was created",
+    });
+    expect(failures).toHaveLength(1);
+  });
+
+  it("terminates hung alive child on watchdog failure", async () => {
+    const terminateAndWait = vi.fn(async () => undefined);
+    const mockChild = createMockChildProcess();
+    const observer = createNodePersistedBootstrapObserver({
+      processRunner: {
+        isAlive: () => true,
+        terminateAndWait,
+      },
+      spawnChild: () => mockChild,
+      sessionExists: async () => false,
+      onFailed: () => {},
+      bootstrapWatchdogTimeoutMs: 25,
+    });
+
+    const started = await observer.start({
+      vigilId: "vigil-watchdog-terminate",
+      sessionId: "vigil-watchdog-terminate",
+      cwd: "/parent/project",
+      message: "hello",
+    });
+    started.activate();
+
+    await expect(observer.waitForOutcome("vigil-watchdog-terminate", { timeoutMs: 200 })).resolves.toEqual({
+      status: "failed",
+      error: "Pi child did not create a session before bootstrap watchdog timeout",
+    });
+    expect(terminateAndWait).toHaveBeenCalledTimes(1);
   });
 
   it("fails when child stays alive without session past watchdog timeout", async () => {

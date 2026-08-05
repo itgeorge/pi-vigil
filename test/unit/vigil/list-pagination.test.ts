@@ -184,6 +184,61 @@ describe("VigilService.list pagination", () => {
     }
   });
 
+  it("rejects skipToId for failed child without includeCompleted", async () => {
+    const sessionManager = SessionManager.inMemory("/parent/default");
+    const captured: { customType: string; data: unknown }[] = [];
+    const appendEntry = (customType: string, data: unknown) => {
+      captured.push({ customType, data });
+      sessionManager.appendCustomEntry(customType, data);
+    };
+    appendEntry("vigil-launch", {
+      id: "vigil-failed",
+      sessionId: "vigil-failed",
+      name: "Failed",
+      pid: 100,
+      cwd: "/parent/default",
+      launchedAt: "2026-08-01T10:00:00.000Z",
+    });
+    appendEntry("vigil-fail", {
+      id: "vigil-failed",
+      sessionId: "vigil-failed",
+      failedAt: "2026-08-01T10:00:01.000Z",
+      error: "bootstrap failed",
+      source: "bootstrap",
+    });
+
+    const service = new VigilService({
+      processRunner: {
+        spawnDetached: async () => ({ pid: 9001 }),
+        isAlive: () => false,
+        terminateAndWait: async () => undefined,
+      },
+      childSessionReader: {
+        async readChildSessionState() {
+          return {
+            latestResponse: null,
+            turnComplete: true,
+            lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
+            activity: { steps: 0, messages: 0, lastActivity: null, lastActivityTimestamp: null, recentMessages: [] },
+          };
+        },
+      },
+      childSessionTranscriptReader: createEmptyChildSessionTranscriptReader(),
+      childSessionNamer: {
+        markCompleted: async () => ({ completedName: "[completed] unused" }),
+      },
+      parentLedger: createSessionParentLedger(sessionManager, appendEntry),
+      descendantInspector: createZeroDescendantInspector(),
+    });
+
+    const result = await service.list({ skipToId: "vigil-failed" });
+    expect(isVigilError(result)).toBe(true);
+    if (isVigilError(result)) {
+      expect(result.error).toContain("Failed vigil child excluded");
+      expect(result.error).toContain("includeCompleted: true");
+    }
+  });
+
   it("rejects unknown, whitespace-invalid, and includeCompleted-excluded skipToId values", async () => {
     const { service } = createHarness({
       recordCount: 1,
