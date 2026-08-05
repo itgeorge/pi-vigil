@@ -245,7 +245,10 @@ export class VigilService {
             if (!current || current.settleRecord || current.completionRecord) {
               return;
             }
-            if (parentSessionId !== this.deps.currentParentSessionId) {
+            if (
+              this.deps.currentParentSessionId !== undefined &&
+              parentSessionId !== this.deps.currentParentSessionId
+            ) {
               return;
             }
             const settleRecord: VigilSettleRecord = {
@@ -866,7 +869,10 @@ export class VigilService {
     if (!current || current.failRecord || current.completionRecord) {
       return;
     }
-    if (parentSessionId !== this.deps.currentParentSessionId) {
+    if (
+      this.deps.currentParentSessionId !== undefined &&
+      parentSessionId !== this.deps.currentParentSessionId
+    ) {
       return;
     }
     this.deps.parentLedger.appendFail({

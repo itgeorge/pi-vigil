@@ -104,55 +104,12 @@ describe("VigilService.launch failure detection", () => {
     }
   });
 
-  it("appends vigil-launch and vigil-fail on bootstrap failure but returns error", async () => {
-    const captured: Array<{ customType: string; data: unknown }> = [];
-    const sessionManager = SessionManager.inMemory("/parent/default");
-    const appendEntry = (customType: string, data: unknown) => {
-      captured.push({ customType, data });
-      sessionManager.appendCustomEntry(customType, data);
-    };
-    const parentLedger = createSessionParentLedger(sessionManager, appendEntry);
-    const bootstrapObserver = createFakePersistedBootstrapObserver({
-      onFailed: (input) => {
-        parentLedger.appendFail({
-          id: input.vigilId,
-          sessionId: input.sessionId,
-          failedAt: "2026-08-01T10:00:01.000Z",
-          error: input.error,
-          source: input.source,
-        });
-      },
-    });
-
-    const service = new VigilService({
-      processRunner: {
-        async spawnDetached() {
-          throw new Error("persisted spawn should not run");
-        },
-        isAlive: () => false,
-        async terminateAndWait() {},
-      },
-      childSessionReader: {
-        async readChildSessionState() {
-          return {
-            latestResponse: null,
-            turnComplete: false,
-            lastConversationTimestamp: null,
-            activity: { steps: 0, messages: 0, lastActivity: null, lastActivityTimestamp: null, recentMessages: [] },
-          };
-        },
-      },
-      childSessionTranscriptReader: createEmptyChildSessionTranscriptReader(),
-      childSessionNamer: {
-        async markCompleted() {
-          return { completedName: "[completed] Test vigil" };
-        },
-      },
-      descendantInspector: createZeroDescendantInspector(),
-      parentLedger,
-      persistedBootstrapObserver: bootstrapObserver,
-      bootstrapFailFastTimeoutMs: 100,
+  it("appends vigil-fail via service onFailed when currentParentSessionId is unset", async () => {
+    const bootstrapObserver = createFakePersistedBootstrapObserver();
+    const { service, captured } = createLaunchFailureDeps({
+      bootstrapObserver,
       createId: () => "vigil-audit-fail",
+      bootstrapFailFastTimeoutMs: 100,
     });
 
     const launchPromise = service.launch({

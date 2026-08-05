@@ -432,6 +432,7 @@ type FakeObservationState = {
   outcome: PersistedBootstrapOutcome | null;
   outcomeWaiters: Array<(outcome: PersistedBootstrapOutcome) => void>;
   sessionId: string;
+  onFailed?: (input: PersistedBootstrapFailureInput) => void;
 };
 
 export function createFakePersistedBootstrapObserver(
@@ -465,7 +466,8 @@ export function createFakePersistedBootstrapObserver(
     }
     state.finalized = true;
     if (!shutdownRequested) {
-      options?.onFailed?.({
+      const reportFailed = state.onFailed ?? options?.onFailed;
+      reportFailed?.({
         vigilId,
         sessionId: state.sessionId,
         error,
@@ -538,6 +540,7 @@ export function createFakePersistedBootstrapObserver(
         outcome: null,
         outcomeWaiters: [],
         sessionId: input.sessionId,
+        onFailed: input.onFailed,
       });
 
       const pid = nextPid;

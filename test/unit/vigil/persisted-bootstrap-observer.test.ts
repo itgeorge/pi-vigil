@@ -20,6 +20,31 @@ function createMockChildProcess(pid = 12_345): ChildProcess {
 }
 
 describe("fake persisted bootstrap observer", () => {
+  it("prefers per-start onFailed over constructor onFailed", async () => {
+    const inputFailures: PersistedBootstrapFailureInput[] = [];
+    const optionFailures: PersistedBootstrapFailureInput[] = [];
+    const observer = createFakePersistedBootstrapObserver({
+      onFailed: (input) => optionFailures.push(input),
+    });
+
+    const started = await observer.start({
+      vigilId: "vigil-input-on-failed",
+      sessionId: "vigil-input-on-failed",
+      cwd: "/parent/project",
+      message: "hello",
+      onFailed: (input) => inputFailures.push(input),
+    });
+    started.activate();
+    observer.pushClose("vigil-input-on-failed", 1);
+
+    await expect(observer.waitForOutcome("vigil-input-on-failed", { timeoutMs: 100 })).resolves.toEqual({
+      status: "failed",
+      error: "Pi child exited before session was created",
+    });
+    expect(inputFailures).toHaveLength(1);
+    expect(optionFailures).toHaveLength(0);
+  });
+
   it("reports failed when stderr has model error and child closes without session", async () => {
     const failures: PersistedBootstrapFailureInput[] = [];
     const observer = createFakePersistedBootstrapObserver({
