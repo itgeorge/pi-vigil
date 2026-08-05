@@ -7,7 +7,7 @@ import {
   sanitizeReceiptField,
 } from "./transcript";
 
-export type VigilState = "running" | "waiting" | "completed";
+export type VigilState = "running" | "waiting" | "completed" | "failed";
 
 export interface VigilSnapshot {
   id: string;
@@ -59,6 +59,15 @@ export interface VigilCompletionRecord {
   cwd: string;
   sessionDir?: string;
   completedAt: string;
+}
+
+export interface VigilFailRecord {
+  id: string;
+  sessionId: string;
+  failedAt: string;
+  error: string;
+  source: "bootstrap" | "ephemeral-settle" | "turn";
+  stderrExcerpt?: string;
 }
 
 export type VigilRuntimeRecord = VigilLaunchRecord | VigilTurnRecord;

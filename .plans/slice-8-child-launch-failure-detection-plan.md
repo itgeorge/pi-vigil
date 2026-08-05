@@ -215,14 +215,14 @@ npm run check
 
 ## Todos
 
-- [ ] Extend `types.ts` with `VigilFailRecord`; add `appendFail` to `ParentLedger` / `createSessionParentLedger`.
-- [ ] Update `lifecycle.ts` reconstruction and `deriveDiagnosticChildIdentity`.
-- [ ] **RED:** `reconstructVigilLifecycleFromEntries` retains first valid `vigil-fail` and exposes `failRecord`.
+- [x] Extend `types.ts` with `VigilFailRecord`; add `appendFail` to `ParentLedger` / `createSessionParentLedger`.
+- [x] Update `lifecycle.ts` reconstruction and `deriveDiagnosticChildIdentity`.
+- [x] **RED:** `reconstructVigilLifecycleFromEntries` retains first valid `vigil-fail` and exposes `failRecord`.
   - File: `test/unit/vigil/lifecycle.test.ts`
   - Expected RED: `failRecord` undefined.
-- [ ] **RED:** malformed/duplicate `vigil-fail` ignored (parallel to settle/complete hardening).
-- [ ] **RED:** `listLifecycleStates(false)` excludes failed children.
-- [ ] **GREEN:** implement lifecycle + ledger wiring.
+- [x] **RED:** malformed/duplicate `vigil-fail` ignored (parallel to settle/complete hardening).
+- [x] **RED:** `listLifecycleStates(false)` excludes failed children.
+- [x] **GREEN:** implement lifecycle + ledger wiring.
 
 ---
 
@@ -394,7 +394,7 @@ npm run check
 |---|---|---|
 | 0 | `child-failure.test.ts` → Cannot find module `child-failure` | `npm test -- test/unit/vigil/child-failure.test.ts` → 4 passed |
 | 1 | `persisted-bootstrap-observer.test.ts` → Cannot find module | `npm test -- test/unit/vigil/persisted-bootstrap-observer.test.ts` → 6 passed |
-| 2 | | |
+| 2 | `lifecycle.test.ts` → failRecord undefined / failed not excluded | `npm test -- test/unit/vigil/lifecycle.test.ts` → 9 passed |
 | 3 | | |
 | 4 | | |
 | 5 | | |

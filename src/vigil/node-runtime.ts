@@ -71,6 +71,7 @@ import {
   type LaunchInput,
   type SendInput,
   type VigilCompletionRecord,
+  type VigilFailRecord,
   type VigilLaunchRecord,
   type VigilListItem,
   type VigilListOrError,
@@ -1436,7 +1437,7 @@ export function listLifecycleStatesFromSessionManager(
     return sorted;
   }
 
-  return sorted.filter((state) => !state.completionRecord);
+  return sorted.filter((state) => !state.completionRecord && !state.failRecord);
 }
 
 export function findLatestTurnInSessionManager(
@@ -1462,6 +1463,9 @@ export function createSessionParentLedger(
     },
     appendComplete(record) {
       appendEntry("vigil-complete", record);
+    },
+    appendFail(record) {
+      appendEntry("vigil-fail", record);
     },
     getLifecycle(vigilId) {
       return getLifecycleFromSessionManager(sessionManager, vigilId);

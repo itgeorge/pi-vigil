@@ -1,6 +1,7 @@
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import type {
   VigilCompletionRecord,
+  VigilFailRecord,
   VigilLaunchRecord,
   VigilListItem,
   VigilRuntimeRecord,
@@ -17,6 +18,7 @@ export interface VigilLifecycleState {
   runtimeRecord: VigilRuntimeRecord;
   settleRecord: VigilSettleRecord | null;
   completionRecord: VigilCompletionRecord | null;
+  failRecord: VigilFailRecord | null;
   lastUpdatedAt: string;
 }
 
@@ -61,6 +63,22 @@ function isValidCompletionRecord(data: unknown): data is VigilCompletionRecord {
     isNonEmptyString(data.name) &&
     isNonEmptyString(data.cwd) &&
     isNonEmptyString(data.completedAt)
+  );
+}
+
+function isValidFailRecord(data: unknown): data is VigilFailRecord {
+  if (!isRecord(data)) {
+    return false;
+  }
+
+  const source = data.source;
+  return (
+    isNonEmptyString(data.id) &&
+    isNonEmptyString(data.sessionId) &&
+    isNonEmptyString(data.failedAt) &&
+    isNonEmptyString(data.error) &&
+    (source === "bootstrap" || source === "ephemeral-settle" || source === "turn") &&
+    (data.stderrExcerpt === undefined || typeof data.stderrExcerpt === "string")
   );
 }
 
@@ -117,6 +135,7 @@ export function reconstructVigilLifecycleFromEntries(
         runtimeRecord: data,
         settleRecord: null,
         completionRecord: null,
+        failRecord: null,
         lastUpdatedAt: data.launchedAt,
       });
       continue;
@@ -129,7 +148,7 @@ export function reconstructVigilLifecycleFromEntries(
       }
 
       const existing = byId.get(data.id);
-      if (!existing || existing.completionRecord || isEphemeralLifecycle(existing)) {
+      if (!existing || existing.completionRecord || existing.failRecord || isEphemeralLifecycle(existing)) {
         continue;
       }
 
@@ -149,7 +168,7 @@ export function reconstructVigilLifecycleFromEntries(
       }
 
       const existing = byId.get(data.id);
-      if (!existing || existing.settleRecord || existing.completionRecord) {
+      if (!existing || existing.settleRecord || existing.completionRecord || existing.failRecord) {
         continue;
       }
 
@@ -169,7 +188,7 @@ export function reconstructVigilLifecycleFromEntries(
       }
 
       const existing = byId.get(data.id);
-      if (!existing || existing.completionRecord) {
+      if (!existing || existing.completionRecord || existing.failRecord) {
         continue;
       }
 
@@ -179,6 +198,26 @@ export function reconstructVigilLifecycleFromEntries(
 
       existing.completionRecord = data;
       existing.lastUpdatedAt = data.completedAt;
+      continue;
+    }
+
+    if (entry.customType === "vigil-fail") {
+      const data = entry.data;
+      if (!isValidFailRecord(data)) {
+        continue;
+      }
+
+      const existing = byId.get(data.id);
+      if (!existing || existing.failRecord || existing.completionRecord) {
+        continue;
+      }
+
+      if (!matchesCanonicalIdentity(existing, { sessionId: data.sessionId, cwd: existing.cwd })) {
+        continue;
+      }
+
+      existing.failRecord = data;
+      existing.lastUpdatedAt = data.failedAt;
     }
   }
 
@@ -216,6 +255,15 @@ export function deriveDiagnosticChildIdentity(state: VigilLifecycleState): {
     };
   }
 
+  if (state.failRecord) {
+    return {
+      id: state.id,
+      sessionId: state.sessionId,
+      name: state.launchName,
+      state: "failed",
+    };
+  }
+
   return {
     id: state.id,
     sessionId: state.sessionId,
@@ -226,7 +274,7 @@ export function deriveDiagnosticChildIdentity(state: VigilLifecycleState): {
 
 export function lifecycleStateToListItem(
   state: VigilLifecycleState,
-  activeState: "running" | "waiting" | "completed",
+  activeState: "running" | "waiting" | "completed" | "failed",
 ): VigilListItem {
   const ephemeral = isEphemeralLifecycle(state) ? ({ ephemeral: true as const }) : {};
 
@@ -238,6 +286,17 @@ export function lifecycleStateToListItem(
       cwd: state.cwd,
       state: "completed",
       completedAt: state.completionRecord.completedAt,
+      ...ephemeral,
+    };
+  }
+
+  if (state.failRecord) {
+    return {
+      id: state.id,
+      sessionId: state.sessionId,
+      name: state.launchName,
+      cwd: state.cwd,
+      state: "failed",
       ...ephemeral,
     };
   }

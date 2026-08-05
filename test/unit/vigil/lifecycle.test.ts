@@ -5,7 +5,8 @@ import {
   listLifecycleStatesFromSessionManager,
 } from "../../../src/vigil/node-runtime";
 import { reconstructVigilLifecycleFromEntries } from "../../../src/vigil/lifecycle";
-import type { VigilCompletionRecord, VigilLaunchRecord, VigilTurnRecord } from "../../../src/vigil/types";
+import type { VigilCompletionRecord, VigilFailRecord, VigilLaunchRecord, VigilTurnRecord } from "../../../src/vigil/types";
+import { deriveDiagnosticChildIdentity } from "../../../src/vigil/lifecycle";
 
 function appendLaunch(sessionManager: SessionManager, record: VigilLaunchRecord): void {
   sessionManager.appendCustomEntry("vigil-launch", record);
@@ -17,6 +18,10 @@ function appendTurn(sessionManager: SessionManager, record: VigilTurnRecord): vo
 
 function appendComplete(sessionManager: SessionManager, record: VigilCompletionRecord): void {
   sessionManager.appendCustomEntry("vigil-complete", record);
+}
+
+function appendFail(sessionManager: SessionManager, record: VigilFailRecord): void {
+  sessionManager.appendCustomEntry("vigil-fail", record);
 }
 
 describe("vigil lifecycle reconstruction", () => {
@@ -217,10 +222,110 @@ describe("vigil lifecycle reconstruction", () => {
       runtimeRecord: originalTurn,
       settleRecord: null,
       completionRecord: originalCompletion,
+      failRecord: null,
       lastUpdatedAt: "2026-08-01T11:00:00.000Z",
     });
 
     expect(listLifecycleStatesFromSessionManager(sessionManager, false).map((state) => state.id)).toEqual([]);
     expect(listLifecycleStatesFromSessionManager(sessionManager, true)).toEqual([lifecycle]);
+  });
+
+  it("retains the first valid vigil-fail and exposes failRecord", () => {
+    const sessionManager = SessionManager.inMemory("/parent/project");
+    appendLaunch(sessionManager, {
+      id: "vigil-failed",
+      sessionId: "vigil-failed",
+      name: "Failed",
+      pid: 100,
+      cwd: "/parent/project",
+      launchedAt: "2026-08-01T10:00:00.000Z",
+    });
+    appendFail(sessionManager, {
+      id: "vigil-failed",
+      sessionId: "vigil-failed",
+      failedAt: "2026-08-01T10:00:01.000Z",
+      error: 'Model "bad" not found',
+      source: "bootstrap",
+    });
+
+    const lifecycle = getLifecycleFromSessionManager(sessionManager, "vigil-failed");
+    expect(lifecycle?.failRecord).toEqual({
+      id: "vigil-failed",
+      sessionId: "vigil-failed",
+      failedAt: "2026-08-01T10:00:01.000Z",
+      error: 'Model "bad" not found',
+      source: "bootstrap",
+    });
+    expect(deriveDiagnosticChildIdentity(lifecycle!)).toEqual({
+      id: "vigil-failed",
+      sessionId: "vigil-failed",
+      name: "Failed",
+      state: "failed",
+    });
+  });
+
+  it("ignores malformed and duplicate vigil-fail records", () => {
+    const sessionManager = SessionManager.inMemory("/parent/project");
+    appendLaunch(sessionManager, {
+      id: "vigil-failed",
+      sessionId: "vigil-failed",
+      name: "Failed",
+      pid: 100,
+      cwd: "/parent/project",
+      launchedAt: "2026-08-01T10:00:00.000Z",
+    });
+    sessionManager.appendCustomEntry("vigil-fail", { id: "broken" });
+    appendFail(sessionManager, {
+      id: "vigil-failed",
+      sessionId: "vigil-failed",
+      failedAt: "2026-08-01T10:00:01.000Z",
+      error: "first failure",
+      source: "bootstrap",
+    });
+    appendFail(sessionManager, {
+      id: "vigil-failed",
+      sessionId: "vigil-failed",
+      failedAt: "2026-08-01T10:00:02.000Z",
+      error: "duplicate failure",
+      source: "bootstrap",
+    });
+
+    const lifecycle = getLifecycleFromSessionManager(sessionManager, "vigil-failed");
+    expect(lifecycle?.failRecord?.error).toBe("first failure");
+  });
+
+  it("excludes failed children from default lifecycle listing", () => {
+    const sessionManager = SessionManager.inMemory("/parent/project");
+    appendLaunch(sessionManager, {
+      id: "vigil-active",
+      sessionId: "vigil-active",
+      name: "Active",
+      pid: 100,
+      cwd: "/parent/project",
+      launchedAt: "2026-08-01T10:00:00.000Z",
+    });
+    appendLaunch(sessionManager, {
+      id: "vigil-failed",
+      sessionId: "vigil-failed",
+      name: "Failed",
+      pid: 101,
+      cwd: "/parent/project",
+      launchedAt: "2026-08-01T09:00:00.000Z",
+    });
+    appendFail(sessionManager, {
+      id: "vigil-failed",
+      sessionId: "vigil-failed",
+      failedAt: "2026-08-01T09:00:01.000Z",
+      error: "bootstrap failed",
+      source: "bootstrap",
+    });
+
+    expect(listLifecycleStatesFromSessionManager(sessionManager, false).map((state) => state.id)).toEqual([
+      "vigil-active",
+    ]);
+    expect(listLifecycleStatesFromSessionManager(sessionManager, true).map((state) => state.id)).toEqual([
+      "vigil-active",
+      "vigil-failed",
+    ]);
   });
 });

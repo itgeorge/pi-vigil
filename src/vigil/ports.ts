@@ -5,6 +5,7 @@ import type { VigilSessionActivity } from "./session-text";
 import type { EphemeralChildObserver } from "./ephemeral-observer";
 import type {
   VigilCompletionRecord,
+  VigilFailRecord,
   VigilLaunchRecord,
   VigilSettleRecord,
   VigilTurnRecord,
@@ -72,6 +73,7 @@ export interface ParentLedger {
   appendTurn(record: VigilTurnRecord): void;
   appendSettle(record: VigilSettleRecord): void;
   appendComplete(record: VigilCompletionRecord): void;
+  appendFail(record: VigilFailRecord): void;
   getLifecycle(vigilId: string): VigilLifecycleState | null;
   listLifecycleStates(includeCompleted: boolean): VigilLifecycleState[];
 }
