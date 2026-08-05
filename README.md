@@ -195,6 +195,17 @@ Test-only child session isolation uses `PI_VIGIL_SESSION_DIR` (read at tool exec
 
 For automated TUI drivers, put each task in an atomic task file rather than relying on incremental terminal typing, and keep a small ID/role worklog alongside it. While a `wait` call is active, use its partial progress for controller visibility; after it settles, use the final result to `poll`, `send`, or `complete`. This makes resumed child-session orchestration auditable without adding controller or tmux automation.
 
+## Child launch failures
+
+Vigil detects Pi child bootstrap failures and surfaces them consistently:
+
+- **Fail-fast:** persisted `launch` and `send` wait up to ~1.5s for bootstrap success; invalid models and immediate CLI errors return `{ error }` instead of a misleading `running` receipt.
+- **Late detection:** if bootstrap is slow, `poll` and `wait` later return `{ error }` once a parent `vigil-fail` record exists (persisted children) or an ephemeral `vigil-settle.error` is recorded.
+- **Failed state:** `list({ includeCompleted: true })` includes failed children with `state: failed`. Failed children are excluded from the default active cohort used by `wait`.
+- **Guarded actions:** `send` and `complete` reject failed children.
+
+Ephemeral failures are surfaced from `vigil-settle.error` directly; persisted failures append `vigil-launch` plus `vigil-fail` for auditability.
+
 ## v1 limitations
 
 - No live token streaming, LLM-generated progress summaries, retry, fuzzy/semantic search, or background watchers.

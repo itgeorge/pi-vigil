@@ -511,6 +511,25 @@ describe("live vigil acceptance", () => {
     expect((completeResult.details as VigilSnapshot).name).toBe(`[completed] ${launchName}`);
   }, getAcceptanceTimeoutMs() + 120_000);
 
+  it("launch with invalid model returns tool error within bootstrap window", async () => {
+    const { createVigilTestHarness } = await import("../helpers/vigil-test-harness");
+
+    const harness = await createVigilTestHarness({ cwd: tempCwd });
+    const launchResult = await harness.execute({
+      action: "launch",
+      name: "Invalid model child",
+      message: "hello",
+      model: "totally-invalid-model/foo",
+      cwd: tempCwd,
+    });
+
+    expect((launchResult as { isError?: boolean }).isError).toBe(true);
+    const text = launchResult.content[0]?.type === "text" ? launchResult.content[0].text : "";
+    expect(text).toMatch(/not found|Vigil child failed/i);
+    expect(harness.capturedEntries.some((entry) => entry.customType === "vigil-launch")).toBe(true);
+    expect(harness.capturedEntries.some((entry) => entry.customType === "vigil-fail")).toBe(true);
+  }, 30_000);
+
   it("paginates list results with synthetic lifecycle records without launching real children", async () => {
     const { createVigilTestHarness } = await import("../helpers/vigil-test-harness");
 

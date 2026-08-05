@@ -251,12 +251,12 @@ npm run check
 
 ## Todos
 
-- [ ] Add `test/unit/vigil/poll-failure.test.ts`.
-- [ ] **RED:** when lifecycle has `vigil-fail`, `poll(id)` returns `{ error }` containing failure message (not `state: "waiting"`).
+- [x] Add `test/unit/vigil/poll-failure.test.ts`.
+- [x] **RED:** when lifecycle has `vigil-fail`, `poll(id)` returns `{ error }` containing failure message (not `state: "waiting"`).
   - Expected RED: `poll` returns waiting snapshot / `latestResponse: null`.
-- [ ] **RED:** when child dead + no session + no `vigil-fail` yet, `poll` still uses existing behavior (waiting) — observer will eventually fail in background OR next poll after fail record appended.
-- [ ] **RED:** after background observer appends `vigil-fail`, subsequent `poll` returns `{ error }`.
-- [ ] **GREEN:** short-circuit in `poll` / `buildActiveSnapshot` on `failRecord`.
+- [x] **RED:** when child dead + no session + no `vigil-fail` yet, `poll` still uses existing behavior (waiting) — observer will eventually fail in background OR next poll after fail record appended.
+- [x] **RED:** after background observer appends `vigil-fail`, subsequent `poll` returns `{ error }`.
+- [x] **GREEN:** short-circuit in `poll` / `buildActiveSnapshot` on `failRecord`.
 
 ---
 
@@ -264,12 +264,12 @@ npm run check
 
 ## Todos
 
-- [ ] Extend `test/unit/vigil/wait.test.ts` or add `test/unit/vigil/wait-failure.test.ts`.
-- [ ] **RED:** `wait({ id: failedChild })` returns `{ error }` immediately (not `outcome: "settled"` with null response).
+- [x] Extend `test/unit/vigil/wait.test.ts` or add `test/unit/vigil/wait-failure.test.ts`.
+- [x] **RED:** `wait({ id: failedChild })` returns `{ error }` immediately (not `outcome: "settled"` with null response).
   - Expected RED: `outcome: "settled"`, `latestResponse: null`.
-- [ ] **RED:** cohort `wait` with one failed child returns `{ error }` naming the failed id.
-- [ ] **RED:** failed children are excluded from default active cohort so a prior failure does not block unrelated waits.
-- [ ] **GREEN:** integrate fail checks in `scanWaitCohort` / `resolveWaitCohortIds`.
+- [x] **RED:** cohort `wait` with one failed child returns `{ error }` naming the failed id.
+- [x] **RED:** failed children are excluded from default active cohort so a prior failure does not block unrelated waits.
+- [x] **GREEN:** integrate fail checks in `scanWaitCohort` / `resolveWaitCohortIds`.
 
 ---
 
@@ -277,12 +277,12 @@ npm run check
 
 ## Todos
 
-- [ ] Add `test/unit/vigil/send-failure.test.ts`.
-- [ ] **RED:** `send` on lifecycle with `vigil-fail` returns `{ error }` without spawning.
+- [x] Add `test/unit/vigil/send-failure.test.ts`.
+- [x] **RED:** `send` on lifecycle with `vigil-fail` returns `{ error }` without spawning.
   - Expected RED: spawn called; returns running snapshot.
-- [ ] **RED:** `send` on waiting child when bootstrap observer reports respawn failure returns `{ error }`.
-- [ ] **RED:** successful `send` still returns running snapshot (regression).
-- [ ] **GREEN:** wire bootstrap wait into `send` spawn path; guard on `failRecord`.
+- [x] **RED:** `send` on waiting child when bootstrap observer reports respawn failure returns `{ error }`.
+- [x] **RED:** successful `send` still returns running snapshot (regression).
+- [x] **GREEN:** wire bootstrap wait into `send` spawn path; guard on `failRecord`.
 
 ---
 
@@ -290,11 +290,11 @@ npm run check
 
 ## Todos
 
-- [ ] Extend `test/unit/vigil/list-pagination.test.ts` or add `test/unit/vigil/list-failure.test.ts`.
-- [ ] **RED:** `list()` includes failed child with `state: "failed"` and excludes it from active-only semantics.
+- [x] Extend `test/unit/vigil/list-pagination.test.ts` or add `test/unit/vigil/list-failure.test.ts`.
+- [x] **RED:** `list()` includes failed child with `state: "failed"` and excludes it from active-only semantics.
   - Expected RED: `state: "waiting"` or `"running"`.
-- [ ] **RED:** `list({ includeCompleted: true })` includes failed children alongside completed.
-- [ ] **GREEN:** map `failRecord` in `lifecycleStateToListItem` / `buildListItemsFromStates`.
+- [x] **RED:** `list({ includeCompleted: true })` includes failed children alongside completed.
+- [x] **GREEN:** map `failRecord` in `lifecycleStateToListItem` / `buildListItemsFromStates`.
 
 ---
 
@@ -302,16 +302,16 @@ npm run check
 
 ## Todos
 
-- [ ] Add `test/unit/vigil/ephemeral-failure-surface.test.ts`.
-- [ ] **RED:** ephemeral child settles with `{ error: "ephemeral child exited (code 1)" }` ⇒ `poll` returns `{ error }` (not waiting/null).
+- [x] Add `test/unit/vigil/ephemeral-failure-surface.test.ts`.
+- [x] **RED:** ephemeral child settles with `{ error: "ephemeral child exited (code 1)" }` ⇒ `poll` returns `{ error }` (not waiting/null).
   - Expected RED: waiting snapshot, `latestResponse: null`.
-- [ ] **RED:** `wait({ id })` returns `{ error }` once settle record with error exists.
-- [ ] **RED:** successful ephemeral settle still returns waiting snapshot with text (regression).
-- [ ] **GREEN:** when ephemeral `settleRecord.error` present, treat as failure in `resolveEphemeralActiveSnapshot` / `poll` / `wait`.
+- [x] **RED:** `wait({ id })` returns `{ error }` once settle record with error exists.
+- [x] **RED:** successful ephemeral settle still returns waiting snapshot with text (regression).
+- [x] **GREEN:** when ephemeral `settleRecord.error` present, treat as failure in `resolveEphemeralActiveSnapshot` / `poll` / `wait`.
 
 ## Agent notes / assumptions
 
-- Prefer reusing `vigil-fail` for ephemeral failures **or** map `settleRecord.error` directly without duplicating records. Pick one approach in implementation; document the choice here when green.
+- **Implemented:** surface `settleRecord.error` directly on `poll`/`wait`/`launch`; do not duplicate into `vigil-fail`.
 
 ---
 
@@ -319,10 +319,10 @@ npm run check
 
 ## Todos
 
-- [ ] **RED:** ephemeral `launch` returns `{ error }` when observer settles with error within bootstrap window.
+- [x] **RED:** ephemeral `launch` returns `{ error }` when observer settles with error within bootstrap window.
   - Expected RED: running snapshot returned; failure only visible on later `poll`.
-- [ ] **RED:** ephemeral launch timeout still returns running when child is slow (regression).
-- [ ] **GREEN:** await ephemeral observer outcome in `launch` symmetric to persisted path.
+- [x] **RED:** ephemeral launch timeout still returns running when child is slow (regression).
+- [x] **GREEN:** await ephemeral observer outcome in `launch` symmetric to persisted path.
 
 ---
 
@@ -330,9 +330,9 @@ npm run check
 
 ## Todos
 
-- [ ] **RED:** `complete({ id: failedChild })` returns `{ error }`, does not rename/reap/spawn.
-- [ ] **RED:** `search`/`read` on failed persisted child keep transcript-unavailable errors (explicit regression tests if gaps exist).
-- [ ] **GREEN:** add early fail guard in `complete`.
+- [x] **RED:** `complete({ id: failedChild })` returns `{ error }`, does not rename/reap/spawn.
+- [x] **RED:** `search`/`read` on failed persisted child keep transcript-unavailable errors (explicit regression tests if gaps exist).
+- [x] **GREEN:** add early fail guard in `complete`.
 
 ---
 
@@ -340,9 +340,9 @@ npm run check
 
 ## Todos
 
-- [ ] **RED:** when child process stays alive beyond bootstrap timeout and session never appears, observer/appends `vigil-fail` with timeout message; `poll` returns `{ error }`.
+- [x] **RED:** when child process stays alive beyond bootstrap timeout and session never appears, observer/appends `vigil-fail` with timeout message; `poll` returns `{ error }`.
   - Expected RED: stays `running` until manual wait timeout.
-- [ ] **GREEN:** implement stale-bootstrap watchdog (only after Phase 1–4 green).
+- [x] **GREEN:** implement stale-bootstrap watchdog (only after Phase 1–4 green).
 
 ## Agent notes / assumptions
 
@@ -354,11 +354,11 @@ npm run check
 
 ## Todos
 
-- [ ] **RED (live):** `PI_VIGIL_LIVE=1` acceptance case: `launch` with invalid model returns tool error (or poll error within bounded time).
+- [x] **RED (live):** `PI_VIGIL_LIVE=1` acceptance case: `launch` with invalid model returns tool error (or poll error within bounded time).
   - Guarded by existing acceptance harness; skip locally without env.
-- [ ] **GREEN:** implement if unit fakes masked a real integration gap.
-- [ ] Update `README.md` failure semantics section (failed state, bootstrap fail-fast, poll/wait errors).
-- [ ] Run `npm run check`; record final counts in this file.
+- [x] **GREEN:** implement if unit fakes masked a real integration gap.
+- [x] Update `README.md` failure semantics section (failed state, bootstrap fail-fast, poll/wait errors).
+- [x] Run `npm run check`; record final counts in this file.
 
 ---
 
@@ -396,15 +396,15 @@ npm run check
 | 1 | `persisted-bootstrap-observer.test.ts` → Cannot find module | `npm test -- test/unit/vigil/persisted-bootstrap-observer.test.ts` → 6 passed |
 | 2 | `lifecycle.test.ts` → failRecord undefined / failed not excluded | `npm test -- test/unit/vigil/lifecycle.test.ts` → 9 passed |
 | 3 | `launch-failure.test.ts` → running snapshot / module missing | `npm test -- test/unit/vigil/launch-failure.test.ts` → 6 passed |
-| 4 | | |
-| 5 | | |
-| 6 | | |
-| 7 | | |
-| 8 | | |
-| 9 | | |
-| 10 | | |
-| 11 | | |
-| 12 | | |
+| 4 | `poll-failure.test.ts` → waiting snapshot / latestResponse null | `npm test -- test/unit/vigil/poll-failure.test.ts` → 4 passed |
+| 5 | `wait-failure.test.ts` → outcome settled with null response | `npm test -- test/unit/vigil/wait-failure.test.ts` → 3 passed |
+| 6 | `send-failure.test.ts` → spawn called / running snapshot | `npm test -- test/unit/vigil/send-failure.test.ts` → 3 passed |
+| 7 | `list-failure.test.ts` → state waiting/running | `npm test -- test/unit/vigil/list-failure.test.ts` → 2 passed |
+| 8 | `ephemeral-failure-surface.test.ts` → waiting/null | `npm test -- test/unit/vigil/ephemeral-failure-surface.test.ts` → 5 passed |
+| 9 | ephemeral launch → running snapshot on settle error | `npm test -- test/unit/vigil/ephemeral-failure-surface.test.ts` → 5 passed |
+| 10 | `complete` on failed child → completed snapshot | `poll-failure.test.ts` + `search-read-safety.test.ts` → pass |
+| 11 | watchdog → stays running | `persisted-bootstrap-observer.test.ts` watchdog test → 7 passed |
+| 12 | live invalid model (PI_VIGIL_LIVE=1) | `npm run check` → 337 unit tests passed |
 
 ---
 
