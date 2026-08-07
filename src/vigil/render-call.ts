@@ -19,7 +19,7 @@ export const MAX_CALL_FIELD_CHARS = 120;
 export const VIGIL_SHORT_ID_HEX_LENGTH = 7;
 
 export interface VigilCallArgs {
-  action?: "launch" | "poll" | "send" | "list" | "complete" | "wait" | "search" | "read";
+  action?: "launch" | "poll" | "send" | "list" | "complete" | "wait" | "search" | "read" | "models";
   name?: string;
   message?: string;
   model?: string;
@@ -261,6 +261,19 @@ export function formatVigilCallSummary(
       }
       if (args.skipToId?.trim()) {
         segments.push(`from ${formatVigilShortId(args.skipToId)}`);
+      }
+      break;
+    }
+    case "models": {
+      if (args.query?.trim()) {
+        segments.push(`filter ${sanitizeCallField(args.query)}`);
+      }
+      if (
+        typeof args.maxResults === "number" &&
+        Number.isFinite(args.maxResults) &&
+        Number.isSafeInteger(args.maxResults)
+      ) {
+        segments.push(`max ${args.maxResults}`);
       }
       break;
     }

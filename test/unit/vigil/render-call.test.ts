@@ -230,6 +230,13 @@ describe("formatVigilCallSummary", () => {
     expect(plainSummary({ action: "list", includeCompleted: true })).toBe("list · including completed");
   });
 
+  it("renders models with optional filter and maxResults", () => {
+    expect(plainSummary({ action: "models" })).toBe("models");
+    expect(plainSummary({ action: "models", query: "composer", maxResults: 10 })).toBe(
+      "models · filter composer · max 10",
+    );
+  });
+
   it("renders wait timeout and progress mode using documented defaults", () => {
     expect(plainSummary({ action: "wait" })).toBe("wait · up to 60s · progress status");
     expect(

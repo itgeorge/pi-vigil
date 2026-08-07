@@ -1,3 +1,4 @@
+import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   createExtensionRuntime,
   SessionManager,
@@ -28,6 +29,7 @@ export interface VigilTestHarness {
 
 export async function createVigilTestHarness(options?: {
   cwd?: string;
+  modelRegistry?: ExtensionContext["modelRegistry"];
 }): Promise<VigilTestHarness> {
   const cwd = options?.cwd ?? process.cwd();
   const sessionManager = SessionManager.inMemory(cwd);
@@ -59,7 +61,7 @@ export async function createVigilTestHarness(options?: {
     throw new Error("vigil tool was not registered");
   }
 
-  const ctx = createExtensionContext(sessionManager, cwd);
+  const ctx = createExtensionContext(sessionManager, cwd, options?.modelRegistry);
 
   async function emitExtensionEvent(event: "session_start" | "session_tree"): Promise<void> {
     const payload = { type: event } as ExtensionEvent;
@@ -81,7 +83,11 @@ export async function createVigilTestHarness(options?: {
   };
 }
 
-function createExtensionContext(sessionManager: SessionManager, cwd: string): ExtensionContext {
+function createExtensionContext(
+  sessionManager: SessionManager,
+  cwd: string,
+  modelRegistry?: ExtensionContext["modelRegistry"],
+): ExtensionContext {
   return {
     ui: {
       notify: () => undefined,
@@ -104,7 +110,14 @@ function createExtensionContext(sessionManager: SessionManager, cwd: string): Ex
     hasUI: false,
     cwd,
     sessionManager,
-    modelRegistry: {} as ExtensionContext["modelRegistry"],
+    modelRegistry:
+      modelRegistry ??
+      ({
+        refresh: async () => undefined,
+        getError: () => undefined,
+        getAvailable: () => [] as Model<Api>[],
+        getAll: () => [] as Model<Api>[],
+      } as ExtensionContext["modelRegistry"]),
     model: undefined,
     isIdle: () => true,
     signal: undefined,

@@ -17,6 +17,11 @@ import {
 } from "./vigil/render-call";
 import { renderVigilResultText } from "./vigil/render-result";
 import {
+  formatAvailableModelsText,
+  listAvailableModels,
+  type VigilAvailableModelsResult,
+} from "./vigil/available-models";
+import {
   formatListText,
   formatMutationSnapshotText,
   formatReadText,
@@ -68,11 +73,11 @@ export const vigilTool = defineTool({
   name: "vigil",
   label: "Vigil",
   description:
-    "Launch, poll, continue, list, complete, foreground-wait, search, or read detached Pi child sessions. Wait observes the current active cohort or one targeted direct child with bounded polling and never changes child state. Pass ephemeral: true on launch for a single-turn child that does not create a Pi session or /resume entry.",
+    "Launch, poll, continue, list, complete, foreground-wait, search, read, or list available Pi models for child launch/send. Wait observes the current active cohort or one targeted direct child with bounded polling and never changes child state. Pass ephemeral: true on launch for a single-turn child that does not create a Pi session or /resume entry.",
   parameters: Type.Object({
-    action: StringEnum(["launch", "poll", "send", "list", "complete", "wait", "search", "read"], {
+    action: StringEnum(["launch", "poll", "send", "list", "complete", "wait", "search", "read", "models"], {
       description:
-        "launch starts a detached child session; poll reads status; send continues a waiting child; list returns the parent working set; complete retires a waiting child; wait boundedly observes the initial active cohort or one targeted direct child; search finds literal matches in child transcripts; read inspects a stable child entry with nearby JSONL context",
+        "launch starts a detached child session; poll reads status; send continues a waiting child; list returns the parent working set; complete retires a waiting child; wait boundedly observes the initial active cohort or one targeted direct child; search finds literal matches in child transcripts; read inspects a stable child entry with nearby JSONL context; models lists Pi models available for launch/send in this session",
     }),
     name: Type.Optional(
       Type.String({
@@ -108,7 +113,8 @@ export const vigilTool = defineTool({
     ),
     query: Type.Optional(
       Type.String({
-        description: "Case-insensitive literal substring to search child transcripts (required for search)",
+        description:
+          "Case-insensitive literal substring to search child transcripts (required for search) or filter available models (optional for models)",
       }),
     ),
     entryId: Type.Optional(
@@ -355,6 +361,25 @@ export const vigilTool = defineTool({
       }
 
       return mutationSnapshotResult(result);
+    }
+
+    if (params.action === "models") {
+      await ctx.modelRegistry.refresh();
+      const result = listAvailableModels(ctx.modelRegistry, {
+        query: params.query,
+        maxResults: params.maxResults,
+      });
+      if (isVigilError(result)) {
+        return {
+          content: [{ type: "text" as const, text: result.error }],
+          details: result,
+          isError: true,
+        };
+      }
+      return {
+        content: [{ type: "text" as const, text: formatAvailableModelsText(result) }],
+        details: result as VigilAvailableModelsResult,
+      };
     }
 
     if (params.action === "search") {

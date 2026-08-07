@@ -1,7 +1,10 @@
+import type { Api, Model } from "@earendil-works/pi-ai";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createZeroDescendantInspector } from "../../../src/vigil/descendant-inspector";
+import { formatAvailableModelsText } from "../../../src/vigil/available-models";
 import { resetVigilRuntimeOverrides, setVigilRuntimeOverrides } from "../../../src/vigil/runtime-overrides";
 import type { ChildSessionNamer, ChildSessionReader, ChildSessionTranscriptReader, ProcessRunner, VigilSessionActivity, WaitScheduler } from "../../../src/vigil/ports";
 import { readLatestAssistantTextFromFile, readChildSessionStateFromFile } from "../../../src/vigil/node-runtime";
@@ -984,6 +987,58 @@ describe("vigil extension adapter", () => {
         text: formatSnapshotText(snapshot),
       });
       expect((pollResult.content[0] as { text?: string }).text).toContain("latestResponse:");
+    });
+  });
+
+  it("models returns authenticated Pi models from the extension modelRegistry", async () => {
+    let refreshed = false;
+    const harness = await createVigilTestHarness({
+      cwd: "/parent/project",
+      modelRegistry: {
+        refresh: async () => {
+          refreshed = true;
+        },
+        getError: () => undefined,
+        getAvailable: () =>
+          [
+            {
+              id: "composer-2.5-fast",
+              provider: "cursor",
+              name: "Composer 2.5 Fast",
+              api: "openai-completions",
+              baseUrl: "https://example.com",
+              reasoning: true,
+              input: ["text"],
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: 200_000,
+              maxTokens: 64_000,
+            },
+          ] as Model<Api>[],
+        getAll: () => [],
+      } as unknown as ExtensionContext["modelRegistry"],
+    });
+
+    const result = await harness.execute({ action: "models", query: "composer" });
+
+    expect(refreshed).toBe(true);
+    expect((result as { isError?: boolean }).isError).toBeFalsy();
+    expect(result.content[0]).toEqual({
+      type: "text",
+      text: formatAvailableModelsText({
+        models: [
+          {
+            reference: "cursor/composer-2.5-fast",
+            provider: "cursor",
+            id: "composer-2.5-fast",
+            name: "Composer 2.5 Fast",
+            contextWindow: 200_000,
+            maxTokens: 64_000,
+            reasoning: true,
+            images: false,
+          },
+        ],
+        omittedCount: 0,
+      }),
     });
   });
 });

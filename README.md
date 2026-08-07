@@ -59,6 +59,7 @@ vigil({ action: "complete", id, allowIncompleteSubagents? })
 vigil({ action: "wait", id?, timeoutMs?, initialDelayMs?, maxDelayMs?, progress?, progressIntervalMs? })
 vigil({ action: "search", query, id?, includeCompleted?, maxResults? })
 vigil({ action: "read", id, entryId, before?, after?, includeCompleted? })
+vigil({ action: "models", query?, maxResults? })
 ```
 
 `launch` requires a nonblank human-readable `name`, starts a detached Pi child, appends a parent `vigil-launch` custom entry, and returns a `running` snapshot.
@@ -111,6 +112,8 @@ Formatted search/read text escapes C0/C1/ANSI/OSC controls visibly (tabs, CR, DE
 Searchable persisted text includes user/assistant visible text, assistant tool-call names plus safely serialized arguments, tool-result text, bash command/output, custom-message text, compaction and branch summaries, model/thinking-level metadata, and labels. It excludes assistant thinking blocks, image/base64 data, opaque extension `custom.data`, and raw session file paths. Fuzzy/semantic/regex search is not implemented in v1.
 
 `read` resolves one canonical Vigil child and one stable Pi `entryId` (typically from `search`), then returns a bounded window of nearby entries in **JSONL append order** (not conversational branch order). Required: exact `id` and `entryId` (no leading/trailing whitespace). Optional `before` / `after` default to `1` and are capped at `10` each; the total returned window is at most `21` entries (`before + anchor + after`). Each returned entry includes stable ids, parent id, type/role/timestamp, and bounded detail text (maximum `4000` visible characters per entry; newlines preserved deliberately in detail). Completed children require `includeCompleted: true`. Missing/unreadable transcripts and rejected reader promises return a controlled diagnostic error rather than failing tool execution. `read` is diagnostic-only: it does not move or rewrite the child Pi tree, append ledger records, or mutate process state.
+
+`models` refreshes the parent Pi `modelRegistry` and lists authenticated models available for `launch`/`send`. Each row includes a `provider/id` reference string suitable for the `model` argument (for example `cursor/composer-2.5-fast`). Optional `query` filters by case-insensitive substring over provider, model id, and display name. Optional `maxResults` defaults to `50` (maximum `100`). Append an optional `:thinking` suffix when launching or sending (for example `:high`).
 
 Recommended troubleshooting flow:
 
