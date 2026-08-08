@@ -55,6 +55,8 @@ type ActiveObservation = {
   outcomeWaiters: Array<(outcome: PersistedBootstrapOutcome) => void>;
   sessionCheckTimer?: NodeJS.Timeout;
   bootstrapWatchdogTimer?: NodeJS.Timeout;
+  sessionCheckInFlight?: boolean;
+  aggressiveSessionPolling: boolean;
   onFailed?: (input: PersistedBootstrapFailureInput) => void;
   cleanup: () => void;
 };
@@ -94,9 +96,18 @@ export function createNodePersistedBootstrapObserver(options: {
   const completedOutcomes = new Map<string, PersistedBootstrapOutcome>();
   let shutdownRequested = false;
 
+  const stopAggressiveSessionPolling = (observation: ActiveObservation): void => {
+    observation.aggressiveSessionPolling = false;
+    if (observation.sessionCheckTimer) {
+      clearTimeout(observation.sessionCheckTimer);
+      observation.sessionCheckTimer = undefined;
+    }
+    observation.sessionCheckInFlight = false;
+  };
+
   const clearObservationTimers = (observation: ActiveObservation): void => {
     if (observation.sessionCheckTimer) {
-      clearInterval(observation.sessionCheckTimer);
+      clearTimeout(observation.sessionCheckTimer);
       observation.sessionCheckTimer = undefined;
     }
     if (observation.bootstrapWatchdogTimer) {
@@ -237,7 +248,11 @@ export function createNodePersistedBootstrapObserver(options: {
       return { status: "failed", error };
     }
 
-    return { status: "timeout" };
+    const timeoutOutcome: PersistedBootstrapOutcome = { status: "timeout" };
+    observation.outcome = timeoutOutcome;
+    observation.outcomeWaiters = [];
+    stopAggressiveSessionPolling(observation);
+    return timeoutOutcome;
   };
 
   const waitForObservationOutcome = (
@@ -260,6 +275,32 @@ export function createNodePersistedBootstrapObserver(options: {
     });
   };
 
+  const scheduleSessionCheck = (observation: ActiveObservation): void => {
+    if (
+      observation.finalized ||
+      !observation.aggressiveSessionPolling ||
+      observation.sessionCheckInFlight
+    ) {
+      return;
+    }
+
+    observation.sessionCheckInFlight = true;
+    void evaluateSessionExists(observation)
+      .then((exists) => {
+        if (exists) {
+          finalizeStarted(observation);
+        }
+      })
+      .finally(() => {
+        observation.sessionCheckInFlight = false;
+        if (!observation.finalized && observation.aggressiveSessionPolling) {
+          observation.sessionCheckTimer = setTimeout(() => {
+            scheduleSessionCheck(observation);
+          }, sessionPollIntervalMs);
+        }
+      });
+  };
+
   const activateObservation = (observation: ActiveObservation): void => {
     if (observation.activated) {
       return;
@@ -275,12 +316,8 @@ export function createNodePersistedBootstrapObserver(options: {
       return;
     }
 
-    observation.sessionCheckTimer = setInterval(() => {
-      void evaluateSessionExists(observation).then((exists) => {
-        if (exists) {
-          finalizeStarted(observation);
-        }
-      });
+    observation.sessionCheckTimer = setTimeout(() => {
+      scheduleSessionCheck(observation);
     }, sessionPollIntervalMs);
 
     observation.bootstrapWatchdogTimer = setTimeout(() => {
@@ -362,6 +399,7 @@ export function createNodePersistedBootstrapObserver(options: {
         finalized: false,
         outcome: null,
         outcomeWaiters: [],
+        aggressiveSessionPolling: true,
         onFailed: input.onFailed,
         cleanup: () => undefined,
       };

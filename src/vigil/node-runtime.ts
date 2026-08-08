@@ -47,6 +47,7 @@ import type {
   WaitScheduler,
 } from "./ports";
 import { extractLatestAssistantState, deriveVigilState, getTurnStartedAt, extractSessionActivity } from "./session-text";
+import { findChildSessionFilePath } from "./session-path";
 import {
   parseChildSessionTranscript,
   readTranscriptWindow,
@@ -154,7 +155,7 @@ export function getSharedPersistedBootstrapObserver(
       sessionExists:
         options?.sessionExists ??
         (async ({ sessionId, cwd, sessionDir }) => {
-          const sessionPath = await findChildSessionPath(sessionId, cwd, sessionDir);
+          const sessionPath = await findChildSessionFilePath(sessionId, cwd, sessionDir);
           return sessionPath !== null;
         }),
       reapTimeoutMs: options?.reapTimeoutMs,
@@ -1496,6 +1497,12 @@ export async function findChildSessionPath(
   cwd: string,
   sessionDir?: string,
 ): Promise<string | null> {
+  const cheap = await findChildSessionFilePath(sessionId, cwd, sessionDir);
+  if (cheap) {
+    return cheap;
+  }
+
+  // Fixtures and legacy layouts may not encode session id in the filename.
   const sessions = sessionDir
     ? await SessionManager.listAll(sessionDir)
     : await SessionManager.list(cwd);

@@ -1,8 +1,4 @@
-import {
-  parseSessionEntries,
-  SessionManager,
-  type SessionEntry,
-} from "@earendil-works/pi-coding-agent";
+import { parseSessionEntries, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import {
   reconstructVigilLifecycleFromEntries,
@@ -12,6 +8,7 @@ import {
 import type { ChildSessionReader, ChildSessionState, ProcessRunner } from "./ports";
 import { deriveVigilState, extractLatestAssistantState, extractSessionActivity, getTurnStartedAt } from "./session-text";
 import { truncateLine } from "@earendil-works/pi-coding-agent";
+import { findChildSessionFilePath } from "./session-path";
 import { escapeTerminalControls } from "./transcript";
 import type { VigilState } from "./types";
 
@@ -263,11 +260,7 @@ async function resolveChildSessionPath(
   cwd: string,
   sessionDir?: string,
 ): Promise<string | null> {
-  const sessions = sessionDir
-    ? await SessionManager.listAll(sessionDir)
-    : await SessionManager.list(cwd);
-  const match = sessions.find((session) => session.id === sessionId);
-  return match?.path ?? null;
+  return findChildSessionFilePath(sessionId, cwd, sessionDir);
 }
 
 function readDescendantSessionStateFromFile(sessionFile: string): ChildSessionState {

@@ -235,6 +235,37 @@ describe("node persisted bootstrap observer", () => {
     expect(terminateAndWait).toHaveBeenCalledTimes(1);
   });
 
+  it("stops session polling after fail-fast timeout while child stays alive", async () => {
+    const sessionExists = vi.fn(async () => false);
+    const mockChild = createMockChildProcess();
+    const observer = createNodePersistedBootstrapObserver({
+      processRunner: {
+        isAlive: () => true,
+        async terminateAndWait() {},
+      },
+      spawnChild: () => mockChild,
+      sessionExists,
+      sessionPollIntervalMs: 10,
+      bootstrapWatchdogTimeoutMs: 5000,
+    });
+
+    const started = await observer.start({
+      vigilId: "vigil-poll-stop",
+      sessionId: "vigil-poll-stop",
+      cwd: "/parent/project",
+      message: "hello",
+    });
+    started.activate();
+
+    await expect(observer.waitForOutcome("vigil-poll-stop", { timeoutMs: 25 })).resolves.toEqual({
+      status: "timeout",
+    });
+
+    const callsAfterTimeout = sessionExists.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(sessionExists.mock.calls.length).toBe(callsAfterTimeout);
+  });
+
   it("fails when child stays alive without session past watchdog timeout", async () => {
     const failures: PersistedBootstrapFailureInput[] = [];
     const mockChild = createMockChildProcess();
