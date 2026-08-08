@@ -10,6 +10,7 @@ TOTAL_STEPS=0
 NPM_REGISTRY=""
 NPM_USER=""
 PKG_NAME=""
+REPUBLISH_WORKTREE=""
 
 progress() {
   step=$((step + 1))
@@ -91,6 +92,24 @@ tag_to_version() {
   echo "${1#v}"
 }
 
+package_version_at_ref() {
+  local ref="$1"
+  git show "${ref}:package.json" | node -e "
+    let source = '';
+    process.stdin.on('data', (chunk) => { source += chunk; });
+    process.stdin.on('end', () => {
+      process.stdout.write(JSON.parse(source).version);
+    });
+  "
+}
+
+cleanup_republish_worktree() {
+  if [[ -n "${REPUBLISH_WORKTREE:-}" ]]; then
+    git worktree remove --force "$REPUBLISH_WORKTREE" 2>/dev/null || true
+    REPUBLISH_WORKTREE=""
+  fi
+}
+
 update_package_versions() {
   local version="$1"
   node -e "
@@ -115,28 +134,44 @@ update_package_versions() {
 }
 
 run_npm_publish() {
+  local publish_dir="${1:-.}"
   progress "Publishing to npm (runs prepublishOnly checks)"
-  npm publish --registry "$NPM_REGISTRY"
+  (
+    cd "$publish_dir"
+    npm publish --registry "$NPM_REGISTRY"
+  )
 }
 
 run_republish() {
   local tag="$1"
   local version="$2"
-  local tag_commit head_commit current_pkg_version
+  local tag_commit head_commit tag_pkg_version publish_dir
 
   TOTAL_STEPS=3
   reset_progress
 
-  progress "Verifying local tree matches $tag"
+  progress "Preparing publish tree for $tag"
   tag_commit="$(git rev-parse "$tag^{commit}")"
   head_commit="$(git rev-parse HEAD)"
-  current_pkg_version="$(node -p "require('./package.json').version")"
+  tag_pkg_version="$(package_version_at_ref "$tag")"
 
-  if [[ "$tag_commit" != "$head_commit" ]]; then
-    die "HEAD ($(git rev-parse --short HEAD)) is not at $tag ($(git rev-parse --short "$tag_commit")). Checkout that commit before republishing."
+  if [[ "$tag_pkg_version" != "$version" ]]; then
+    die "$tag package.json version is $tag_pkg_version, expected $version"
   fi
-  if [[ "$current_pkg_version" != "$version" ]]; then
-    die "package.json version is $current_pkg_version, expected $version for $tag"
+
+  publish_dir="$ROOT"
+  if [[ "$tag_commit" != "$head_commit" ]]; then
+    REPUBLISH_WORKTREE="$(mktemp -d "${TMPDIR:-/tmp}/pi-vigil-republish.XXXXXX")"
+    trap cleanup_republish_worktree EXIT
+    git worktree add --detach "$REPUBLISH_WORKTREE" "$tag" >/dev/null
+    publish_dir="$REPUBLISH_WORKTREE"
+    echo "Current HEAD is not at $tag; will publish from tagged commit $(git rev-parse --short "$tag_commit")."
+    (
+      cd "$publish_dir"
+      npm ci --quiet
+    )
+  elif [[ "$(node -p "require('./package.json').version")" != "$version" ]]; then
+    die "package.json version is $(node -p "require('./package.json').version"), expected $version for $tag"
   fi
 
   echo ""
@@ -146,13 +181,18 @@ run_republish() {
   echo "  Package:         $PKG_NAME"
   echo "  Version:         $version"
   echo "  Git tag:         $tag (already pushed)"
-  echo "  Commit:          $(git rev-parse --short HEAD) $(git log -1 --pretty=%s)"
+  echo "  Publish commit:  $(git rev-parse --short "$tag_commit") $(git log -1 --pretty=%s "$tag_commit")"
+  if [[ "$tag_commit" != "$head_commit" ]]; then
+    echo "  Current HEAD:    $(git rev-parse --short "$head_commit") $(git log -1 --pretty=%s)"
+  fi
   echo ""
 
   read -r -p "Publish $PKG_NAME@$version to npm? [y/N]: " confirm
   [[ "$confirm" =~ ^[Yy]$ ]] || die "republish cancelled"
 
-  run_npm_publish
+  run_npm_publish "$publish_dir"
+  cleanup_republish_worktree
+  trap - EXIT
 
   echo ""
   echo "Republish complete: $tag (npm $version)"
