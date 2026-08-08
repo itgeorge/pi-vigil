@@ -13,9 +13,13 @@ import {
   createFilesystemChildSessionFixture,
   createFilesystemChildVigilService,
 } from "../../helpers/filesystem-child-session";
-import { isVigilError, type VigilSnapshot } from "../../../src/vigil/types";
+import { isVigilError, type VigilSnapshot, type VigilWaitResult } from "../../../src/vigil/types";
 
 function expectSnapshot(result: unknown): asserts result is VigilSnapshot {
+  expect(isVigilError(result as never)).toBe(false);
+}
+
+function expectWait(result: unknown): asserts result is VigilWaitResult {
   expect(isVigilError(result as never)).toBe(false);
 }
 
@@ -38,18 +42,19 @@ describe("VigilService persisted-child actions with filesystem sessions", () => 
     const { service } = createFilesystemChildVigilService(fixture);
 
     const result = await service.wait({ id: fixture.sessionId, timeoutMs: 60_000, progress: "none" });
-    expect(isVigilError(result)).toBe(false);
-    if (!isVigilError(result)) {
-      expect(result.outcome).toBe("settled");
-      expect(result.waitedMs).toBeLessThan(50);
-      expect(result.settled).toEqual([
-        expect.objectContaining({
-          id: fixture.sessionId,
-          state: "waiting",
-          latestResponse: fixture.assistantText,
-        }),
-      ]);
+    expectWait(result);
+    expect(result.outcome).toBe("settled");
+    if (result.outcome !== "settled") {
+      return;
     }
+    expect(result.waitedMs).toBeLessThan(50);
+    expect(result.settled).toEqual([
+      expect.objectContaining({
+        id: fixture.sessionId,
+        state: "waiting",
+        latestResponse: fixture.assistantText,
+      }),
+    ]);
   });
 
   it("list reports waiting rather than running for an active filesystem child", async () => {
