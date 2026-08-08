@@ -8,7 +8,7 @@ import {
 import type { ChildSessionReader, ChildSessionState, ProcessRunner } from "./ports";
 import { deriveVigilState, extractLatestAssistantState, extractSessionActivity, getTurnStartedAt } from "./session-text";
 import { truncateLine } from "@earendil-works/pi-coding-agent";
-import { findChildSessionFilePath } from "./session-path";
+import { findChildSessionPath } from "./session-path";
 import { escapeTerminalControls } from "./transcript";
 import type { VigilState } from "./types";
 
@@ -260,7 +260,7 @@ async function resolveChildSessionPath(
   cwd: string,
   sessionDir?: string,
 ): Promise<string | null> {
-  return findChildSessionFilePath(sessionId, cwd, sessionDir);
+  return findChildSessionPath(sessionId, cwd, sessionDir);
 }
 
 function readDescendantSessionStateFromFile(sessionFile: string): ChildSessionState {

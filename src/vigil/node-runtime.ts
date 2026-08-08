@@ -47,7 +47,7 @@ import type {
   WaitScheduler,
 } from "./ports";
 import { extractLatestAssistantState, deriveVigilState, getTurnStartedAt, extractSessionActivity } from "./session-text";
-import { findChildSessionFilePath } from "./session-path";
+import { findChildSessionFilePath, findChildSessionPath } from "./session-path";
 import {
   parseChildSessionTranscript,
   readTranscriptWindow,
@@ -1492,24 +1492,7 @@ export function createNodeProcessRunner(options?: { piExecutable?: string }): Pr
   };
 }
 
-export async function findChildSessionPath(
-  sessionId: string,
-  cwd: string,
-  sessionDir?: string,
-): Promise<string | null> {
-  const cheap = await findChildSessionFilePath(sessionId, cwd, sessionDir);
-  if (cheap) {
-    return cheap;
-  }
-
-  // Fixtures and legacy layouts may not encode session id in the filename.
-  const sessions = sessionDir
-    ? await SessionManager.listAll(sessionDir)
-    : await SessionManager.list(cwd);
-  const match = sessions.find((session) => session.id === sessionId);
-  return match?.path ?? null;
-}
-
+export { findChildSessionFilePath, findChildSessionPath, childSessionExists } from "./session-path";
 const EMPTY_CHILD_SESSION_STATE: ChildSessionState = {
   latestResponse: null,
   turnComplete: false,

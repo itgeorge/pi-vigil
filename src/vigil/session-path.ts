@@ -2,8 +2,22 @@ import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+
+const ENV_AGENT_DIR = "PI_CODING_AGENT_DIR";
+
+function expandTildePath(path: string): string {
+  if (path.startsWith("~/")) {
+    return join(homedir(), path.slice(2));
+  }
+  return path;
+}
 
 function getDefaultAgentDir(): string {
+  const envDir = process.env[ENV_AGENT_DIR]?.trim();
+  if (envDir) {
+    return resolve(expandTildePath(envDir));
+  }
   return join(homedir(), ".pi", "agent");
 }
 
@@ -15,7 +29,7 @@ function getDefaultSessionDirForCwd(cwd: string): string {
 }
 
 function resolveSessionDir(cwd: string, sessionDir?: string): string {
-  return sessionDir ? resolve(sessionDir) : getDefaultSessionDirForCwd(cwd);
+  return sessionDir ? resolve(expandTildePath(sessionDir)) : getDefaultSessionDirForCwd(cwd);
 }
 
 function sessionFileSuffix(sessionId: string): string {
@@ -52,4 +66,25 @@ export async function childSessionExists(
   sessionDir?: string,
 ): Promise<boolean> {
   return (await findChildSessionFilePath(sessionId, cwd, sessionDir)) !== null;
+}
+
+/**
+ * Resolve a child session JSONL path by id. Uses a cheap directory scan first, then
+ * falls back to SessionManager listing for fixture/legacy filenames.
+ */
+export async function findChildSessionPath(
+  sessionId: string,
+  cwd: string,
+  sessionDir?: string,
+): Promise<string | null> {
+  const cheap = await findChildSessionFilePath(sessionId, cwd, sessionDir);
+  if (cheap) {
+    return cheap;
+  }
+
+  const sessions = sessionDir
+    ? await SessionManager.listAll(sessionDir)
+    : await SessionManager.list(cwd);
+  const match = sessions.find((session) => session.id === sessionId);
+  return match?.path ?? null;
 }
