@@ -150,20 +150,6 @@ export const vigilTool = defineTool({
       }),
     ),
     timeoutMs: Type.Optional(Type.Number({ description: "Wait timeout in milliseconds (default 60000, maximum 300000)" })),
-    initialDelayMs: Type.Optional(Type.Number({ description: "Initial wait polling delay in milliseconds (default 500, maximum 30000)" })),
-    maxDelayMs: Type.Optional(Type.Number({ description: "Maximum wait polling delay in milliseconds (default 5000, maximum 30000)" })),
-    progress: Type.Optional(
-      StringEnum(["status", "none"], {
-        description:
-          'Foreground wait progress updates: "status" emits factual persisted-activity partial updates (default), "none" is silent',
-      }),
-    ),
-    progressIntervalMs: Type.Optional(
-      Type.Number({
-        description:
-          "Heartbeat cap for unchanged child-state progress between polls in milliseconds (default 30000, maximum 60000; ignored when progress is none). Elapsed timing still updates after every wait poll.",
-      }),
-    ),
     allowIncompleteSubagents: Type.Optional(
       Type.Boolean({
         description:
@@ -252,21 +238,14 @@ export const vigilTool = defineTool({
         {
           id: params.id,
           timeoutMs: params.timeoutMs,
-          initialDelayMs: params.initialDelayMs,
-          maxDelayMs: params.maxDelayMs,
-          progress:
-            params.progress === "none" || params.progress === "status" ? params.progress : undefined,
-          progressIntervalMs: params.progressIntervalMs,
         },
         signal,
-        params.progress === "none"
-          ? undefined
-          : (progress) => {
-              onUpdate?.({
-                content: [{ type: "text" as const, text: formatWaitProgressText(progress, Date.now()) }],
-                details: progress as VigilWaitProgress,
-              });
-            },
+        (progress) => {
+          onUpdate?.({
+            content: [{ type: "text" as const, text: formatWaitProgressText(progress, Date.now()) }],
+            details: progress as VigilWaitProgress,
+          });
+        },
       );
       if (isVigilError(result)) {
         return {

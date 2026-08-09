@@ -500,7 +500,7 @@ describe("vigil extension adapter", () => {
       now: () => time,
       sleep: async (ms, signal) => {
         time += ms;
-        if (ms === 100) {
+        if (ms === 500) {
           controller.abort();
         }
         return signal?.aborted ? "cancelled" : "elapsed";
@@ -526,13 +526,13 @@ describe("vigil extension adapter", () => {
     const launched = launch.details as VigilSnapshot;
 
     const cancelled = await harness.execute(
-      { action: "wait", timeoutMs: 1_000, initialDelayMs: 100, maxDelayMs: 100 },
+      { action: "wait", timeoutMs: 1_000 },
       controller.signal,
     );
     expect((cancelled as { isError?: boolean }).isError).toBeFalsy();
     expect(cancelled.details).toEqual({
       outcome: "cancelled",
-      waitedMs: 100,
+      waitedMs: 500,
       pending: [expect.objectContaining({ id: launched.id, state: "running" })],
     });
     const cancelledText = cancelled.content[0]?.type === "text" ? cancelled.content[0].text : "";
@@ -545,8 +545,6 @@ describe("vigil extension adapter", () => {
     const timeout = await harness.execute({
       action: "wait",
       timeoutMs: 50,
-      initialDelayMs: 50,
-      maxDelayMs: 50,
     });
     expect((timeout as { isError?: boolean }).isError).toBeFalsy();
     expect(timeout.details).toEqual({
@@ -559,18 +557,6 @@ describe("vigil extension adapter", () => {
     expect(timeoutText).toContain(`id: ${launched.id}`);
     expect(timeoutText).toContain("name: Wait outcomes");
     expect(timeoutText).toContain("state: running");
-  });
-
-  it("returns concise errors for invalid wait timing", async () => {
-    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
-
-    const result = await harness.execute({ action: "wait", initialDelayMs: 500, maxDelayMs: 100 });
-
-    expect((result as { isError?: boolean }).isError).toBe(true);
-    expect(result.content[0]).toEqual({
-      type: "text",
-      text: "maxDelayMs must be greater than or equal to initialDelayMs",
-    });
   });
 
   it("captures partial wait progress updates before the final settled result", async () => {
@@ -639,30 +625,6 @@ describe("vigil extension adapter", () => {
     expect(finalText).not.toContain("steps:");
   });
 
-  it("does not emit partial wait updates when progress is none", async () => {
-    const harness = await createVigilTestHarness({ cwd: "/parent/project" });
-    setVigilRuntimeOverrides({
-      processRunner: {
-        spawnDetached: async () => ({ pid: 9500 }),
-        isAlive: () => true,
-        terminateAndWait: async () => undefined,
-      },
-      childSessionReader: {
-        readChildSessionState: async () => ({
-          latestResponse: null,
-          turnComplete: false,
-          lastConversationTimestamp: "2099-01-01T00:00:00.000Z",
-          activity: { steps: 3, messages: 2, lastActivity: "user message", lastActivityTimestamp: "t", recentMessages: [] },
-        }),
-      },
-    });
-    await harness.execute({ action: "launch", name: "Silent progress", message: "Work" });
-    const updates: unknown[] = [];
-    const result = await harness.execute({ action: "wait", progress: "none", timeoutMs: 50, initialDelayMs: 50, maxDelayMs: 50 }, undefined, (update) => updates.push(update));
-    expect((result as { isError?: boolean }).isError).toBeFalsy();
-    expect(updates).toEqual([]);
-  });
-
   it("poll returns an error for an unknown vigil id", async () => {
     const harness = await createVigilTestHarness({ cwd: "/parent/project" });
 
@@ -712,13 +674,11 @@ describe("vigil extension adapter", () => {
       action: "wait",
       id: target.id,
       timeoutMs: 5_000,
-      initialDelayMs: 100,
-      maxDelayMs: 100,
     });
     expect((result as { isError?: boolean }).isError).toBeFalsy();
     expect(result.details).toEqual({
       outcome: "settled",
-      waitedMs: 100,
+      waitedMs: 500,
       settled: [expect.objectContaining({ id: target.id, latestResponse: "Target settled." })],
     });
 

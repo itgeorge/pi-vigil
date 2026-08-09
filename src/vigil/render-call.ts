@@ -4,10 +4,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
 import { reconstructVigilLifecycleFromEntries } from "./lifecycle";
-import {
-  DEFAULT_WAIT_PROGRESS_MODE,
-  DEFAULT_WAIT_TIMEOUT_MS,
-} from "./node-runtime";
+import { DEFAULT_WAIT_TIMEOUT_MS } from "./node-runtime";
 import {
   appendThemedExpandableDetailBlock,
   formatExpandHint,
@@ -33,10 +30,6 @@ export interface VigilCallArgs {
   skipToId?: string;
   includeCompleted?: boolean;
   timeoutMs?: number;
-  initialDelayMs?: number;
-  maxDelayMs?: number;
-  progress?: "status" | "none";
-  progressIntervalMs?: number;
   allowIncompleteSubagents?: boolean;
   ephemeral?: boolean;
 }
@@ -285,12 +278,7 @@ export function formatVigilCallSummary(
         typeof args.timeoutMs === "number" && Number.isFinite(args.timeoutMs)
           ? args.timeoutMs
           : DEFAULT_WAIT_TIMEOUT_MS;
-      const progress =
-        args.progress === "none" || args.progress === "status"
-          ? args.progress
-          : DEFAULT_WAIT_PROGRESS_MODE;
       segments.push(formatWaitTimeoutLabel(timeoutMs));
-      segments.push(`progress ${progress}`);
       break;
     }
     case "search": {
@@ -407,21 +395,12 @@ export function renderVigilCallText(
         typeof args.timeoutMs === "number" && Number.isFinite(args.timeoutMs)
           ? args.timeoutMs
           : DEFAULT_WAIT_TIMEOUT_MS;
-      const progress =
-        args.progress === "none" || args.progress === "status"
-          ? args.progress
-          : DEFAULT_WAIT_PROGRESS_MODE;
       parts.push(theme.fg("muted", " wait"));
       if (args.id?.trim()) {
         parts.push(theme.fg("muted", " · "));
         parts.push(theme.fg("text", formatIdIdentity(args.id, lookup)));
       }
-      parts.push(
-        theme.fg(
-          "muted",
-          ` · ${formatWaitTimeoutLabel(timeoutMs)} · progress ${progress}`,
-        ),
-      );
+      parts.push(theme.fg("muted", ` · ${formatWaitTimeoutLabel(timeoutMs)}`));
     } else if (summary.startsWith("search")) {
       const excerpt = formatQuotedExcerpt(args.query) ?? '""';
       parts.push(theme.fg("muted", " search · "));

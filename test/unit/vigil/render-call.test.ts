@@ -237,15 +237,14 @@ describe("formatVigilCallSummary", () => {
     );
   });
 
-  it("renders wait timeout and progress mode using documented defaults", () => {
-    expect(plainSummary({ action: "wait" })).toBe("wait · up to 60s · progress status");
+  it("renders wait timeout using documented defaults", () => {
+    expect(plainSummary({ action: "wait" })).toBe("wait · up to 60s");
     expect(
       plainSummary({
         action: "wait",
         timeoutMs: 120_000,
-        progress: "none",
       }),
-    ).toBe("wait · up to 120s · progress none");
+    ).toBe("wait · up to 120s");
   });
 
   it("includes the targeted vigil id in wait summaries only when id is supplied", () => {
@@ -267,9 +266,9 @@ describe("formatVigilCallSummary", () => {
       },
     ];
     expect(plainSummary({ action: "wait", id: SAMPLE_UUID }, entries)).toBe(
-      "wait · Target task [vigil-bd02f54] · up to 60s · progress status",
+      "wait · Target task [vigil-bd02f54] · up to 60s",
     );
-    expect(plainSummary({ action: "wait" }, entries)).toBe("wait · up to 60s · progress status");
+    expect(plainSummary({ action: "wait" }, entries)).toBe("wait · up to 60s");
   });
 
   it("falls back safely for unknown or malformed ids without throwing", () => {

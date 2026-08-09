@@ -27,10 +27,6 @@ vigil({
   action: "waitAll",
   ids: ["vigil-a", "vigil-b"],
   timeoutMs?,
-  initialDelayMs?,
-  maxDelayMs?,
-  progress?,
-  progressIntervalMs?,
 })
 ```
 
