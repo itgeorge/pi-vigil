@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { buildPiSpawnArgs, resolvePiSpawnCommand } from "../../src/vigil/pi-spawn-command";
 
 export interface PiJsonPrintResult {
   stdout: string;
@@ -24,8 +25,11 @@ export function runPiJsonPrintCommand(options: PiJsonPrintOptions): Promise<PiJs
     piExecutable = "pi",
   } = options;
 
+  const spawnCommand = resolvePiSpawnCommand({ piExecutable });
+  const spawnArgs = buildPiSpawnArgs(spawnCommand, args);
+
   return new Promise((resolve) => {
-    const child = spawn(piExecutable, args, {
+    const child = spawn(spawnCommand.command, spawnArgs, {
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
     });

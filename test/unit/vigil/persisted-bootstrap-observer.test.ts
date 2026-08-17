@@ -294,4 +294,47 @@ describe("node persisted bootstrap observer", () => {
     });
     expect(failures[0]?.error).toContain("bootstrap watchdog timeout");
   });
+
+  it("on simulated Windows uses resolved node execPath and cli.js prefix for default spawn", async () => {
+    const cliPath = "C:\\fake\\dist\\cli.js";
+    let capturedCommand = "";
+    let capturedArgs: string[] = [];
+    const mockChild = createMockChildProcess();
+
+    const observer = createNodePersistedBootstrapObserver({
+      platform: "win32",
+      resolvePiCliEntrypoint: () => cliPath,
+      processRunner: {
+        isAlive: () => false,
+        async terminateAndWait() {},
+      },
+      spawnChild: (command, spawnArgs) => {
+        capturedCommand = command;
+        capturedArgs = spawnArgs;
+        return mockChild;
+      },
+      sessionExists: async () => false,
+    });
+
+    await observer.start({
+      vigilId: "vigil-persisted-windows-spawn",
+      sessionId: "vigil-persisted-windows-spawn",
+      cwd: "/parent/project",
+      message: "hello",
+      name: "Quick task",
+    });
+
+    expect(capturedCommand).toBe(process.execPath);
+    expect(capturedArgs).toEqual([
+      cliPath,
+      "--mode",
+      "json",
+      "-p",
+      "--session-id",
+      "vigil-persisted-windows-spawn",
+      "--name",
+      "Quick task",
+      "hello",
+    ]);
+  });
 });

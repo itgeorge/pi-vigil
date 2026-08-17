@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import {
   parseSessionEntries,
   SessionManager,
@@ -67,6 +67,7 @@ import {
   type VigilWaitProgress,
   type VigilWaitProgressItem,
 } from "./wait-progress";
+import { buildPiSpawnArgs, resolvePiSpawnCommand } from "./pi-spawn-command";
 import {
   createVigilId,
   normalizeVigilName,
@@ -1405,10 +1406,25 @@ export function buildPiChildArgs(input: SpawnChildInput): string[] {
 export function spawnDetachedPiChild(
   piExecutable: string,
   input: SpawnChildInput,
+  options?: {
+    platform?: NodeJS.Platform;
+    resolvePiCliEntrypoint?: () => string;
+    spawnChild?: (
+      command: string,
+      args: string[],
+      spawnOptions: SpawnOptions,
+    ) => ChildProcess;
+  },
 ): Promise<{ pid: number }> {
   return new Promise((resolve, reject) => {
-    const args = buildPiChildArgs(input);
-    const child = spawn(piExecutable, args, {
+    const spawnCommand = resolvePiSpawnCommand({
+      piExecutable,
+      platform: options?.platform,
+      resolvePiCliEntrypoint: options?.resolvePiCliEntrypoint,
+    });
+    const args = buildPiSpawnArgs(spawnCommand, buildPiChildArgs(input));
+    const spawnFn = options?.spawnChild ?? spawn;
+    const child = spawnFn(spawnCommand.command, args, {
       cwd: input.cwd,
       detached: true,
       stdio: "ignore",

@@ -293,4 +293,46 @@ describe("node ephemeral child observer", () => {
     expect(mockChild.stdout?.listenerCount("data")).toBe(0);
     expect(mockChild.stdout?.destroyed).toBe(true);
   });
+
+  it("on simulated Windows uses resolved node execPath and cli.js prefix for default spawn", async () => {
+    const cliPath = "C:\\fake\\dist\\cli.js";
+    let capturedCommand = "";
+    let capturedArgs: string[] = [];
+    const mockChild = createMockChildProcess();
+
+    const observer = createNodeEphemeralChildObserver({
+      platform: "win32",
+      resolvePiCliEntrypoint: () => cliPath,
+      processRunner: {
+        isAlive: () => false,
+        async terminateAndWait() {},
+      },
+      spawnChild: (command, spawnArgs) => {
+        capturedCommand = command;
+        capturedArgs = spawnArgs;
+        return mockChild;
+      },
+    });
+
+    await observer.start({
+      vigilId: "vigil-ephemeral-windows-spawn",
+      parentSessionId: "parent-session",
+      message: "Reply",
+      cwd: "/parent/project",
+      name: "Quick",
+      onSettled: () => {},
+    });
+
+    expect(capturedCommand).toBe(process.execPath);
+    expect(capturedArgs).toEqual([
+      cliPath,
+      "--mode",
+      "json",
+      "-p",
+      "--no-session",
+      "--name",
+      "Quick",
+      "Reply",
+    ]);
+  });
 });

@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import type { ProcessRunner, TerminateAndWaitOptions } from "./ports";
+import { buildPiSpawnArgs, resolvePiSpawnCommand } from "./pi-spawn-command";
 import {
   boundStderrExcerpt,
   classifyPersistedBootstrapFailure,
@@ -77,7 +78,9 @@ function resolveOutcomeWaiters(
 export function createNodePersistedBootstrapObserver(options: {
   processRunner: Pick<ProcessRunner, "isAlive" | "terminateAndWait">;
   piExecutable?: string;
-  spawnChild?: (executable: string, args: string[], spawnOptions: { cwd: string }) => ChildProcess;
+  platform?: NodeJS.Platform;
+  resolvePiCliEntrypoint?: () => string;
+  spawnChild?: (command: string, args: string[], spawnOptions: { cwd: string }) => ChildProcess;
   sessionExists: (input: {
     sessionId: string;
     cwd: string;
@@ -360,16 +363,23 @@ export function createNodePersistedBootstrapObserver(options: {
         name: input.name,
       });
 
+      const spawnCommand = resolvePiSpawnCommand({
+        piExecutable,
+        platform: options.platform,
+        resolvePiCliEntrypoint: options.resolvePiCliEntrypoint,
+      });
+      const spawnArgs = buildPiSpawnArgs(spawnCommand, args);
+
       const spawnChild =
         options.spawnChild ??
-        ((executable, spawnArgs, spawnOptions) =>
-          spawn(executable, spawnArgs, {
+        ((command, childArgs, spawnOptions) =>
+          spawn(command, childArgs, {
             cwd: spawnOptions.cwd,
             detached: true,
             stdio: ["ignore", "ignore", "pipe"],
           }));
 
-      const child = spawnChild(piExecutable, args, { cwd: input.cwd });
+      const child = spawnChild(spawnCommand.command, spawnArgs, { cwd: input.cwd });
 
       const pid = await new Promise<number>((resolve, reject) => {
         child.on("error", reject);

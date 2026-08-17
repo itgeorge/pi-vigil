@@ -1,5 +1,6 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import type { ProcessRunner, TerminateAndWaitOptions } from "./ports";
+import { buildPiSpawnArgs, resolvePiSpawnCommand } from "./pi-spawn-command";
 import { MAX_ENTRY_DETAIL_CHARS } from "./transcript";
 
 export const MAX_EPHEMERAL_JSON_LINE_BYTES = 256 * 1024;
@@ -289,10 +290,12 @@ type ActiveObservation = {
 
 export function createNodeEphemeralChildObserver(options: {
   piExecutable?: string;
+  platform?: NodeJS.Platform;
+  resolvePiCliEntrypoint?: () => string;
   processRunner: Pick<ProcessRunner, "isAlive" | "terminateAndWait">;
   reapTimeoutMs?: number;
   spawnChild?: (
-    piExecutable: string,
+    command: string,
     args: string[],
     spawnOptions: { cwd: string },
   ) => ChildProcess;
@@ -438,16 +441,23 @@ export function createNodeEphemeralChildObserver(options: {
         name: input.name,
       });
 
+      const spawnCommand = resolvePiSpawnCommand({
+        piExecutable,
+        platform: options.platform,
+        resolvePiCliEntrypoint: options.resolvePiCliEntrypoint,
+      });
+      const spawnArgs = buildPiSpawnArgs(spawnCommand, args);
+
       const spawnChild =
         options.spawnChild ??
-        ((executable, spawnArgs, spawnOptions) =>
-          spawn(executable, spawnArgs, {
+        ((command, childArgs, spawnOptions) =>
+          spawn(command, childArgs, {
             cwd: spawnOptions.cwd,
             detached: true,
             stdio: ["ignore", "pipe", "pipe"],
           }));
 
-      const child = spawnChild(piExecutable, args, { cwd: input.cwd });
+      const child = spawnChild(spawnCommand.command, spawnArgs, { cwd: input.cwd });
 
       const pid = await new Promise<number>((resolve, reject) => {
         child.on("error", reject);
