@@ -56,6 +56,7 @@ type ActiveObservation = {
   outcomeWaiters: Array<(outcome: PersistedBootstrapOutcome) => void>;
   sessionCheckTimer?: NodeJS.Timeout;
   bootstrapWatchdogTimer?: NodeJS.Timeout;
+  deferredBootstrapTimer?: NodeJS.Timeout;
   sessionCheckInFlight?: boolean;
   aggressiveSessionPolling: boolean;
   onFailed?: (input: PersistedBootstrapFailureInput) => void;
@@ -116,6 +117,10 @@ export function createNodePersistedBootstrapObserver(options: {
     if (observation.bootstrapWatchdogTimer) {
       clearTimeout(observation.bootstrapWatchdogTimer);
       observation.bootstrapWatchdogTimer = undefined;
+    }
+    if (observation.deferredBootstrapTimer) {
+      clearTimeout(observation.deferredBootstrapTimer);
+      observation.deferredBootstrapTimer = undefined;
     }
   };
 
@@ -221,6 +226,41 @@ export function createNodePersistedBootstrapObserver(options: {
     finalizeFailed(observation, error);
   };
 
+  const scheduleDeferredBootstrapMonitoring = (observation: ActiveObservation): void => {
+    if (observation.finalized || observation.deferredBootstrapTimer) {
+      return;
+    }
+
+    const tick = (): void => {
+      if (observation.finalized) {
+        return;
+      }
+
+      void evaluateSessionExists(observation).then((exists) => {
+        if (observation.finalized) {
+          return;
+        }
+
+        if (exists) {
+          finalizeStarted(observation);
+          return;
+        }
+
+        if (observation.outcome?.status === "timeout") {
+          observation.deferredBootstrapTimer = setTimeout(tick, sessionPollIntervalMs);
+        }
+      });
+    };
+
+    observation.deferredBootstrapTimer = setTimeout(tick, sessionPollIntervalMs);
+  };
+
+  const abandonStaleBootstrapObservation = (observation: ActiveObservation): void => {
+    clearObservationTimers(observation);
+    observation.cleanup();
+    observations.delete(observation.vigilId);
+  };
+
   const reconcileOutcomeOnTimeout = async (
     observation: ActiveObservation,
   ): Promise<PersistedBootstrapOutcome> => {
@@ -255,6 +295,7 @@ export function createNodePersistedBootstrapObserver(options: {
     observation.outcome = timeoutOutcome;
     observation.outcomeWaiters = [];
     stopAggressiveSessionPolling(observation);
+    scheduleDeferredBootstrapMonitoring(observation);
     return timeoutOutcome;
   };
 
@@ -351,7 +392,12 @@ export function createNodePersistedBootstrapObserver(options: {
         throw new Error("Cannot start persisted bootstrap child after parent shutdown");
       }
       if (observations.has(input.vigilId)) {
-        throw new Error(`Persisted bootstrap child already observed: ${input.vigilId}`);
+        const existing = observations.get(input.vigilId);
+        if (existing && !existing.finalized && existing.outcome?.status === "timeout") {
+          abandonStaleBootstrapObservation(existing);
+        } else {
+          throw new Error(`Persisted bootstrap child already observed: ${input.vigilId}`);
+        }
       }
 
       const args = buildPiChildArgs({

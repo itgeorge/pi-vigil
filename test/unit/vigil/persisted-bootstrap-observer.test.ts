@@ -235,15 +235,15 @@ describe("node persisted bootstrap observer", () => {
     expect(terminateAndWait).toHaveBeenCalledTimes(1);
   });
 
-  it("stops session polling after fail-fast timeout while child stays alive", async () => {
-    const sessionExists = vi.fn(async () => false);
-    const mockChild = createMockChildProcess();
+  it("finalizes started when session appears after fail-fast timeout", async () => {
+    let exists = false;
+    const sessionExists = vi.fn(async () => exists);
     const observer = createNodePersistedBootstrapObserver({
       processRunner: {
         isAlive: () => true,
         async terminateAndWait() {},
       },
-      spawnChild: () => mockChild,
+      spawnChild: () => createMockChildProcess(),
       sessionExists,
       sessionPollIntervalMs: 10,
       bootstrapWatchdogTimeoutMs: 5000,
@@ -261,9 +261,56 @@ describe("node persisted bootstrap observer", () => {
       status: "timeout",
     });
 
-    const callsAfterTimeout = sessionExists.mock.calls.length;
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    expect(sessionExists.mock.calls.length).toBe(callsAfterTimeout);
+    exists = true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    await expect(observer.waitForOutcome("vigil-poll-stop", { timeoutMs: 100 })).resolves.toEqual({
+      status: "started",
+    });
+
+    await expect(
+      observer.start({
+        vigilId: "vigil-poll-stop",
+        sessionId: "vigil-poll-stop",
+        cwd: "/parent/project",
+        message: "again",
+      }),
+    ).resolves.toEqual(expect.objectContaining({ pid: expect.any(Number) }));
+  });
+
+  it("allows a new bootstrap start after fail-fast timeout when session never appears", async () => {
+    const sessionExists = vi.fn(async () => false);
+    const observer = createNodePersistedBootstrapObserver({
+      processRunner: {
+        isAlive: () => true,
+        async terminateAndWait() {},
+      },
+      spawnChild: () => createMockChildProcess(),
+      sessionExists,
+      sessionPollIntervalMs: 10,
+      bootstrapWatchdogTimeoutMs: 5000,
+    });
+
+    const started = await observer.start({
+      vigilId: "vigil-restart-after-timeout",
+      sessionId: "vigil-restart-after-timeout",
+      cwd: "/parent/project",
+      message: "hello",
+    });
+    started.activate();
+
+    await expect(observer.waitForOutcome("vigil-restart-after-timeout", { timeoutMs: 25 })).resolves.toEqual({
+      status: "timeout",
+    });
+
+    const restarted = await observer.start({
+      vigilId: "vigil-restart-after-timeout",
+      sessionId: "vigil-restart-after-timeout",
+      cwd: "/parent/project",
+      message: "again",
+    });
+
+    expect(restarted.pid).toBeTruthy();
   });
 
   it("fails when child stays alive without session past watchdog timeout", async () => {
