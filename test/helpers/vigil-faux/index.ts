@@ -13,3 +13,12 @@ export const VIGIL_FAUX_MODEL_ID = "scripted";
 export function getVigilFauxModelId(): string {
   return `${VIGIL_FAUX_PROVIDER_ID}/${VIGIL_FAUX_MODEL_ID}`;
 }
+
+export {
+  buildVigilFauxPiChildArgs,
+  createVigilFauxProcessRunner,
+  getVigilFauxExtensionPath,
+  insertVigilFauxExtensionArgs,
+  writeVigilFauxScript,
+  type CreateVigilFauxProcessRunnerOptions,
+} from "./process-runner.js";

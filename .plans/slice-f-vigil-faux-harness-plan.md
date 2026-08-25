@@ -264,17 +264,40 @@ Keep `npm test` / `npm run check` on unit + typecheck + pack:verify (do not forc
 
 ## Phase 3 — Parent spawn helpers
 
-- [ ] Add failing unit tests for helpers that:
+- [x] Add failing unit tests for helpers that:
   - write a script JSON to a temp path;
   - return absolute extension path;
   - build/wrap a `ProcessRunner` whose spawned args include `--extension <ext>` and leave room for `--model vigil-faux/scripted` from launch input.
-- [ ] Implement `createVigilFauxProcessRunner` (name flexible) using existing `createNodeProcessRunner` / `spawnDetachedPiChild` patterns; keep production `buildPiChildArgs` unchanged unless a tiny optional `extraArgs` on `SpawnChildInput` is clearly cleaner — prefer **wrapper** over production API change.
-- [ ] Green helper tests.
-- [ ] Confirm `package.json` `files` still excludes `test/` (`npm run pack:verify`).
+- [x] Implement `createVigilFauxProcessRunner` (name flexible) using existing `createNodeProcessRunner` / `spawnDetachedPiChild` patterns; keep production `buildPiChildArgs` unchanged unless a tiny optional `extraArgs` on `SpawnChildInput` is clearly cleaner — prefer **wrapper** over production API change.
+- [x] Green helper tests.
+- [x] Confirm `package.json` `files` still excludes `test/` (`npm run pack:verify`).
 
 ### Progress notes — Phase 3
 
-_(implementer fills)_
+**Red (initial run before `process-runner.ts` existed):**
+
+**Command:** `npx vitest run --project unit test/unit/vigil-faux/process-runner.test.ts`
+
+**Result:** 1 file failed; 0 tests (transform/import error).
+
+**Exact red failure:** `Error: Failed to resolve import "../../helpers/vigil-faux/process-runner.js" from "test/unit/vigil-faux/process-runner.test.ts"` — module not found.
+
+**Green:**
+
+**Command:** `npx vitest run --project unit test/unit/vigil-faux/`
+
+**Result:** 3 files, 18 tests passed (18) — `script-matcher.test.ts` (8) + `extension.test.ts` (4) + `process-runner.test.ts` (6).
+
+**Command:** `npm run pack:verify`
+
+**Result:** clean — packed tarball contains only `src/`, `README.md`, `LICENSE`; no `test/` paths.
+
+**Implemented:**
+- `test/helpers/vigil-faux/process-runner.ts` — `writeVigilFauxScript`, `getVigilFauxExtensionPath`, `insertVigilFauxExtensionArgs`, `createVigilFauxProcessRunner` (wraps `spawnDetachedPiChild` with `spawnChild` that splices `--extension` before the final message arg; delegates `isAlive` / `terminateAndWait` to base runner).
+- `test/helpers/vigil-faux/index.ts` — re-exports process-runner helpers.
+- `test/unit/vigil-faux/process-runner.test.ts` — script write, extension path, spawn arg injection, base delegation, and assertion that production `buildPiChildArgs` is unchanged.
+
+**Production `src/vigil/buildPiChildArgs` unchanged.**
 
 ---
 
