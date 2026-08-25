@@ -1,3 +1,4 @@
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { ChildSessionDescendantInspector } from "./descendant-inspector";
 import type { VigilLifecycleState } from "./lifecycle";
 import type { ChildSessionTranscript } from "./transcript";
@@ -94,4 +95,6 @@ export interface VigilServiceDeps {
   reapTimeoutMs?: number;
   waitScheduler?: WaitScheduler;
   currentParentSessionId?: string;
+  getSessionEntries?: () => SessionEntry[];
+  getNoSubagentsFlag?: () => boolean;
 }

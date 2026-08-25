@@ -18,6 +18,7 @@ import {
   type EphemeralChildObserver,
 } from "./ephemeral-observer";
 import { formatVigilChildFailedError, DEFAULT_BOOTSTRAP_FAIL_FAST_TIMEOUT_MS } from "./child-failure";
+import { formatNestedLaunchDisabledError, resolveNestedLaunchAllowed } from "./nesting-policy";
 import {
   createNodePersistedBootstrapObserver,
   createProcessRunnerPersistedBootstrapObserver,
@@ -222,6 +223,12 @@ export class VigilService {
 
     if (!input.message.trim()) {
       return { error: "launch requires message" };
+    }
+
+    const entries = this.deps.getSessionEntries?.() ?? [];
+    const noSubagentsFlag = this.deps.getNoSubagentsFlag?.() ?? false;
+    if (!resolveNestedLaunchAllowed({ entries, noSubagentsFlag })) {
+      return { error: formatNestedLaunchDisabledError() };
     }
 
     const id = this.deps.createId?.() ?? createVigilId();
@@ -1678,6 +1685,7 @@ export function createVigilServiceForContext(options: {
   bootstrapFailFastTimeoutMs?: number;
   reapTimeoutMs?: number;
   waitScheduler?: WaitScheduler;
+  getNoSubagentsFlag?: () => boolean;
 }): VigilService {
   const processRunner = options.processRunner ?? createNodeProcessRunner();
   const childSessionReader = options.childSessionReader ?? createNodeChildSessionReader();
@@ -1706,5 +1714,7 @@ export function createVigilServiceForContext(options: {
     reapTimeoutMs: options.reapTimeoutMs,
     waitScheduler: options.waitScheduler,
     currentParentSessionId: options.sessionManager.getSessionId(),
+    getSessionEntries: () => options.sessionManager.getEntries(),
+    getNoSubagentsFlag: options.getNoSubagentsFlag,
   });
 }

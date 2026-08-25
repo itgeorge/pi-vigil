@@ -32,6 +32,40 @@ describe("nesting policy resolution", () => {
     expect(resolveNestedLaunchAllowed({ entries: sessionManager.getEntries() })).toBe(true);
   });
 
+  it("denies nested launch when the first valid policy entry is deny even if a later entry allows", () => {
+    const sessionManager = SessionManager.inMemory("/child/session");
+    sessionManager.appendCustomEntry("vigil-policy", { allowSubagents: false });
+    sessionManager.appendCustomEntry("vigil-policy", { allowSubagents: true });
+
+    expect(resolveNestedLaunchAllowed({ entries: sessionManager.getEntries() })).toBe(false);
+  });
+
+  it("allows nested launch when the first valid policy entry is allow even if a later entry denies", () => {
+    const sessionManager = SessionManager.inMemory("/child/session");
+    sessionManager.appendCustomEntry("vigil-policy", { allowSubagents: true });
+    sessionManager.appendCustomEntry("vigil-policy", { allowSubagents: false });
+
+    expect(resolveNestedLaunchAllowed({ entries: sessionManager.getEntries() })).toBe(true);
+  });
+
+  it("allows nested launch when a valid allow policy entry beats the no-subagents flag", () => {
+    const sessionManager = SessionManager.inMemory("/child/session");
+    sessionManager.appendCustomEntry("vigil-policy", { allowSubagents: true });
+
+    expect(
+      resolveNestedLaunchAllowed({ entries: sessionManager.getEntries(), noSubagentsFlag: true }),
+    ).toBe(true);
+  });
+
+  it("denies nested launch when malformed entries precede a valid deny policy entry", () => {
+    const sessionManager = SessionManager.inMemory("/child/session");
+    sessionManager.appendCustomEntry("vigil-policy", { allowSubagents: "no" });
+    sessionManager.appendCustomEntry("vigil-policy", null);
+    sessionManager.appendCustomEntry("vigil-policy", { allowSubagents: false });
+
+    expect(resolveNestedLaunchAllowed({ entries: sessionManager.getEntries() })).toBe(false);
+  });
+
   it("formats the locked nested launch disabled error", () => {
     expect(formatNestedLaunchDisabledError()).toBe(NESTED_LAUNCH_DISABLED_ERROR);
     expect(NESTED_LAUNCH_DISABLED_ERROR).toBe(

@@ -41,6 +41,8 @@ let appendEntryForTool: ExtensionAPI["appendEntry"] = () => {
   throw new Error("pi-vigil extension not initialized");
 };
 
+let getNoSubagentsFlagForTool: (() => boolean) | undefined;
+
 const vigilDisplayNameCache = createVigilDisplayNameCache();
 
 function refreshVigilDisplayNameCache(ctx: ExtensionContext): void {
@@ -66,6 +68,7 @@ function createService(ctx: ExtensionContext) {
       (processRunner ? createProcessRunnerPersistedBootstrapObserver(processRunner) : undefined),
     bootstrapFailFastTimeoutMs: overrides.bootstrapFailFastTimeoutMs,
     waitScheduler: overrides.waitScheduler,
+    getNoSubagentsFlag: getNoSubagentsFlagForTool,
   });
 }
 
@@ -454,6 +457,9 @@ function snapshotResult(snapshot: VigilSnapshot) {
 
 export function registerVigilExtension(pi: ExtensionAPI): ToolDefinition {
   appendEntryForTool = pi.appendEntry.bind(pi);
+  getNoSubagentsFlagForTool = pi.getFlag
+    ? () => pi.getFlag("vigil-no-subagents") === true
+    : undefined;
 
   pi.on("session_start", (_event, ctx) => {
     refreshVigilDisplayNameCache(ctx);

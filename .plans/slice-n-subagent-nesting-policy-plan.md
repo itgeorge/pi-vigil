@@ -202,14 +202,19 @@ Grandchild model: same `vigil-faux/scripted` with a trivial text step so it sett
 
 ## Phase 1 — Green: policy module + gate
 
-- [ ] Implement `nesting-policy.ts` (parse entries, resolve effective allow, format error).
-- [ ] Wire gate into `VigilService.launch` (and ephemeral launch path) before spawn.
-- [ ] Green Phase 0 tests; `src/index` / adapter schema still incomplete until later phases if needed — service-level gate first.
-- [ ] Record green evidence.
+- [x] Implement `nesting-policy.ts` (parse entries, resolve effective allow, format error).
+- [x] Wire gate into `VigilService.launch` (and ephemeral launch path) before spawn.
+- [x] Green Phase 0 tests; `src/index` / adapter schema still incomplete until later phases if needed — service-level gate first.
+- [x] Record green evidence.
 
 ### Progress notes — Phase 1
 
-_(implementer fills)_
+**2026-08-25 — GREEN evidence** (`npm run test:unit -- test/unit/vigil/nesting-policy.test.ts test/unit/vigil/nesting-launch-gate.test.ts`; `npm run typecheck`)
+
+- `nesting-policy.test.ts`: 9/9 passed (Phase 0 cases + supervisor feedback: first-valid-wins deny/allow, allow beats flag, malformed-then-deny).
+- `nesting-launch-gate.test.ts`: 3/3 passed — persisted deny policy, ephemeral `getNoSubagentsFlag`, adapter deny via session `vigil-policy` entry.
+
+**Implementation:** `src/vigil/nesting-policy.ts` (`resolveNestedLaunchAllowed`, `formatNestedLaunchDisabledError`, `NESTED_LAUNCH_DISABLED_ERROR`). Gate in `VigilService.launch` after name/message validation, before spawn. `VigilServiceDeps.getSessionEntries` / `getNoSubagentsFlag`; `createVigilServiceForContext` wires `sessionManager.getEntries()`; extension captures `pi.getFlag` at registration for flag fallback (Phase 2 will register the flag).
 
 ---
 
