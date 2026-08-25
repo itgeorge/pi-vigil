@@ -273,7 +273,7 @@ require_command npm
 
 PKG_NAME="$(node -p "require('./package.json').name")"
 
-TOTAL_STEPS=3
+TOTAL_STEPS=4
 progress "Verifying npm login"
 check_npm_login
 
@@ -286,6 +286,9 @@ if [[ -n "$(git status --porcelain)" ]]; then
   git status --short
   die "working tree is not clean; commit or stash changes before releasing"
 fi
+
+progress "Fetching tags from origin"
+git fetch origin --tags || die "failed to fetch tags from origin; fix remote access and retry"
 
 progress "Checking whether the latest git tag is published to npm"
 latest_tag="$(git tag -l 'v*' --sort=-v:refname | head -n 1 || true)"
