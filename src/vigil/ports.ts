@@ -20,6 +20,7 @@ export interface SpawnChildInput {
   model?: string;
   sessionDir?: string;
   name?: string;
+  noSubagents?: boolean;
 }
 
 export interface TerminateAndWaitOptions {

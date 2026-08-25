@@ -50,7 +50,7 @@ describe("vigil extension nesting policy session_start", () => {
     ).toHaveLength(1);
   });
 
-  it("does not append vigil-policy on session_start when only malformed policy entries exist", async () => {
+  it("appends deny vigil-policy on session_start after malformed policy entries only", async () => {
     const harness = await createVigilTestHarness({ skipSessionStart: true, noSubagentsFlag: true });
     harness.sessionManager.appendCustomEntry("vigil-policy", { allowSubagents: "no" });
     harness.sessionManager.appendCustomEntry("vigil-policy", null);

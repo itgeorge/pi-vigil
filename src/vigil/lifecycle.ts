@@ -15,6 +15,7 @@ export interface VigilLifecycleState {
   sessionId: string;
   cwd: string;
   launchName: string;
+  allowSubagents?: false;
   runtimeRecord: VigilRuntimeRecord;
   settleRecord: VigilSettleRecord | null;
   completionRecord: VigilCompletionRecord | null;
@@ -140,6 +141,7 @@ export function reconstructVigilLifecycleFromEntries(
         sessionId: data.sessionId,
         cwd: data.cwd,
         launchName: data.name.trim(),
+        ...(data.allowSubagents === false ? { allowSubagents: false as const } : {}),
         runtimeRecord: data,
         settleRecord: null,
         completionRecord: null,

@@ -109,6 +109,12 @@ export const vigilTool = defineTool({
           "For launch only: run a single-turn ephemeral child with pi --no-session (no child JSONL or /resume entry). Parent Vigil lifecycle/settle metadata is still persisted.",
       }),
     ),
+    allowSubagents: Type.Optional(
+      Type.Boolean({
+        description:
+          "For launch only: allow the spawned child to launch its own Vigil subagents. Default false stamps deny policy on the child via --vigil-no-subagents.",
+      }),
+    ),
     id: Type.Optional(
       Type.String({
         description:
@@ -223,6 +229,7 @@ export const vigilTool = defineTool({
         cwd: params.cwd,
         parentCwd: ctx.cwd,
         ephemeral: params.ephemeral,
+        allowSubagents: params.allowSubagents,
       });
 
       if (isVigilError(result)) {

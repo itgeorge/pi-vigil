@@ -51,7 +51,7 @@ V1 state model is session-only: parent-session custom entries record launches, f
 The extension registers a single tool:
 
 ```ts
-vigil({ action: "launch", name, message, model?, cwd?, ephemeral?: true })
+vigil({ action: "launch", name, message, model?, cwd?, ephemeral?: true, allowSubagents?: boolean })
 vigil({ action: "poll", id })
 vigil({ action: "send", id, message, model? })
 vigil({ action: "list", includeCompleted?, maxResults?, skipToId? })
@@ -67,6 +67,8 @@ vigil({ action: "models", query?, maxResults? })
 By default (`ephemeral` absent/false), Vigil launches `pi --mode json -p --session-id <id> --name <name>` and the child retains a normal Pi session JSONL plus a `/resume` entry.
 
 With `ephemeral: true`, Vigil launches `pi --mode json -p --no-session --name <name>` instead. The child has no session JSONL or `/resume` entry. A parent-owned internal JSON-output observer drains stdout for backpressure only, records one bounded `vigil-settle` entry when the child settles, and never streams token deltas to the parent model, TUI, RPC, or wait partial-result channel. Ephemeral children are single-turn: `send`, `search`, and `read` reject; `complete` skips child-session rename and descendant inspection; parent exit or crash before settlement loses any in-flight observer/result. On parent `session_shutdown`, Vigil stops observers and best-effort terminates/reaps each directly tracked ephemeral PID (never process groups or descendants).
+
+`allowSubagents` controls whether a Vigil-spawned child may launch its own Vigil subagents. Default (`allowSubagents` omitted or `false`) passes `--vigil-no-subagents` to the child Pi argv and records `allowSubagents: false` on the parent `vigil-launch` entry; the child stamps a matching `vigil-policy` session entry on startup. Pass `allowSubagents: true` to omit the CLI flag and leave the child session without a deny stamp (absence of valid policy still means allow). Nested launch attempts in a deny-stamped child fail with a stable error. `send` re-applies `--vigil-no-subagents` on respawn when the original launch denied nesting.
 
 `send` continues the same child Pi session with a new prompt. It is allowed only while the current turn is `waiting`. If the settled one-shot Pi process is still alive, Vigil terminates and waits for that tracked PID before spawning the next turn. Each successful `send` appends one durable parent `vigil-turn` entry with the new tracked PID and optional model. `send` does not pass `--name`, so a child session renamed during work keeps its current Pi display name.
 

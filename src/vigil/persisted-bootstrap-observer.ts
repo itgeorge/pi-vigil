@@ -26,6 +26,7 @@ export interface PersistedBootstrapStartInput {
   model?: string;
   sessionDir?: string;
   name?: string;
+  noSubagents?: boolean;
   parentSessionId?: string;
   onFailed?: (input: PersistedBootstrapFailureInput) => void;
 }
@@ -407,6 +408,7 @@ export function createNodePersistedBootstrapObserver(options: {
         model: input.model,
         sessionDir: input.sessionDir,
         name: input.name,
+        noSubagents: input.noSubagents,
       });
 
       const spawnCommand = resolvePiSpawnCommand({
@@ -748,6 +750,7 @@ export function createProcessRunnerPersistedBootstrapObserver(
         model: input.model,
         sessionDir: input.sessionDir,
         name: input.name,
+        noSubagents: input.noSubagents,
       });
       return { pid, activate() {} };
     },

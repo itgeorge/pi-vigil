@@ -66,6 +66,35 @@ describe("buildPiChildArgs", () => {
     ]);
   });
 
+  it("includes --vigil-no-subagents when noSubagents is requested", () => {
+    expect(
+      buildPiChildArgs({
+        sessionId: "vigil-cli-boundary",
+        message: "No nesting",
+        cwd: "/parent/default",
+        noSubagents: true,
+      }),
+    ).toEqual([
+      "--mode",
+      "json",
+      "-p",
+      "--session-id",
+      "vigil-cli-boundary",
+      "--vigil-no-subagents",
+      "No nesting",
+    ]);
+  });
+
+  it("omits --vigil-no-subagents by default", () => {
+    expect(
+      buildPiChildArgs({
+        sessionId: "vigil-cli-boundary",
+        message: "Allow nesting",
+        cwd: "/parent/default",
+      }),
+    ).not.toContain("--vigil-no-subagents");
+  });
+
   it("builds ephemeral args with --no-session only", () => {
     expect(
       buildPiEphemeralChildArgs({
@@ -73,5 +102,24 @@ describe("buildPiChildArgs", () => {
         name: "Ephemeral",
       }),
     ).toEqual(["--mode", "json", "-p", "--no-session", "--name", "Ephemeral", "Quick reply"]);
+  });
+
+  it("includes --vigil-no-subagents on ephemeral args when requested", () => {
+    expect(
+      buildPiEphemeralChildArgs({
+        message: "No nesting",
+        name: "Ephemeral",
+        noSubagents: true,
+      }),
+    ).toEqual([
+      "--mode",
+      "json",
+      "-p",
+      "--no-session",
+      "--name",
+      "Ephemeral",
+      "--vigil-no-subagents",
+      "No nesting",
+    ]);
   });
 });

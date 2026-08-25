@@ -31,6 +31,7 @@ export interface VigilCallArgs {
   includeCompleted?: boolean;
   timeoutMs?: number;
   allowIncompleteSubagents?: boolean;
+  allowSubagents?: boolean;
   ephemeral?: boolean;
 }
 
@@ -216,6 +217,9 @@ export function formatVigilCallSummary(
       if (args.ephemeral) {
         segments.push("ephemeral");
       }
+      if (args.allowSubagents) {
+        segments.push("allow subagents");
+      }
       segments.push(formatModelIndicator(args.model, "Pi default"));
       break;
     }
@@ -347,6 +351,9 @@ export function renderVigilCallText(
       parts.push(theme.fg("text", name));
       if (args.ephemeral) {
         parts.push(theme.fg("dim", " · ephemeral"));
+      }
+      if (args.allowSubagents) {
+        parts.push(theme.fg("dim", " · allow subagents"));
       }
       parts.push(theme.fg("dim", ` · ${model}`));
     } else if (summary.startsWith("send")) {

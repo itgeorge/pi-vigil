@@ -31,6 +31,7 @@ export interface VigilLaunchRecord {
   sessionDir?: string;
   launchedAt: string;
   ephemeral?: true;
+  allowSubagents?: false;
 }
 
 export interface VigilSettleRecord {
@@ -161,6 +162,7 @@ export interface LaunchInput {
   model?: string;
   parentCwd: string;
   ephemeral?: boolean;
+  allowSubagents?: boolean;
 }
 
 export interface SendInput {

@@ -199,6 +199,14 @@ function formatCurrentSessionLifecycleError(action: CurrentSessionLifecycleActio
   return `Cannot ${action} the current Vigil session.`;
 }
 
+function resolveSpawnNoSubagents(allowSubagents?: boolean): boolean {
+  return allowSubagents !== true;
+}
+
+function buildLaunchRecordPolicy(allowSubagents?: boolean): Pick<VigilLaunchRecord, "allowSubagents"> {
+  return allowSubagents === true ? {} : { allowSubagents: false };
+}
+
 export class VigilService {
   private readonly deps: VigilServiceDeps & {
     ephemeralChildObserver: EphemeralChildObserver;
@@ -238,6 +246,8 @@ export class VigilService {
 
     let pid: number;
 
+    const noSubagents = resolveSpawnNoSubagents(input.allowSubagents);
+
     if (input.ephemeral) {
       const parentSessionId = this.deps.currentParentSessionId ?? sessionId;
       let activate: () => void;
@@ -249,6 +259,7 @@ export class VigilService {
           cwd,
           model: input.model,
           name: normalizedName,
+          ...(noSubagents ? { noSubagents: true } : {}),
           onSettled: (result) => {
             const current = this.deps.parentLedger.getLifecycle(id);
             if (!current || current.settleRecord || current.completionRecord) {
@@ -285,6 +296,7 @@ export class VigilService {
         model: input.model,
         launchedAt: turnStartedAt,
         ephemeral: true,
+        ...buildLaunchRecordPolicy(input.allowSubagents),
       };
 
       this.deps.parentLedger.appendLaunch(record);
@@ -320,6 +332,7 @@ export class VigilService {
         model: input.model,
         sessionDir: this.deps.sessionDir,
         name: normalizedName,
+        ...(noSubagents ? { noSubagents: true } : {}),
         parentSessionId,
         onFailed: (failure) => {
           this.appendBootstrapFailIfCurrent(id, sessionId, parentSessionId, failure);
@@ -339,6 +352,7 @@ export class VigilService {
       model: input.model,
       sessionDir: this.deps.sessionDir,
       launchedAt: turnStartedAt,
+      ...buildLaunchRecordPolicy(input.allowSubagents),
     };
 
     this.deps.parentLedger.appendLaunch(record);
@@ -442,6 +456,7 @@ export class VigilService {
     let activate: () => void;
     const turnStartedAt = new Date().toISOString();
     const parentSessionId = this.deps.currentParentSessionId ?? record.sessionId;
+    const noSubagents = lifecycle.allowSubagents === false;
     try {
       ({ pid, activate } = await this.deps.persistedBootstrapObserver.start({
         vigilId: record.id,
@@ -450,6 +465,7 @@ export class VigilService {
         cwd: record.cwd,
         model: input.model,
         sessionDir: record.sessionDir ?? this.deps.sessionDir,
+        ...(noSubagents ? { noSubagents: true } : {}),
         parentSessionId,
         onFailed: (failure) => {
           this.appendBootstrapFailIfCurrent(record.id, record.sessionId, parentSessionId, failure);
@@ -1405,6 +1421,9 @@ export function buildPiChildArgs(input: SpawnChildInput): string[] {
   }
   if (input.sessionDir) {
     args.push("--session-dir", input.sessionDir);
+  }
+  if (input.noSubagents) {
+    args.push("--vigil-no-subagents");
   }
   args.push(input.message);
   return args;

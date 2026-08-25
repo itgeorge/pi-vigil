@@ -27,6 +27,7 @@ export interface EphemeralLaunchInput {
   cwd: string;
   model?: string;
   name?: string;
+  noSubagents?: boolean;
   onSettled: (result: EphemeralObserverSettleResult) => void;
 }
 
@@ -260,6 +261,7 @@ export function buildPiEphemeralChildArgs(input: {
   message: string;
   model?: string;
   name?: string;
+  noSubagents?: boolean;
 }): string[] {
   const args = ["--mode", "json", "-p", "--no-session"];
   if (input.name) {
@@ -267,6 +269,9 @@ export function buildPiEphemeralChildArgs(input: {
   }
   if (input.model) {
     args.push("--model", input.model);
+  }
+  if (input.noSubagents) {
+    args.push("--vigil-no-subagents");
   }
   args.push(input.message);
   return args;
@@ -439,6 +444,7 @@ export function createNodeEphemeralChildObserver(options: {
         message: input.message,
         model: input.model,
         name: input.name,
+        noSubagents: input.noSubagents,
       });
 
       const spawnCommand = resolvePiSpawnCommand({

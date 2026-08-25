@@ -246,18 +246,25 @@ Grandchild model: same `vigil-faux/scripted` with a trivial text step so it sett
 
 ## Phase 3 — Spawn wiring + launch schema `allowSubagents`
 
-- [ ] Extend tool schema + `LaunchInput` with `allowSubagents?: boolean`.
-- [ ] When launching persisted/ephemeral child and `allowSubagents !== true`, pass `--vigil-no-subagents` via `SpawnChildInput`.
-- [ ] Persist enough on `VigilLaunchRecord` for `send` to re-apply the flag (e.g. `allowSubagents?: false` or `noSubagents?: true`).
-- [ ] `send` respawn re-applies flag when recorded.
-- [ ] Compact call rendering: show a bounded indicator when `allowSubagents: true` (and optionally when explicitly false — prefer only show opt-in).
-- [ ] Unit tests for argv building and schema/adapter dispatch.
-- [ ] README public API blurb for `allowSubagents`.
-- [ ] Record evidence.
+- [x] Extend tool schema + `LaunchInput` with `allowSubagents?: boolean`.
+- [x] When launching persisted/ephemeral child and `allowSubagents !== true`, pass `--vigil-no-subagents` via `SpawnChildInput`.
+- [x] Persist enough on `VigilLaunchRecord` for `send` to re-apply the flag (e.g. `allowSubagents?: false` or `noSubagents?: true`).
+- [x] `send` respawn re-applies flag when recorded.
+- [x] Compact call rendering: show a bounded indicator when `allowSubagents: true` (and optionally when explicitly false — prefer only show opt-in).
+- [x] Unit tests for argv building and schema/adapter dispatch.
+- [x] README public API blurb for `allowSubagents`.
+- [x] Record evidence.
 
 ### Progress notes — Phase 3
 
-_(implementer fills)_
+**2026-08-25 — GREEN evidence** (`npm run test:unit -- test/unit/vigil/cli-boundary.test.ts test/unit/vigil/nesting-spawn-wiring.test.ts test/unit/vigil/nesting-session-start.test.ts`; `npm run typecheck`)
+
+- `buildPiChildArgs` / `buildPiEphemeralChildArgs` insert `--vigil-no-subagents` when `noSubagents: true`.
+- `VigilService.launch` wires `noSubagents` for persisted + ephemeral paths; default launch records `allowSubagents: false`; opt-in allow omits field/flag.
+- `VigilService.send` re-reads lifecycle launch policy and re-applies `noSubagents` on respawn.
+- Tool schema + adapter dispatch `allowSubagents`; compact launch render shows `allow subagents` only when true.
+- Renamed malformed-policy session_start test to reflect deny stamp after malformed entries.
+- README documents `allowSubagents` default deny + send re-apply behavior.
 
 ---
 
