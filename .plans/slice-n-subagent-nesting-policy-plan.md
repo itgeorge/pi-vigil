@@ -220,15 +220,27 @@ Grandchild model: same `vigil-faux/scripted` with a trivial text step so it sett
 
 ## Phase 2 — Flag registration + session_start stamp
 
-- [ ] Failing tests for: flag registration surface (harness mock), session_start appends `vigil-policy` when flag set and no prior entry; idempotent when entry exists.
-- [ ] `registerFlag("vigil-no-subagents", …)` in `registerVigilExtension`.
-- [ ] Extend `session_start` to stamp deny policy from flag.
-- [ ] Ensure harness `createVigilTestHarness` can simulate `getFlag` / `registerFlag` if needed for unit tests.
-- [ ] Green tests; record evidence.
+- [x] Failing tests for: flag registration surface (harness mock), session_start appends `vigil-policy` when flag set and no prior entry; idempotent when entry exists.
+- [x] `registerFlag("vigil-no-subagents", …)` in `registerVigilExtension`.
+- [x] Extend `session_start` to stamp deny policy from flag.
+- [x] Ensure harness `createVigilTestHarness` can simulate `getFlag` / `registerFlag` if needed for unit tests.
+- [x] Green tests; record evidence.
 
 ### Progress notes — Phase 2
 
-_(implementer fills)_
+**2026-08-25 — RED evidence** (`npm run test:unit -- test/unit/vigil/nesting-session-start.test.ts`)
+
+1. **`registers the vigil-no-subagents flag as a boolean with default false`** — `AssertionError: expected undefined to deeply equal ArrayContaining{…}` (`harness.registeredFlags` undefined; flag not registered yet).
+2. **`appends a deny vigil-policy entry on session_start when the flag is set and no valid policy exists`** — `AssertionError: expected [] to deep equally contain { customType: 'vigil-policy', data: { allowSubagents: false } }`.
+3. **`does not append vigil-policy on session_start when only malformed policy entries exist`** — same empty `capturedEntries` assertion (stamp not implemented).
+4. **`does not append vigil-policy on session_start when a valid policy entry already exists`** — passed vacuously (no stamp attempted).
+
+**2026-08-25 — GREEN evidence** (`npm run test:unit -- test/unit/vigil/nesting-session-start.test.ts test/unit/vigil/nesting-policy.test.ts test/unit/vigil/nesting-launch-gate.test.ts`; `npm run typecheck`; full `npm run test:unit` 411/411)
+
+- `nesting-session-start.test.ts`: 4/4 passed — flag registration surface, deny stamp on `session_start`, idempotent when valid policy exists, stamp after malformed-only entries.
+- Harness: `registeredFlags`, `setFlag`, `noSubagentsFlag`, `skipSessionStart` options; mock `registerFlag` / `getFlag` on synthetic `ExtensionAPI`.
+- `findFirstValidVigilPolicyAllowSubagents` exported from `nesting-policy.ts` and reused in `session_start` stamp guard + `resolveNestedLaunchAllowed`.
+- `registerVigilExtension`: `pi.registerFlag("vigil-no-subagents", { type: "boolean", default: false, … })`; `session_start` appends `vigil-policy` `{ allowSubagents: false }` when flag set and no valid policy entry.
 
 ---
 

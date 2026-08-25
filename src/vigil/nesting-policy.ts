@@ -30,12 +30,21 @@ function parseVigilPolicyAllowSubagents(entry: SessionEntry): boolean | null {
   return allowSubagents;
 }
 
-export function resolveNestedLaunchAllowed(input: ResolveNestedLaunchAllowedInput): boolean {
-  for (const entry of input.entries) {
+export function findFirstValidVigilPolicyAllowSubagents(entries: SessionEntry[]): boolean | null {
+  for (const entry of entries) {
     const allowSubagents = parseVigilPolicyAllowSubagents(entry);
     if (allowSubagents !== null) {
       return allowSubagents;
     }
+  }
+
+  return null;
+}
+
+export function resolveNestedLaunchAllowed(input: ResolveNestedLaunchAllowedInput): boolean {
+  const firstValidPolicy = findFirstValidVigilPolicyAllowSubagents(input.entries);
+  if (firstValidPolicy !== null) {
+    return firstValidPolicy;
   }
 
   if (input.noSubagentsFlag === true) {

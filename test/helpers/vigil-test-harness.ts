@@ -1,6 +1,5 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import {
-  createExtensionRuntime,
   SessionManager,
   type ExtensionAPI,
   type ExtensionContext,
@@ -14,12 +13,23 @@ export interface CapturedEntry {
   data: unknown;
 }
 
+export interface RegisteredFlag {
+  name: string;
+  options: {
+    description?: string;
+    type: "boolean" | "string";
+    default?: boolean | string;
+  };
+}
+
 export interface VigilTestHarness {
   tool: ToolDefinition;
   sessionManager: SessionManager;
   capturedEntries: CapturedEntry[];
+  registeredFlags: RegisteredFlag[];
   ctx: ExtensionContext;
   emitExtensionEvent: (event: "session_start" | "session_tree") => Promise<void>;
+  setFlag: (name: string, value: boolean | string | undefined) => void;
   execute: (
     params: Record<string, unknown>,
     signal?: AbortSignal,
@@ -30,21 +40,35 @@ export interface VigilTestHarness {
 export async function createVigilTestHarness(options?: {
   cwd?: string;
   modelRegistry?: ExtensionContext["modelRegistry"];
+  noSubagentsFlag?: boolean;
+  skipSessionStart?: boolean;
 }): Promise<VigilTestHarness> {
   const cwd = options?.cwd ?? process.cwd();
   const sessionManager = SessionManager.inMemory(cwd);
   const capturedEntries: CapturedEntry[] = [];
-  const runtime = createExtensionRuntime();
+  const registeredFlags: RegisteredFlag[] = [];
+  const flagValues = new Map<string, boolean | string>();
   const eventHandlers = new Map<string, Array<(event: ExtensionEvent, ctx: ExtensionContext) => void | Promise<void>>>();
 
-  runtime.appendEntry = (customType, data) => {
+  const appendEntry: ExtensionAPI["appendEntry"] = (customType, data) => {
     capturedEntries.push({ customType, data });
     sessionManager.appendCustomEntry(customType, data);
   };
 
+  const registerFlag: ExtensionAPI["registerFlag"] = (name, flagOptions) => {
+    registeredFlags.push({ name, options: flagOptions });
+    if (flagOptions.default !== undefined) {
+      flagValues.set(name, flagOptions.default);
+    }
+  };
+
+  const getFlag: ExtensionAPI["getFlag"] = (name) => flagValues.get(name);
+
   let registeredTool: ToolDefinition | undefined;
   const api = {
-    appendEntry: runtime.appendEntry,
+    appendEntry,
+    registerFlag,
+    getFlag,
     registerTool: (tool: ToolDefinition) => {
       registeredTool = tool;
     },
@@ -63,6 +87,18 @@ export async function createVigilTestHarness(options?: {
 
   const ctx = createExtensionContext(sessionManager, cwd, options?.modelRegistry);
 
+  function setFlag(name: string, value: boolean | string | undefined): void {
+    if (value === undefined) {
+      flagValues.delete(name);
+      return;
+    }
+    flagValues.set(name, value);
+  }
+
+  if (options?.noSubagentsFlag) {
+    setFlag("vigil-no-subagents", true);
+  }
+
   async function emitExtensionEvent(event: "session_start" | "session_tree"): Promise<void> {
     const payload = { type: event } as ExtensionEvent;
     for (const handler of eventHandlers.get(event) ?? []) {
@@ -70,14 +106,18 @@ export async function createVigilTestHarness(options?: {
     }
   }
 
-  await emitExtensionEvent("session_start");
+  if (!options?.skipSessionStart) {
+    await emitExtensionEvent("session_start");
+  }
 
   return {
     tool: registeredTool,
     sessionManager,
     capturedEntries,
+    registeredFlags,
     ctx,
     emitExtensionEvent,
+    setFlag,
     execute: (params, signal, onUpdate) =>
       registeredTool!.execute("test-call-id", params, signal, onUpdate, ctx),
   };

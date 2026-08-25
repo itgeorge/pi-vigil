@@ -21,6 +21,7 @@ import {
   listAvailableModels,
   type VigilAvailableModelsResult,
 } from "./vigil/available-models";
+import { findFirstValidVigilPolicyAllowSubagents } from "./vigil/nesting-policy";
 import {
   formatListText,
   formatMutationSnapshotText,
@@ -461,8 +462,22 @@ export function registerVigilExtension(pi: ExtensionAPI): ToolDefinition {
     ? () => pi.getFlag("vigil-no-subagents") === true
     : undefined;
 
+  pi.registerFlag("vigil-no-subagents", {
+    description: "Deny Vigil nested launch in this session (stamped into vigil-policy on session_start)",
+    type: "boolean",
+    default: false,
+  });
+
   pi.on("session_start", (_event, ctx) => {
     refreshVigilDisplayNameCache(ctx);
+
+    if (pi.getFlag("vigil-no-subagents") === true) {
+      const hasValidPolicy =
+        findFirstValidVigilPolicyAllowSubagents(ctx.sessionManager.getEntries()) !== null;
+      if (!hasValidPolicy) {
+        appendEntryForTool("vigil-policy", { allowSubagents: false });
+      }
+    }
   });
   pi.on("session_tree", (_event, ctx) => {
     refreshVigilDisplayNameCache(ctx);
