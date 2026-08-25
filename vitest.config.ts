@@ -18,6 +18,14 @@ export default defineConfig({
           hookTimeout: 180_000,
         },
       },
+      {
+        test: {
+          name: "faux-acceptance",
+          include: ["test/faux-acceptance/**/*.test.ts"],
+          testTimeout: 60_000,
+          hookTimeout: 60_000,
+        },
+      },
     ],
   },
 });

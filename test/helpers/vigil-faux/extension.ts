@@ -38,6 +38,7 @@ export default function vigilFauxExtension(pi: ExtensionAPI): void {
 
   pi.registerProvider(VIGIL_FAUX_PROVIDER_ID, {
     name: "Vigil Faux",
+    baseUrl: "faux://localhost",
     apiKey: "vigil-faux-test-key",
     api: core.api as Api,
     models: core.models.map((model) => ({

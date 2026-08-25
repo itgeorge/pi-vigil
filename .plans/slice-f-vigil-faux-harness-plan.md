@@ -303,21 +303,51 @@ Keep `npm test` / `npm run check` on unit + typecheck + pack:verify (do not forc
 
 ## Phase 4 — Faux acceptance smoke (real detached child)
 
-- [ ] Wire vitest project `faux-acceptance` (or equivalent) **without** live auth setup.
-- [ ] Add smoke test file that:
+- [x] Wire vitest project `faux-acceptance` (or equivalent) **without** live auth setup.
+- [x] Add smoke test file that:
   1. Writes a script: when user text includes a unique marker → reply with that marker text;
   2. Sets `PI_VIGIL_FAUX_SCRIPT` for child env (processRunner must forward env);
   3. `setVigilRuntimeOverrides` with faux process runner + isolated `PI_VIGIL_SESSION_DIR`;
   4. `createVigilTestHarness` → `launch` with `model: "vigil-faux/scripted"` and message containing the marker;
   5. `wait` until settled; assert `latestResponse` contains the marker;
   6. Second launch/message with unmatched text → settled response contains `fake model: doesn't support this request`.
-- [ ] Prove red then green; keep timeouts bounded (faux should be fast; default acceptance timeouts may be oversized — use tighter local defaults if safe).
-- [ ] If child fails to load extension/model, capture stderr approach notes; fix spawn/env/`stdio` only as needed for diagnosis (prefer not regressing production stderr discard; test runner may use a diagnostic spawn wrapper).
+- [x] Prove red then green; keep timeouts bounded (faux should be fast; default acceptance timeouts may be oversized — use tighter local defaults if safe).
+- [x] If child fails to load extension/model, capture stderr approach notes; fix spawn/env/`stdio` only as needed for diagnosis (prefer not regressing production stderr discard; test runner may use a diagnostic spawn wrapper).
 - [ ] Optional stretch (same phase if cheap): one toolCall script step that calls a no-op or `vigil` list — only if it does not expand scope into Slice N. Otherwise leave a checkbox under Follow-ups.
 
 ### Progress notes — Phase 4
 
-_(implementer fills)_
+**Red (initial run before extension `baseUrl` fix):**
+
+**Command:** `npx vitest run --project faux-acceptance`
+
+**Result:** 1 file, 2 tests failed (2).
+
+**Exact red failures:**
+
+1. `returns scripted marker text when the user message matches` — `latestResponse` was `null`; `toContain(marker)` failed with invalid assertion args.
+2. `returns fallback text when the user message does not match any script step` — same (`latestResponse` null).
+
+**Root cause (manual `pi` repro):** child stderr showed `Provider vigil-faux: "baseUrl" is required when defining custom models.` → extension failed to register → `Model "vigil-faux/scripted" not found`.
+
+**Fix:** add `baseUrl: "faux://localhost"` to `test/helpers/vigil-faux/extension.ts` `registerProvider` config.
+
+**Green:**
+
+**Command:** `npx vitest run --project faux-acceptance`
+
+**Result:** 1 file, 2 tests passed (2) — ~7s total.
+
+**Command:** `npx vitest run --project unit test/unit/vigil-faux/`
+
+**Result:** 3 files, 18 tests passed (18).
+
+**Implemented:**
+- `vitest.config.ts` — added `faux-acceptance` project (60s timeout, no live setup).
+- `test/faux-acceptance/vigil-faux-smoke.test.ts` — marker-match and fallback smoke tests with per-test temp dirs, env (`PI_VIGIL_FAUX_SCRIPT`, `PI_VIGIL_SESSION_DIR`), `setVigilRuntimeOverrides({ processRunner: createVigilFauxProcessRunner() })`, targeted `wait` (`timeoutMs: 30000`, `initialDelayMs: 100`, `maxDelayMs: 1000`).
+- `test/helpers/vigil-faux/extension.ts` — `baseUrl` required by pi-coding-agent provider composer for custom models.
+
+**Spawn approach:** wrapper injects `--extension <faux ext>` before prompt; child inherits parent env for `PI_VIGIL_FAUX_SCRIPT`. No extra `-e` for local Vigil in child — smoke only needs faux model text replies, not nested `vigil` tool calls. Production `stdio: "ignore"` unchanged; stderr diagnosis via manual `pi` repro (no `PI_VIGIL_FAUX_DEBUG` wrapper needed after baseUrl fix).
 
 ---
 
