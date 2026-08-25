@@ -226,18 +226,39 @@ Keep `npm test` / `npm run check` on unit + typecheck + pack:verify (do not forc
 
 ## Phase 2 — Cross-process extension
 
-- [ ] Add failing unit/smoke test that loads the extension module’s registration function (or runs a tiny in-process Pi-style `registerProvider` mock) and asserts provider id `vigil-faux` / model `scripted`.
-- [ ] Implement `test/helpers/vigil-faux/extension.ts` as a Pi extension default export:
+- [x] Add failing unit/smoke test that loads the extension module’s registration function (or runs a tiny in-process Pi-style `registerProvider` mock) and asserts provider id `vigil-faux` / model `scripted`.
+- [x] Implement `test/helpers/vigil-faux/extension.ts` as a Pi extension default export:
   - read `PI_VIGIL_FAUX_SCRIPT`;
   - parse script;
   - `createFauxCore` + `setResponses` with a factory that calls the matcher on each request (re-queue factory so every call goes through matcher — do not rely on a finite in-memory queue alone);
   - `pi.registerProvider("vigil-faux", { name, apiKey, api, models, streamSimple })`.
-- [ ] Document required env + `--model vigil-faux/scripted` in a short `test/helpers/vigil-faux/README.md`.
-- [ ] Green the extension registration test(s).
+- [x] Document required env + `--model vigil-faux/scripted` in a short `test/helpers/vigil-faux/README.md`.
+- [x] Green the extension registration test(s).
 
 ### Progress notes — Phase 2
 
-_(implementer fills)_
+**Red (initial run before `extension.ts` existed):**
+
+**Command:** `npx vitest run --project unit test/unit/vigil-faux/extension.test.ts`
+
+**Result:** 1 file failed; 0 tests (transform/import error).
+
+**Exact red failure:** `Error: Failed to resolve import "../../helpers/vigil-faux/extension.js" from "test/unit/vigil-faux/extension.test.ts"` — module not found.
+
+**Green:**
+
+**Command:** `npx vitest run --project unit test/unit/vigil-faux/`
+
+**Result:** 2 files, 12 tests passed (12) — `script-matcher.test.ts` (8) + `extension.test.ts` (4).
+
+**Command:** `npm run typecheck`
+
+**Result:** clean (`tsc --noEmit`).
+
+**Implemented:**
+- `test/helpers/vigil-faux/extension.ts` — reads `PI_VIGIL_FAUX_SCRIPT`, parses script, wires `createFauxCore` with re-queued matcher factory, registers `vigil-faux` provider + `scripted` model.
+- `test/unit/vigil-faux/extension.test.ts` — mock `ExtensionAPI` captures `registerProvider`; asserts provider/model ids; streams once for scripted match and fallback via captured `streamSimple`.
+- `test/helpers/vigil-faux/README.md` — env + `--extension` + `--model vigil-faux/scripted` usage.
 
 ---
 
