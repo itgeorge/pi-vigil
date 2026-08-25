@@ -168,7 +168,7 @@ For local development and CI, the same Pi packages are listed as **version-pinne
 npm install
 npm test          # deterministic unit tests
 npm run typecheck
-npm run check     # typecheck + unit tests + package surface verification
+npm run check     # typecheck + unit tests + faux acceptance + package surface verification
 ```
 
 ## License

@@ -43,7 +43,7 @@
     "test:faux": "vitest run --project faux-acceptance",
     "typecheck": "tsc --noEmit",
     "pack:verify": "node --experimental-strip-types scripts/verify-package-surface.ts",
-    "check": "npm run typecheck && npm test && npm run pack:verify",
+    "check": "npm run typecheck && npm test && npm run test:faux && npm run pack:verify",
     "prepublishOnly": "npm run check"
   },
   "peerDependencies": {
