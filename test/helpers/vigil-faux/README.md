@@ -24,6 +24,11 @@ For parent harness spawns, prefer `createVigilFauxProcessRunner({ loadLocalVigil
 
 Provider id: `vigil-faux`. Model id: `scripted`. Unmatched prompts receive the default fallback: `fake model: doesn't support this request`.
 
+### Placeholders and delays
+
+- Tool-call `arguments` may use whole-string placeholders `$launch[N].id` (0-based, first-seen successful `vigil` launch tool results in context). Unresolved indices throw a controlled error.
+- Optional `delayMs` on a step (integer `0`–`60000`) sleeps before emitting the matched response (used to stagger child replies in orchestration tests).
+
 The extension sets `baseUrl: "faux://localhost"` internally (required by pi-coding-agent for custom models); callers do not need to configure it.
 
 ## Running tests

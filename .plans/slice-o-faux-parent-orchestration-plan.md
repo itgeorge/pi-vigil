@@ -194,15 +194,31 @@ Parent must set `PI_VIGIL_FAUX_BOOTSTRAP_RUNNER=1` so when parent Vigil launches
 
 ## Phase 1 — Green: matcher/script support
 
-- [ ] Extend `VigilFauxStep` + parse validation for optional `delayMs`.
-- [ ] Implement placeholder substitution + launch-id capture from context.
-- [ ] Wire into matcher response build for toolCall args.
-- [ ] Green Phase 0 tests; update faux README briefly.
-- [ ] Record green evidence.
+- [x] Extend `VigilFauxStep` + parse validation for optional `delayMs`.
+- [x] Implement placeholder substitution + launch-id capture from context.
+- [x] Wire into matcher response build for toolCall args.
+- [x] Green Phase 0 tests; update faux README briefly.
+- [x] Record green evidence.
 
 ### Progress notes — Phase 1
 
-_(implementer fills)_
+**Command:** `npx vitest run --project unit test/unit/vigil-faux/`
+
+**Result:** 4 files, 30 tests passed (30) — includes `launch-placeholders.test.ts` (8) and `delayMs` script-matcher test.
+
+**Command:** `npm run test:faux`
+
+**Result:** 2 files, 4 tests passed (4) — smoke + nesting faux unchanged.
+
+**Command:** `npm run typecheck`
+
+**Result:** clean.
+
+**Implemented:**
+- `test/helpers/vigil-faux/placeholders.ts` — `substituteLaunchPlaceholders` (whole-string `$launch[N].id` only), `extractLaunchIdsFromContext` (ordered ids from successful vigil launch tool results; `details.id` preferred, `id:` text fallback), `VigilFauxPlaceholderError`.
+- `test/helpers/vigil-faux/matcher.ts` — substitution wired into `toolCall` / `textAndToolCall` args; `delayMs` via `Atomics.wait` sync sleep before response.
+- `test/helpers/vigil-faux/script.ts` — optional `delayMs` on step; parse validates integer `0`–`60000` (`VIGIL_FAUX_MAX_DELAY_MS`).
+- `test/helpers/vigil-faux/README.md` — placeholders + `delayMs` note.
 
 ---
 

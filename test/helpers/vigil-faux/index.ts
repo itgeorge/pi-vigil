@@ -1,5 +1,6 @@
 export {
   VIGIL_FAUX_DEFAULT_FALLBACK_TEXT,
+  VIGIL_FAUX_MAX_DELAY_MS,
   VigilFauxScriptError,
   parseVigilFauxScript,
   type VigilFauxScript,

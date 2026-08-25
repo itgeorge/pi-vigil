@@ -10,6 +10,7 @@ import type {
   Message,
   TextContent,
 } from "@earendil-works/pi-ai";
+import { extractLaunchIdsFromContext, substituteLaunchPlaceholders } from "./placeholders.js";
 import {
   VIGIL_FAUX_DEFAULT_FALLBACK_TEXT,
   type VigilFauxScript,
@@ -18,6 +19,16 @@ import {
 
 export interface VigilFauxScriptMatcher {
   match(context: Context): AssistantMessage;
+}
+
+function sleepSync(ms: number): void {
+  if (ms <= 0) {
+    return;
+  }
+
+  const buffer = new SharedArrayBuffer(4);
+  const view = new Int32Array(buffer);
+  Atomics.wait(view, 0, 0, ms);
 }
 
 function userContentToText(content: string | (TextContent | ImageContent)[]): string {
@@ -42,20 +53,23 @@ function getLatestUserText(messages: Message[]): string {
   return "";
 }
 
-function buildStepResponse(then: VigilFauxStepThen): AssistantMessage {
+function buildStepResponse(then: VigilFauxStepThen, launchIds: string[]): AssistantMessage {
   switch (then.type) {
     case "text":
       return fauxAssistantMessage(then.text, { stopReason: "stop" });
-    case "toolCall":
-      return fauxAssistantMessage(fauxToolCall(then.name, then.arguments), {
+    case "toolCall": {
+      const arguments_ = substituteLaunchPlaceholders(then.arguments, launchIds) as Record<string, unknown>;
+      return fauxAssistantMessage(fauxToolCall(then.name, arguments_), {
         stopReason: "toolUse",
       });
+    }
     case "textAndToolCall": {
+      const arguments_ = substituteLaunchPlaceholders(then.arguments, launchIds) as Record<string, unknown>;
       const content = [];
       if (then.text !== undefined) {
         content.push(fauxText(then.text));
       }
-      content.push(fauxToolCall(then.name, then.arguments));
+      content.push(fauxToolCall(then.name, arguments_));
       return fauxAssistantMessage(content, { stopReason: "toolUse" });
     }
   }
@@ -72,6 +86,7 @@ export function createScriptMatcher(script: VigilFauxScript): VigilFauxScriptMat
   return {
     match(context: Context): AssistantMessage {
       const userText = getLatestUserText(context.messages);
+      const launchIds = extractLaunchIdsFromContext(context);
 
       for (let index = 0; index < script.steps.length; index++) {
         const step = script.steps[index];
@@ -89,7 +104,11 @@ export function createScriptMatcher(script: VigilFauxScript): VigilFauxScriptMat
           consumedStepIndices.add(index);
         }
 
-        return buildStepResponse(step.then);
+        if (step.delayMs !== undefined && step.delayMs > 0) {
+          sleepSync(step.delayMs);
+        }
+
+        return buildStepResponse(step.then, launchIds);
       }
 
       return buildFallbackResponse(fallbackText);
