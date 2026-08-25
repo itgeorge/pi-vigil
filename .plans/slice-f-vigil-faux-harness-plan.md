@@ -167,19 +167,37 @@ Keep `npm test` / `npm run check` on unit + typecheck + pack:verify (do not forc
 
 ## Phase 0 — Red: lock script matcher contract
 
-- [ ] Add `test/unit/vigil-faux/script-matcher.test.ts` with failing tests for:
+- [x] Add `test/unit/vigil-faux/script-matcher.test.ts` with failing tests for:
   - default fallback string when no step matches;
   - `userTextIncludes` match returns text step;
   - match returns toolCall step with name/arguments;
   - one-shot steps are consumed (second call with same text → fallback or next step);
   - reusable steps can match again;
   - invalid script (bad version / missing steps) throws a controlled error.
-- [ ] Add minimal exported stubs or leave imports failing — record the **exact red** output in Progress notes.
-- [ ] Do not implement matcher logic yet beyond what is required for TypeScript to typecheck the test file if needed; prefer red from missing module / failing assertions.
+- [x] Add minimal exported stubs or leave imports failing — record the **exact red** output in Progress notes.
+- [x] Do not implement matcher logic yet beyond what is required for TypeScript to typecheck the test file if needed; prefer red from missing module / failing assertions.
 
 ### Progress notes — Phase 0
 
-_(implementer fills)_
+**Command:** `npx vitest run --project unit test/unit/vigil-faux/script-matcher.test.ts`
+
+**Result:** 1 file, 8 tests failed (8).
+
+**Stubs added (no real matcher/parse logic):**
+- `test/helpers/vigil-faux/script.ts` — types, `VigilFauxScriptError`, `VIGIL_FAUX_DEFAULT_FALLBACK_TEXT`, passthrough `parseVigilFauxScript`
+- `test/helpers/vigil-faux/matcher.ts` — `createScriptMatcher` returns `fauxAssistantMessage("NOT_IMPLEMENTED")`
+- `test/helpers/vigil-faux/index.ts` — re-exports
+
+**Exact red failures:**
+
+1. `parseVigilFauxScript > throws a controlled error for an unsupported version` — `AssertionError: expected function to throw an error, but it didn't`
+2. `parseVigilFauxScript > throws a controlled error when steps is missing` — `AssertionError: expected function to throw an error, but it didn't`
+3. `createScriptMatcher > returns the default fallback when no step matches` — `expected 'NOT_IMPLEMENTED' to be 'fake model: doesn\'t support this request'`
+4. `createScriptMatcher > returns a text step when userTextIncludes matches the latest user message` — `expected 'NOT_IMPLEMENTED' to be 'scripted reply'`
+5. `createScriptMatcher > returns a toolCall step with the configured name and arguments` — `expected undefined to be 'vigil'`
+6. `createScriptMatcher > consumes one-shot steps so a second match falls back` — `expected 'NOT_IMPLEMENTED' to be 'first hit'`
+7. `createScriptMatcher > advances to the next step after a consumed one-shot step matches again` — `expected 'NOT_IMPLEMENTED' to be 'step one'`
+8. `createScriptMatcher > matches reusable steps on every call` — `expected 'NOT_IMPLEMENTED' to be 'repeatable'`
 
 ---
 
