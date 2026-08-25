@@ -16,6 +16,12 @@ Relevant milestones:
 
 ---
 
+## Faux harness (Slice F)
+
+Test-only `vigil-faux` scripted provider for deterministic acceptance without `PI_VIGIL_LIVE`. Run `npm run test:faux`. Reuse this harness for upcoming nesting-policy e2e (Slice N).
+
+---
+
 ## 1. Explicit multi-child `waitAll`
 
 **Why:** Targeted `wait({ id })` avoids unrelated siblings settling a wait. Coordinating several selected children is still awkward when the caller needs every selected child to become quiescent.

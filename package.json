@@ -40,6 +40,7 @@
     "test": "vitest run --project unit",
     "test:unit": "vitest run --project unit",
     "test:acceptance": "vitest run --project acceptance",
+    "test:faux": "vitest run --project faux-acceptance",
     "typecheck": "tsc --noEmit",
     "pack:verify": "node --experimental-strip-types scripts/verify-package-surface.ts",
     "check": "npm run typecheck && npm test && npm run pack:verify",

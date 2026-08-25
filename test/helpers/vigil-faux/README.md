@@ -19,3 +19,13 @@ pi --extension /absolute/path/to/test/helpers/vigil-faux/extension.ts \
 ```
 
 Provider id: `vigil-faux`. Model id: `scripted`. Unmatched prompts receive the default fallback: `fake model: doesn't support this request`.
+
+The extension sets `baseUrl: "faux://localhost"` internally (required by pi-coding-agent for custom models); callers do not need to configure it.
+
+## Running tests
+
+```bash
+npm run test:faux
+```
+
+Runs the `faux-acceptance` vitest project (real detached child smoke tests, no live LLM auth).

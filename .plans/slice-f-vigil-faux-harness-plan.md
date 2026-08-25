@@ -353,14 +353,37 @@ Keep `npm test` / `npm run check` on unit + typecheck + pack:verify (do not forc
 
 ## Phase 5 — Close-out
 
-- [ ] Add `test:faux` npm script; document in Slice F progress / optional-followups pointer.
-- [ ] Run `npm run typecheck`, `npm test`, `npm run pack:verify`, and `npm run test:faux`; record results.
-- [ ] Mark all phase items complete; note residual risks for Slice N (nesting deny/allow e2e will reuse this harness).
-- [ ] No production README marketing required; a one-line pointer in `optional-followups.md` under a “Faux harness” note is enough.
+- [x] Add `test:faux` npm script; document in Slice F progress / optional-followups pointer.
+- [x] Run `npm run typecheck`, `npm test`, `npm run pack:verify`, and `npm run test:faux`; record results.
+- [x] Mark all phase items complete; note residual risks for Slice N (nesting deny/allow e2e will reuse this harness).
+- [x] No production README marketing required; a one-line pointer in `optional-followups.md` under a "Faux harness" note is enough.
 
 ### Progress notes — Phase 5
 
-_(implementer fills)_
+**Command:** `npm run typecheck`
+
+**Result:** clean (`tsc --noEmit`).
+
+**Command:** `npm test`
+
+**Result:** 46 files, 393 passed, **1 failed** (pre-existing / unrelated to Slice F).
+
+**Failure:** `test/unit/vigil/pi-spawn-command.test.ts` → `derivePiCliEntrypointFromPackageIndex > derives sibling dist/cli.js from dist/index.js` — expected full Windows path, received `cli.js`.
+
+**Command:** `npm run pack:verify`
+
+**Result:** clean — `package surface ok (24 tarball entries)`.
+
+**Command:** `npm run test:faux`
+
+**Result:** 1 file, 2 tests passed (2) — ~7s.
+
+**Close-out edits:**
+- `package.json` — added `"test:faux": "vitest run --project faux-acceptance"`.
+- `optional-followups.md` — brief "Faux harness (Slice F)" pointer (`vigil-faux`, `npm run test:faux`, reuse for Slice N).
+- `test/helpers/vigil-faux/README.md` — noted internal `baseUrl` handling and `npm run test:faux`.
+
+**Residual risks for Slice N:** nesting-policy e2e will need faux script `toolCall` steps that invoke `vigil({ action: "launch", ... })`; child must load Vigil extension (may need explicit `-e` to local `src/index.ts` in spawn wrapper). Default-deny vs explicit-allow cases not yet covered by faux smoke (text-only marker match today).
 
 ---
 
@@ -375,3 +398,4 @@ _(implementer fills)_
 ## Progress log
 
 - 2026-08-25: Plan created after design discussion. Build on pi-ai faux; cross-process via test extension + script file; default deny nesting deferred to Slice N. Implementer model: `cursor/composer-2.5:high`.
+- 2026-08-25: **Slice F complete (Phases 0–5).** Faux harness, unit tests, faux-acceptance smoke, `test:faux` script, docs pointers. Slice N not started.
