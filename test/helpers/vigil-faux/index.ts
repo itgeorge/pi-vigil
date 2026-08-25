@@ -30,3 +30,10 @@ export {
   type CreateVigilFauxProcessRunnerOptions,
   type InsertVigilFauxExtensionArgsOptions,
 } from "./process-runner.js";
+export {
+  readVigilLedgerFromSessionFile,
+  spawnVigilFauxParentPi,
+  type SpawnVigilFauxParentPiInput,
+  type SpawnVigilFauxParentPiResult,
+  type VigilLedgerEntries,
+} from "./parent-spawn.js";

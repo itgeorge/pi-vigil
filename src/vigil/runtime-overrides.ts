@@ -22,16 +22,29 @@ export interface VigilRuntimeOverrides {
   sessionDir?: string;
 }
 
-let runtimeOverrides: VigilRuntimeOverrides = {};
+const RUNTIME_OVERRIDES_GLOBAL_KEY = Symbol.for("pi-vigil.runtime-overrides");
+
+type GlobalWithVigilRuntimeOverrides = typeof globalThis & {
+  [RUNTIME_OVERRIDES_GLOBAL_KEY]?: VigilRuntimeOverrides;
+};
+
+function getRuntimeOverridesStore(): VigilRuntimeOverrides {
+  const globalStore = globalThis as GlobalWithVigilRuntimeOverrides;
+  if (!globalStore[RUNTIME_OVERRIDES_GLOBAL_KEY]) {
+    globalStore[RUNTIME_OVERRIDES_GLOBAL_KEY] = {};
+  }
+  return globalStore[RUNTIME_OVERRIDES_GLOBAL_KEY]!;
+}
 
 export function setVigilRuntimeOverrides(overrides: VigilRuntimeOverrides): void {
-  runtimeOverrides = { ...runtimeOverrides, ...overrides };
+  Object.assign(getRuntimeOverridesStore(), overrides);
 }
 
 export function resetVigilRuntimeOverrides(): void {
-  runtimeOverrides = {};
+  const globalStore = globalThis as GlobalWithVigilRuntimeOverrides;
+  globalStore[RUNTIME_OVERRIDES_GLOBAL_KEY] = {};
 }
 
 export function getVigilRuntimeOverrides(): VigilRuntimeOverrides {
-  return runtimeOverrides;
+  return getRuntimeOverridesStore();
 }

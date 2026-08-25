@@ -12,6 +12,20 @@ import { buildPiSpawnArgs, resolvePiSpawnCommand } from "../../../src/vigil/pi-s
 import type { VigilFauxScript } from "./script.js";
 
 const FAUX_SCRIPT_FILENAME = "vigil-faux-script.json";
+const FAUX_MODEL_ID = "vigil-faux/scripted";
+
+function normalizeFauxSpawnModel(model?: string): string | undefined {
+  if (!model?.trim()) {
+    return undefined;
+  }
+
+  const trimmed = model.trim();
+  if (trimmed === FAUX_MODEL_ID || trimmed.startsWith(`${FAUX_MODEL_ID}:`)) {
+    return FAUX_MODEL_ID;
+  }
+
+  return trimmed;
+}
 
 export function writeVigilFauxScript(dir: string, script: VigilFauxScript): string {
   const scriptPath = resolve(dir, FAUX_SCRIPT_FILENAME);
@@ -81,7 +95,12 @@ export function createVigilFauxProcessRunner(
 
   return {
     spawnDetached(input: SpawnChildInput) {
-      return spawnDetachedPiChild(piExecutable, input, {
+      const normalizedInput = {
+        ...input,
+        model: normalizeFauxSpawnModel(input.model),
+      };
+
+      return spawnDetachedPiChild(piExecutable, normalizedInput, {
         platform: options.platform,
         resolvePiCliEntrypoint: options.resolvePiCliEntrypoint,
         spawnChild: (command, args, spawnOptions) => {
@@ -106,7 +125,10 @@ export function buildVigilFauxPiChildArgs(
   options: InsertVigilFauxExtensionArgsOptions = {},
 ): string[] {
   const spawnCommand = resolvePiSpawnCommand();
-  const childArgs = buildPiChildArgs(input);
+  const childArgs = buildPiChildArgs({
+    ...input,
+    model: normalizeFauxSpawnModel(input.model),
+  });
   const spawnArgs = buildPiSpawnArgs(spawnCommand, childArgs);
   return insertVigilFauxExtensionArgs(spawnArgs, options);
 }

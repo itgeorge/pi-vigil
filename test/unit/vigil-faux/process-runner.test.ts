@@ -212,5 +212,22 @@ describe("vigil-faux process runner helpers", () => {
         expect.arrayContaining(["-ne", "-e", localVigilExtensionPath, "-e", fauxExtensionPath]),
       );
     });
+
+    it("buildVigilFauxPiChildArgs strips thinking-level suffix from faux model ids", () => {
+      const args = buildVigilFauxPiChildArgs(
+        {
+          sessionId: "vigil-faux-args-model",
+          message: "prompt last",
+          cwd: process.cwd(),
+          model: "vigil-faux/scripted:off",
+          noSubagents: true,
+        },
+        { loadLocalVigil: true },
+      );
+
+      expect(args).toContain("--model");
+      expect(args[args.indexOf("--model") + 1]).toBe("vigil-faux/scripted");
+      expect(args).toContain("--vigil-no-subagents");
+    });
   });
 });

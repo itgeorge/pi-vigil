@@ -23,7 +23,7 @@ Add newly discovered relevant TODOs beneath the active phase before continuing. 
 1. **Shape:** real detached **Pi parent** process loading checkout Vigil + faux (`-ne` + `-e <repo>/src/index.ts` + `-e <faux>`), model `vigil-faux/scripted`, one-shot `-p` prompt — not in-process harness-as-parent.
 2. **ID binding:** `$launch[N].id` placeholders in `toolCall.arguments` (0-based, fill order = successful vigil launch tool results seen in context). No by-name captures in v1.
 3. **Stagger:** `delayMs` on the **step** (sibling of `when` / `then`); used on child reply steps so Fast/Slow settle at different times.
-4. **Wait:** parent script issues **two unscoped** `vigil({ action: "wait", timeoutMs })` calls (no `id`).
+4. **Wait:** parent script issues **two targeted** waits: `wait({ id: "$launch[0].id", timeoutMs })` then `wait({ id: "$launch[1].id", timeoutMs })`. (Unscoped wait settles when *any* child is already `waiting`, so two unscoped waits do **not** wait for Slow after Fast settles.)
 5. **List:** include final `list` with `includeCompleted: true` (cheap; Aug 9 parity).
 6. **Assert:** **parent session ledger only** (launches, completes, id consistency). No child-transcript assertions in v1. Nesting / allowSubagents out of scope (v2).
 7. **TUI / live wait partials:** out of scope (future self-test skill).
@@ -105,8 +105,8 @@ Parent steps (all `when.userTextIncludes: ORCH_MARK`, one-shot order):
 
 1. `toolCall` vigil launch name `Orch Fast`, message includes `FAST_MARK`, model faux
 2. `toolCall` vigil launch name `Orch Slow`, message includes `SLOW_MARK`, model faux
-3. `toolCall` vigil `wait` `{ timeoutMs: 120000 }` (unscoped)
-4. `toolCall` vigil `wait` `{ timeoutMs: 120000 }` (unscoped)
+3. `toolCall` vigil `wait` `{ id: "$launch[0].id", timeoutMs: 120000 }`
+4. `toolCall` vigil `wait` `{ id: "$launch[1].id", timeoutMs: 120000 }`
 5. `toolCall` vigil `complete` `{ id: "$launch[0].id" }`
 6. `toolCall` vigil `complete` `{ id: "$launch[1].id" }`
 7. `toolCall` vigil `list` `{ includeCompleted: true }`
@@ -224,15 +224,33 @@ Parent must set `PI_VIGIL_FAUX_BOOTSTRAP_RUNNER=1` so when parent Vigil launches
 
 ## Phase 2 — Red/green: parent spawn helper + orchestration e2e
 
-- [ ] Add failing orchestration faux-acceptance test (parent Pi spawn + ledger asserts).
-- [ ] Implement `spawnVigilFauxParentPi` (or equivalent) helper.
-- [ ] Green with `npm run test:faux`; keep independent of `PI_VIGIL_LIVE`.
-- [ ] Record evidence: how wait/complete ordering behaved; any timing knobs tuned.
-- [ ] Teardown: temp dirs + child PIDs from parent launches.
+- [x] Add failing orchestration faux-acceptance test (parent Pi spawn + ledger asserts).
+- [x] Implement `spawnVigilFauxParentPi` (or equivalent) helper.
+- [x] Green with `npm run test:faux`; keep independent of `PI_VIGIL_LIVE`.
+- [x] Record evidence: how wait/complete ordering behaved; any timing knobs tuned.
+- [x] Teardown: temp dirs + child PIDs from parent launches.
 
 ### Progress notes — Phase 2
 
-_(implementer fills)_
+**Red (orchestration e2e):** `vigil-orchestration-faux.test.ts` — parent exit 0 but `ledger.completions` length 0 (launches present). Child stderr: `Unknown option: --vigil-no-subagents`, `Model "vigil-faux/scripted:off" not found`. Parent script then failed placeholder resolution (`$launch[0].id`) because failed launches expose `details.error` only.
+
+**Root cause:** In a real detached Pi parent loading both extensions, faux `setVigilRuntimeOverrides({ processRunner })` and Vigil `getVigilRuntimeOverrides()` lived in separate module instances — override never visible to Vigil spawn path (Vitest harness shares one graph; orchestration parent does not).
+
+**Fix:**
+- `src/vigil/runtime-overrides.ts` — `globalThis` bridge via `Symbol.for("pi-vigil.runtime-overrides")` so faux bootstrap and Vigil extension share one store.
+- `test/helpers/vigil-faux/parent-spawn.ts` — `spawnVigilFauxParentPi` + ledger reader.
+- `test/helpers/vigil-faux/process-runner.ts` — `normalizeFauxSpawnModel` strips `:off`/`:high` suffix from `vigil-faux/scripted` on child spawn.
+- `test/unit/vigil/runtime-overrides.test.ts` — bridge set/get/reset unit test.
+
+**Command:** `npm run test:faux`
+
+**Result:** 3 files, 5 tests passed (5) — smoke, nesting, orchestration.
+
+**Command:** `npx vitest run --project unit test/unit/vigil-faux/ test/unit/vigil/runtime-overrides.test.ts`
+
+**Result:** 5 files, 33 tests passed (33).
+
+**Timing:** Fast child `delayMs: 400`, Slow `delayMs: 2000`; targeted waits `timeoutMs: 120_000`; parent spawn timeout `55_000`. Two targeted waits (`$launch[0].id` then `$launch[1].id`) succeeded; completes followed launch order.
 
 ---
 
@@ -260,3 +278,4 @@ _(implementer fills)_
 ## Progress log
 
 - 2026-08-25: Plan drafted after design discussion. Real Pi parent + faux; `$launch[N].id`; step `delayMs`; two unscoped waits; list includeCompleted; parent-ledger asserts only. Implementation gated on user approval.
+- 2026-08-25: Phase 2 complete — real Pi parent orchestration e2e green; `globalThis` runtime-overrides bridge for faux bootstrap in detached parents.
