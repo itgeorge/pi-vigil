@@ -2,12 +2,14 @@ import { createFauxCore } from "@earendil-works/pi-ai";
 import type { Api } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
+import { setVigilRuntimeOverrides } from "../../../src/vigil/runtime-overrides.js";
 import {
   createScriptMatcher,
   parseVigilFauxScript,
   VIGIL_FAUX_MODEL_ID,
   VIGIL_FAUX_PROVIDER_ID,
 } from "./index.js";
+import { createVigilFauxProcessRunner } from "./process-runner.js";
 
 export default function vigilFauxExtension(pi: ExtensionAPI): void {
   const scriptPath = process.env.PI_VIGIL_FAUX_SCRIPT?.trim();
@@ -16,6 +18,13 @@ export default function vigilFauxExtension(pi: ExtensionAPI): void {
   }
 
   const script = parseVigilFauxScript(JSON.parse(readFileSync(scriptPath, "utf8")));
+
+  if (process.env.PI_VIGIL_FAUX_BOOTSTRAP_RUNNER === "1") {
+    setVigilRuntimeOverrides({
+      processRunner: createVigilFauxProcessRunner({ loadLocalVigil: true }),
+    });
+  }
+
   const matcher = createScriptMatcher(script);
   const core = createFauxCore({
     provider: VIGIL_FAUX_PROVIDER_ID,

@@ -270,17 +270,35 @@ Grandchild model: same `vigil-faux/scripted` with a trivial text step so it sett
 
 ## Phase 4 — Faux e2e deny + allow
 
-- [ ] Extend faux process runner / test helper to load **local Vigil** + faux extension into children (document `-ne` vs double-load choice).
-- [ ] Faux script support already has `toolCall`; add acceptance tests under `test/faux-acceptance/`:
+- [x] Extend faux process runner / test helper to load **local Vigil** + faux extension into children (document `-ne` vs double-load choice).
+- [x] Faux script support already has `toolCall`; add acceptance tests under `test/faux-acceptance/`:
   1. **default deny nesting**
   2. **allowSubagents: true nesting**
-- [ ] Prove red then green with `npm run test:faux` (may add a second file or cases in existing project).
-- [ ] Keep independent of `PI_VIGIL_LIVE`.
-- [ ] Record evidence; note any grandchild observation method used (`list.directSubagents`, child `search`, etc.).
+- [x] Prove red then green with `npm run test:faux` (may add a second file or cases in existing project).
+- [x] Keep independent of `PI_VIGIL_LIVE`.
+- [x] Record evidence; note any grandchild observation method used (`list.directSubagents`, child `search`, etc.).
 
 ### Progress notes — Phase 4
 
-_(implementer fills)_
+**2026-08-25 — RED evidence** (before `loadLocalVigil` + nesting faux tests; `npx vitest run --project faux-acceptance test/faux-acceptance/vigil-nesting-faux.test.ts`)
+
+1. **`rejects nested launch by default…`** — would fail: module / harness missing `loadLocalVigil`; child Pi process would not load workspace `src/index.ts`, so scripted `vigil` toolCall never runs (no gate / no transcript match).
+2. **`allows nested launch when allowSubagents is true…`** — same; without `-ne -e <repo>/src/index.ts -e <faux>` on spawn and `PI_VIGIL_FAUX_BOOTSTRAP_RUNNER=1` in descendants, nested grandchild spawn would not inject faux extensions.
+
+**Harness choice (documented):** use **`-ne -e <repo>/src/index.ts -e <faux>`** via `createVigilFauxProcessRunner({ loadLocalVigil: true })` so auto-discovered `pi-vigil` is not double-registered alongside the explicit workspace extension. Default faux-only spawn keeps `--extension <faux>` for unit arg tests; acceptance tests (smoke + nesting) opt into `loadLocalVigil: true` because a real child agent shell is required. Nested spawns from a loaded child re-use the same runner via `PI_VIGIL_FAUX_BOOTSTRAP_RUNNER=1` handled in `test/helpers/vigil-faux/extension.ts`.
+
+**2026-08-25 — GREEN evidence** (`npm run test:faux`; `npm run test:unit -- test/unit/vigil-faux/process-runner.test.ts`; `npm run typecheck`)
+
+- `test/faux-acceptance/vigil-nesting-faux.test.ts`: 2/2 passed.
+  - **Deny:** child scripted `vigil launch` rejected; parent `search` finds locked gate text in child transcript; parent `list` shows `directSubagents` `{ inspection: "available", total: 0, incomplete: 0 }`; child `latestResponse` contains settle text.
+  - **Allow:** parent launch with `allowSubagents: true`; child nested launch accepted; parent `list.directSubagents` shows grandchild by name (`total: 1`, `incomplete: 1`); primary observation via shallow list (search/read not required).
+- `test/faux-acceptance/vigil-faux-smoke.test.ts`: 2/2 passed after aligning smoke spawn with `loadLocalVigil: true` + explicit `sessionDir` override (same `-ne` dual `-e` approach; avoids extension-discovery conflicts in this repo).
+- `test/unit/vigil-faux/process-runner.test.ts`: 9/9 passed — includes `getLocalVigilExtensionPath` and `-ne` dual `-e` splice coverage.
+
+**Implemented:**
+- `test/helpers/vigil-faux/process-runner.ts` — `getLocalVigilExtensionPath`, `loadLocalVigil` option, updated `insertVigilFauxExtensionArgs` options object.
+- `test/helpers/vigil-faux/extension.ts` — when `PI_VIGIL_FAUX_BOOTSTRAP_RUNNER=1`, sets `createVigilFauxProcessRunner({ loadLocalVigil: true })` for descendant spawns.
+- `test/faux-acceptance/vigil-nesting-faux.test.ts` — deny + allow faux e2e cases.
 
 ---
 

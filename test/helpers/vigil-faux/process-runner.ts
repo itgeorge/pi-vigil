@@ -25,18 +25,41 @@ export function getVigilFauxExtensionPath(): string {
   return extensionPath;
 }
 
-export function insertVigilFauxExtensionArgs(args: string[], extensionPath: string): string[] {
+export function getLocalVigilExtensionPath(): string {
+  const extensionPath = fileURLToPath(new URL("../../../src/index.ts", import.meta.url));
+  accessSync(extensionPath);
+  return extensionPath;
+}
+
+export type InsertVigilFauxExtensionArgsOptions = {
+  loadLocalVigil?: boolean;
+  fauxExtensionPath?: string;
+  localVigilExtensionPath?: string;
+};
+
+export function insertVigilFauxExtensionArgs(
+  args: string[],
+  options: InsertVigilFauxExtensionArgsOptions = {},
+): string[] {
   if (args.length === 0) {
     throw new Error("Cannot insert faux extension args into an empty argv list");
   }
 
+  const fauxPath = options.fauxExtensionPath ?? getVigilFauxExtensionPath();
   const message = args[args.length - 1]!;
   const head = args.slice(0, -1);
-  return [...head, "--extension", extensionPath, message];
+
+  if (options.loadLocalVigil) {
+    const vigilPath = options.localVigilExtensionPath ?? getLocalVigilExtensionPath();
+    return [...head, "-ne", "-e", vigilPath, "-e", fauxPath, message];
+  }
+
+  return [...head, "--extension", fauxPath, message];
 }
 
 export type CreateVigilFauxProcessRunnerOptions = {
   base?: ProcessRunner;
+  loadLocalVigil?: boolean;
   piExecutable?: string;
   platform?: NodeJS.Platform;
   resolvePiCliEntrypoint?: () => string;
@@ -52,7 +75,9 @@ export function createVigilFauxProcessRunner(
 ): ProcessRunner {
   const base = options.base ?? createNodeProcessRunner({ piExecutable: options.piExecutable });
   const piExecutable = options.piExecutable ?? "pi";
-  const extensionPath = getVigilFauxExtensionPath();
+  const insertExtensionArgs: InsertVigilFauxExtensionArgsOptions = {
+    loadLocalVigil: options.loadLocalVigil,
+  };
 
   return {
     spawnDetached(input: SpawnChildInput) {
@@ -60,7 +85,7 @@ export function createVigilFauxProcessRunner(
         platform: options.platform,
         resolvePiCliEntrypoint: options.resolvePiCliEntrypoint,
         spawnChild: (command, args, spawnOptions) => {
-          const withExtension = insertVigilFauxExtensionArgs(args, extensionPath);
+          const withExtension = insertVigilFauxExtensionArgs(args, insertExtensionArgs);
           const spawnFn = options.spawnChild ?? spawn;
           return spawnFn(command, withExtension, spawnOptions);
         },
@@ -76,9 +101,12 @@ export function createVigilFauxProcessRunner(
 }
 
 /** @internal Exported for unit tests that assert arg splicing without spawning. */
-export function buildVigilFauxPiChildArgs(input: SpawnChildInput): string[] {
+export function buildVigilFauxPiChildArgs(
+  input: SpawnChildInput,
+  options: InsertVigilFauxExtensionArgsOptions = {},
+): string[] {
   const spawnCommand = resolvePiSpawnCommand();
   const childArgs = buildPiChildArgs(input);
   const spawnArgs = buildPiSpawnArgs(spawnCommand, childArgs);
-  return insertVigilFauxExtensionArgs(spawnArgs, getVigilFauxExtensionPath());
+  return insertVigilFauxExtensionArgs(spawnArgs, options);
 }

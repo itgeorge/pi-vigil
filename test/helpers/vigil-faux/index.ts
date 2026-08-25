@@ -17,8 +17,10 @@ export function getVigilFauxModelId(): string {
 export {
   buildVigilFauxPiChildArgs,
   createVigilFauxProcessRunner,
+  getLocalVigilExtensionPath,
   getVigilFauxExtensionPath,
   insertVigilFauxExtensionArgs,
   writeVigilFauxScript,
   type CreateVigilFauxProcessRunnerOptions,
+  type InsertVigilFauxExtensionArgsOptions,
 } from "./process-runner.js";

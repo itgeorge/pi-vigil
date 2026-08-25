@@ -77,7 +77,10 @@ describe("vigil faux acceptance smoke", () => {
     process.env.PI_VIGIL_FAUX_SCRIPT = scriptPath;
     process.env.PI_VIGIL_SESSION_DIR = sessionDir;
 
-    setVigilRuntimeOverrides({ processRunner: createVigilFauxProcessRunner() });
+    setVigilRuntimeOverrides({
+      processRunner: createVigilFauxProcessRunner({ loadLocalVigil: true }),
+      sessionDir,
+    });
 
     return createVigilTestHarness({ cwd: tempCwd });
   }

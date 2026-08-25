@@ -9,6 +9,7 @@ import type { ProcessRunner } from "../../../src/vigil/ports.js";
 import {
   buildVigilFauxPiChildArgs,
   createVigilFauxProcessRunner,
+  getLocalVigilExtensionPath,
   getVigilFauxExtensionPath,
   writeVigilFauxScript,
 } from "../../helpers/vigil-faux/index.js";
@@ -67,6 +68,15 @@ describe("vigil-faux process runner helpers", () => {
     });
   });
 
+  describe("getLocalVigilExtensionPath", () => {
+    it("returns an absolute path to src/index.ts that exists", () => {
+      const extensionPath = getLocalVigilExtensionPath();
+
+      expect(extensionPath.endsWith("src/index.ts")).toBe(true);
+      accessSync(extensionPath);
+    });
+  });
+
   describe("createVigilFauxProcessRunner", () => {
     it("leaves production buildPiChildArgs unchanged", () => {
       expect(
@@ -119,6 +129,41 @@ describe("vigil-faux process runner helpers", () => {
       ]);
     });
 
+    it("inserts loadLocalVigil extensions with -ne and dual -e before the prompt message", async () => {
+      const spawnChild = createMockSpawnChild();
+      const fauxExtensionPath = getVigilFauxExtensionPath();
+      const localVigilExtensionPath = getLocalVigilExtensionPath();
+      const runner = createVigilFauxProcessRunner({ spawnChild, platform: "linux", loadLocalVigil: true });
+
+      await runner.spawnDetached({
+        sessionId: "vigil-faux-spawn-local",
+        message: "run nested child",
+        cwd: process.cwd(),
+        model: "vigil-faux/scripted",
+        name: "Nested child",
+      });
+
+      expect(spawnChild).toHaveBeenCalledOnce();
+      const [, spawnArgs] = spawnChild.mock.calls[0]!;
+      expect(spawnArgs).toEqual([
+        "--mode",
+        "json",
+        "-p",
+        "--session-id",
+        "vigil-faux-spawn-local",
+        "--name",
+        "Nested child",
+        "--model",
+        "vigil-faux/scripted",
+        "-ne",
+        "-e",
+        localVigilExtensionPath,
+        "-e",
+        fauxExtensionPath,
+        "run nested child",
+      ]);
+    });
+
     it("delegates isAlive and terminateAndWait to the base runner", async () => {
       const base: ProcessRunner = {
         spawnDetached: vi.fn(async () => ({ pid: 1 })),
@@ -147,6 +192,25 @@ describe("vigil-faux process runner helpers", () => {
       expect(args.at(-1)).toBe("prompt last");
       expect(args).toContain("--extension");
       expect(args[args.indexOf("--extension") + 1]).toBe(extensionPath);
+    });
+
+    it("buildVigilFauxPiChildArgs splices loadLocalVigil extensions before the final message", () => {
+      const fauxExtensionPath = getVigilFauxExtensionPath();
+      const localVigilExtensionPath = getLocalVigilExtensionPath();
+      const args = buildVigilFauxPiChildArgs(
+        {
+          sessionId: "vigil-faux-args-local",
+          message: "prompt last",
+          cwd: process.cwd(),
+          model: "vigil-faux/scripted",
+        },
+        { loadLocalVigil: true },
+      );
+
+      expect(args.at(-1)).toBe("prompt last");
+      expect(args).toEqual(
+        expect.arrayContaining(["-ne", "-e", localVigilExtensionPath, "-e", fauxExtensionPath]),
+      );
     });
   });
 });
