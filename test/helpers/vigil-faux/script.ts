@@ -43,7 +43,26 @@ export class VigilFauxScriptError extends Error {
   }
 }
 
-/** Phase 0 stub — validation implemented in Phase 1. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 export function parseVigilFauxScript(input: unknown): VigilFauxScript {
-  return input as VigilFauxScript;
+  if (!isRecord(input)) {
+    throw new VigilFauxScriptError("Invalid script: expected an object");
+  }
+
+  if (input.version !== 1) {
+    throw new VigilFauxScriptError(`Unsupported script version: ${String(input.version)}`);
+  }
+
+  if (!Array.isArray(input.steps)) {
+    throw new VigilFauxScriptError("Invalid script: missing steps array");
+  }
+
+  return {
+    version: 1,
+    fallbackText: typeof input.fallbackText === "string" ? input.fallbackText : undefined,
+    steps: input.steps as VigilFauxStep[],
+  };
 }

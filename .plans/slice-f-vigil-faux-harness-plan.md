@@ -203,15 +203,24 @@ Keep `npm test` / `npm run check` on unit + typecheck + pack:verify (do not forc
 
 ## Phase 1 — Green: script types + matcher
 
-- [ ] Implement `test/helpers/vigil-faux/script.ts` (types, parse/validate, default fallback constant).
-- [ ] Implement `test/helpers/vigil-faux/matcher.ts` (pure: script + context messages → AssistantMessage via faux helpers).
-- [ ] Export a small public helper surface from `test/helpers/vigil-faux/index.ts` (parse, match, constants, model id helpers).
-- [ ] Make Phase 0 unit tests green.
-- [ ] Record green command/output summary in Progress notes.
+- [x] Implement `test/helpers/vigil-faux/script.ts` (types, parse/validate, default fallback constant).
+- [x] Implement `test/helpers/vigil-faux/matcher.ts` (pure: script + context messages → AssistantMessage via faux helpers).
+- [x] Export a small public helper surface from `test/helpers/vigil-faux/index.ts` (parse, match, constants, model id helpers).
+- [x] Make Phase 0 unit tests green.
+- [x] Record green command/output summary in Progress notes.
 
 ### Progress notes — Phase 1
 
-_(implementer fills)_
+**Command:** `npx vitest run --project unit test/unit/vigil-faux/script-matcher.test.ts`
+
+**Result:** 1 file, 8 tests passed (8).
+
+**Implemented:**
+- `test/helpers/vigil-faux/script.ts` — `parseVigilFauxScript` validates `version: 1` and required `steps` array; throws `VigilFauxScriptError` on bad version or missing steps.
+- `test/helpers/vigil-faux/matcher.ts` — `createScriptMatcher` extracts latest user text (string or text blocks), matches steps in order with one-shot consumption and reusable steps, returns `fauxAssistantMessage` / `fauxToolCall` / `fauxText` responses with correct `stopReason`.
+- `test/helpers/vigil-faux/index.ts` — re-exports plus `VIGIL_FAUX_PROVIDER_ID` (`vigil-faux`), `VIGIL_FAUX_MODEL_ID` (`scripted`), `getVigilFauxModelId()` (`vigil-faux/scripted`).
+
+**Production `src/` unchanged.**
 
 ---
 
