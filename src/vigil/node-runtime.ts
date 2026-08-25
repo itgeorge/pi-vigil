@@ -233,6 +233,12 @@ export class VigilService {
       return { error: "launch requires message" };
     }
 
+    if (!input.model?.trim()) {
+      return {
+        error: "launch requires model (use vigil({ action: \"models\" }) to pick provider/id[:thinking])",
+      };
+    }
+
     const entries = this.deps.getSessionEntries?.() ?? [];
     const noSubagentsFlag = this.deps.getNoSubagentsFlag?.() ?? false;
     if (!resolveNestedLaunchAllowed({ entries, noSubagentsFlag })) {

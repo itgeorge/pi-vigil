@@ -46,6 +46,7 @@ describe("vigil extension adapter ephemeral", () => {
       action: "launch",
       name: "Ephemeral task",
       message: "Reply OK",
+      model: "openai-codex/gpt-5.5",
       ephemeral: true,
     });
 

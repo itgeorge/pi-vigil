@@ -120,6 +120,7 @@ describe("vigil faux acceptance smoke", () => {
       timeoutMs: 30_000,
       initialDelayMs: 100,
       maxDelayMs: 1_000,
+      model: "openai-codex/gpt-5.5",
     });
 
     expect((waitResult as { isError?: boolean }).isError).toBeFalsy();
@@ -165,6 +166,7 @@ describe("vigil faux acceptance smoke", () => {
       timeoutMs: 30_000,
       initialDelayMs: 100,
       maxDelayMs: 1_000,
+      model: "openai-codex/gpt-5.5",
     });
 
     expect((waitResult as { isError?: boolean }).isError).toBeFalsy();

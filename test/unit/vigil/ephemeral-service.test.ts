@@ -102,7 +102,7 @@ describe("VigilService ephemeral actions", () => {
     const launched = await service.launch({
       name: "Quick task",
       message: "Reply DONE",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       ephemeral: true,
     });
 
@@ -164,7 +164,7 @@ describe("VigilService ephemeral actions", () => {
     const launched = await service.launch({
       name: "Sync settle",
       message: "Reply SYNC",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       ephemeral: true,
     });
 
@@ -189,7 +189,7 @@ describe("VigilService ephemeral actions", () => {
     await service.launch({
       name: "Quick task",
       message: "Reply",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       ephemeral: true,
     });
     observer.pushStdout("vigil-ephemeral-test", assistantSettledChunk("DONE"));
@@ -210,7 +210,7 @@ describe("VigilService ephemeral actions", () => {
     await service.launch({
       name: "Quick task",
       message: "Reply",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       ephemeral: true,
     });
     observer.pushStdout("vigil-ephemeral-test", assistantSettledChunk("DONE"));
@@ -227,7 +227,7 @@ describe("VigilService ephemeral actions", () => {
     await service.launch({
       name: "Quick task",
       message: "Reply",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       ephemeral: true,
     });
     observer.pushStdout("vigil-ephemeral-test", assistantSettledChunk("DONE"));
@@ -289,7 +289,7 @@ describe("VigilService ephemeral actions", () => {
     await service.launch({
       name: "Quick task",
       message: "Reply",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       ephemeral: true,
     });
 
@@ -321,7 +321,7 @@ describe("VigilService ephemeral actions", () => {
     await service.launch({
       name: "Shutdown race",
       message: "Reply",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       ephemeral: true,
     });
 
@@ -383,7 +383,7 @@ describe("VigilService ephemeral actions", () => {
     const launched = await service.launch({
       name: "Delayed reap",
       message: "Reply",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       ephemeral: true,
     });
     expect(isVigilError(launched)).toBe(false);
@@ -432,7 +432,7 @@ describe("VigilService ephemeral actions", () => {
     await service.launch({
       name: "Running task",
       message: "Reply",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       ephemeral: true,
     });
 
@@ -475,6 +475,7 @@ describe("VigilService ephemeral actions", () => {
       name: "Cancel task",
       message: "Reply",
       parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5",
       ephemeral: true,
     });
 

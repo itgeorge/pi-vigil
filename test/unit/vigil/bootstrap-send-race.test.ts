@@ -101,7 +101,7 @@ describe("bootstrap timeout send race", () => {
     const launched = await service.launch({
       name: "Bootstrap race launch",
       message: "Reply with exactly: spawn_test",
-      parentCwd: fixture.cwd,
+      model: "openai-codex/gpt-5.5", parentCwd: fixture.cwd,
       cwd: fixture.cwd,
     });
     expectSnapshot(launched);

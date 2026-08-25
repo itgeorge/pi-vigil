@@ -220,7 +220,7 @@ export function formatVigilCallSummary(
       if (args.allowSubagents) {
         segments.push("allow subagents");
       }
-      segments.push(formatModelIndicator(args.model, "Pi default"));
+      segments.push(formatModelIndicator(args.model));
       break;
     }
     case "poll":
@@ -344,9 +344,7 @@ export function renderVigilCallText(
 
     if (summary.startsWith("launch")) {
       const name = sanitizeCallField(args.name ?? "") || "launch";
-      const model = args.model?.trim()
-        ? formatModelIndicator(args.model)
-        : formatModelIndicator(undefined, "Pi default");
+      const model = args.model?.trim() ? formatModelIndicator(args.model) : "";
       parts.push(theme.fg("muted", " launch · "));
       parts.push(theme.fg("text", name));
       if (args.ephemeral) {
@@ -355,7 +353,9 @@ export function renderVigilCallText(
       if (args.allowSubagents) {
         parts.push(theme.fg("dim", " · allow subagents"));
       }
-      parts.push(theme.fg("dim", ` · ${model}`));
+      if (model) {
+        parts.push(theme.fg("dim", ` · ${model}`));
+      }
     } else if (summary.startsWith("send")) {
       parts.push(theme.fg("muted", " send · "));
       parts.push(theme.fg("text", formatIdIdentity(args.id, lookup)));

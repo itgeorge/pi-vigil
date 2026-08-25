@@ -192,6 +192,7 @@ describe("VigilService launch/send bootstrap observer", () => {
     const launchPromise = service.launch({
       name: "Bootstrap launch",
       message: "hello",
+      model: "openai-codex/gpt-5.5",
       parentCwd: "/parent",
     });
 

@@ -141,7 +141,7 @@ describe("VigilService.complete guarded subagent policy", () => {
     const launched = await service.launch({
       name: "Parent task",
       message: "work",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expectSnapshot(launched);
 
@@ -183,7 +183,7 @@ describe("VigilService.complete guarded subagent policy", () => {
       ]),
     });
 
-    await service.launch({ name: "Parent done", message: "work", parentCwd: "/parent/default" });
+    await service.launch({ name: "Parent done", message: "work", model: "openai-codex/gpt-5.5", parentCwd: "/parent/default" });
     const completed = await service.complete({ vigilId, parentCwd: "/parent/default" });
     expectSnapshot(completed);
     expect(completed.state).toBe("completed");
@@ -203,7 +203,7 @@ describe("VigilService.complete guarded subagent policy", () => {
       descendantSummaries: new Map([[vigilId, incompleteSummary]]),
     });
 
-    await service.launch({ name: "Parent override", message: "work", parentCwd: "/parent/default" });
+    await service.launch({ name: "Parent override", message: "work", model: "openai-codex/gpt-5.5", parentCwd: "/parent/default" });
     const completed = await service.complete({
       vigilId,
       parentCwd: "/parent/default",
@@ -228,7 +228,7 @@ describe("VigilService.complete guarded subagent policy", () => {
       ]),
     });
 
-    await service.launch({ name: "Parent unavailable", message: "work", parentCwd: "/parent/default" });
+    await service.launch({ name: "Parent unavailable", message: "work", model: "openai-codex/gpt-5.5", parentCwd: "/parent/default" });
     const result = await service.complete({
       vigilId,
       parentCwd: "/parent/default",
@@ -263,7 +263,7 @@ describe("VigilService.complete guarded subagent policy", () => {
       descendantInspector: wrappedInspector,
     });
 
-    await service.launch({ name: "Running parent", message: "work", parentCwd: "/parent/default" });
+    await service.launch({ name: "Running parent", message: "work", model: "openai-codex/gpt-5.5", parentCwd: "/parent/default" });
     const result = await service.complete({ vigilId, parentCwd: "/parent/default" });
     expect(isVigilError(result)).toBe(true);
     if (isVigilError(result)) {
@@ -297,7 +297,7 @@ describe("VigilService.complete guarded subagent policy", () => {
       descendantSummaries: new Map([[vigilId, incompleteSummary]]),
     });
 
-    await service.launch({ name: "Already done", message: "work", parentCwd: "/parent/default" });
+    await service.launch({ name: "Already done", message: "work", model: "openai-codex/gpt-5.5", parentCwd: "/parent/default" });
     const first = await service.complete({ vigilId, parentCwd: "/parent/default", allowIncompleteSubagents: true });
     expectSnapshot(first);
     expect(inspectCalls).toHaveLength(1);

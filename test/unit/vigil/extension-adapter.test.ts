@@ -47,6 +47,34 @@ describe("vigil extension adapter", () => {
     return value.replace(/\u001b\[[0-9;]*m/g, "");
   }
 
+  it("launch rejects missing model before spawn", async () => {
+    const harness = await createVigilTestHarness();
+    let spawned = false;
+    setVigilRuntimeOverrides({
+      processRunner: {
+        spawnDetached: async () => {
+          spawned = true;
+          return { pid: 1 };
+        },
+        isAlive: () => true,
+        terminateAndWait: async () => undefined,
+      },
+    });
+
+    const result = await harness.execute({
+      action: "launch",
+      name: "No model",
+      message: "go",
+    });
+
+    expect((result as { isError?: boolean }).isError).toBe(true);
+    const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+    expect(text).toBe(
+      "launch requires model (use vigil({ action: \"models\" }) to pick provider/id[:thinking])",
+    );
+    expect(spawned).toBe(false);
+  });
+
   it("renderCall identifies a launched child after execute refreshes the display-name cache", async () => {
     const harness = await createVigilTestHarness({ cwd: "/parent/project" });
 
@@ -62,6 +90,7 @@ describe("vigil extension adapter", () => {
       action: "launch",
       name: "Adapter render child",
       message: "Do work",
+      model: "openai-codex/gpt-5.5",
     });
     const launched = launchResult.details as VigilSnapshot;
 
@@ -364,6 +393,7 @@ describe("vigil extension adapter", () => {
       action: "launch",
       name: "Listed task",
       message: "Do work",
+      model: "openai-codex/gpt-5.5",
     });
     const launched = launchResult.details as VigilSnapshot;
 
@@ -420,12 +450,14 @@ describe("vigil extension adapter", () => {
       action: "launch",
       name: "Retire in adapter",
       message: "Do work",
+      model: "openai-codex/gpt-5.5",
     });
     const launched = launchResult.details as VigilSnapshot;
 
     const completeResult = await harness.execute({
       action: "complete",
       id: launched.id,
+      model: "openai-codex/gpt-5.5",
     });
 
     expect((completeResult as { isError?: boolean }).isError).toBeFalsy();
@@ -441,6 +473,7 @@ describe("vigil extension adapter", () => {
       action: "send",
       id: launched.id,
       message: "Too late",
+      model: "openai-codex/gpt-5.5",
     });
     expect((sendResult as { isError?: boolean }).isError).toBe(true);
   });
@@ -475,7 +508,7 @@ describe("vigil extension adapter", () => {
       },
     });
 
-    const launch = await harness.execute({ action: "launch", name: "Wait adapter", message: "Work" });
+    const launch = await harness.execute({ action: "launch", name: "Wait adapter", message: "Work" , model: "openai-codex/gpt-5.5" });
     const launched = launch.details as VigilSnapshot;
     const result = await harness.execute({ action: "wait" });
 
@@ -522,7 +555,7 @@ describe("vigil extension adapter", () => {
         }),
       },
     });
-    const launch = await harness.execute({ action: "launch", name: "Wait outcomes", message: "Work" });
+    const launch = await harness.execute({ action: "launch", name: "Wait outcomes", message: "Work" , model: "openai-codex/gpt-5.5" });
     const launched = launch.details as VigilSnapshot;
 
     const cancelled = await harness.execute(
@@ -599,7 +632,7 @@ describe("vigil extension adapter", () => {
       },
     });
 
-    const launch = await harness.execute({ action: "launch", name: "Progress adapter", message: "Work" });
+    const launch = await harness.execute({ action: "launch", name: "Progress adapter", message: "Work" , model: "openai-codex/gpt-5.5" });
     const launched = launch.details as VigilSnapshot;
     const updates: Array<{ content: Array<{ type: string; text?: string }>; details?: unknown }> = [];
     readCount = 0;
@@ -666,8 +699,8 @@ describe("vigil extension adapter", () => {
       },
     });
 
-    const launchA = await harness.execute({ action: "launch", name: "Target child", message: "Work A" });
-    await harness.execute({ action: "launch", name: "Other child", message: "Work B" });
+    const launchA = await harness.execute({ action: "launch", name: "Target child", message: "Work A" , model: "openai-codex/gpt-5.5" });
+    await harness.execute({ action: "launch", name: "Other child", message: "Work B" , model: "openai-codex/gpt-5.5" });
     const target = launchA.details as VigilSnapshot;
 
     const result = await harness.execute({
@@ -870,6 +903,7 @@ describe("vigil extension adapter", () => {
         action: "launch",
         name: "Compact child",
         message: "Start work",
+        model: "openai-codex/gpt-5.5",
       });
       expect((launchResult as { isError?: boolean }).isError).toBeFalsy();
       const launched = launchResult.details as VigilSnapshot;
@@ -886,6 +920,7 @@ describe("vigil extension adapter", () => {
         action: "send",
         id: launched.id,
         message: "Continue work",
+        model: "openai-codex/gpt-5.5",
       });
       expect((sendResult as { isError?: boolean }).isError).toBeFalsy();
       const sent = sendResult.details as VigilSnapshot;
@@ -899,6 +934,7 @@ describe("vigil extension adapter", () => {
       const completeResult = await harness.execute({
         action: "complete",
         id: launched.id,
+        model: "openai-codex/gpt-5.5",
       });
       expect((completeResult as { isError?: boolean }).isError).toBeFalsy();
       const completed = completeResult.details as VigilSnapshot;

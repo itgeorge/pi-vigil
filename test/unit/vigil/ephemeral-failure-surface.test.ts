@@ -281,6 +281,7 @@ describe("ephemeral failure surfacing", () => {
     const launchPromise = service.launch({
       name: "Ephemeral fail",
       message: "hello",
+      model: "openai-codex/gpt-5.5",
       parentCwd: "/parent/default",
       ephemeral: true,
     });
@@ -331,7 +332,7 @@ describe("ephemeral failure surfacing", () => {
     const result = await service.launch({
       name: "Ephemeral slow",
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       ephemeral: true,
     });
     expect(isVigilError(result)).toBe(false);

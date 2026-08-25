@@ -73,14 +73,14 @@ describe("formatVigilCallSummary", () => {
     ).toBe("launch · Slice 4.5 implementation · model cursor/composer-2.5-fast");
   });
 
-  it("renders launch with model Pi default when model was omitted", () => {
+  it("renders launch without model indicator when model was omitted", () => {
     expect(
       plainSummary({
         action: "launch",
         name: "Slice 4.5 implementation",
         message: "hidden prompt",
       }),
-    ).toBe("launch · Slice 4.5 implementation · model Pi default");
+    ).toBe("launch · Slice 4.5 implementation");
   });
 
   it("renders poll, send, and complete with lifecycle display name plus short id", () => {
@@ -361,7 +361,8 @@ describe("renderVigilCallText", () => {
 
     const rendered = renderPlainText({ action: "launch", name: "Task", message: "go" });
     expect(rendered).toContain("vigil");
-    expect(rendered).toContain("launch · Task · model Pi default");
+    expect(rendered).toContain("launch · Task");
+    expect(rendered).not.toContain("model Pi default");
   });
 
   it("returns a safe fallback header for incomplete arguments", () => {

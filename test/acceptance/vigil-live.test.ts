@@ -158,6 +158,7 @@ describe("live vigil acceptance", () => {
       timeoutMs: getAcceptanceTimeoutMs(),
       initialDelayMs: 250,
       maxDelayMs: 5_000,
+      model: "openai-codex/gpt-5.5",
     });
     expect((targetedWaitingResult as { isError?: boolean }).isError).toBeFalsy();
     const targetedWaiting = targetedWaitingResult.details as VigilWaitResult;
@@ -235,6 +236,7 @@ describe("live vigil acceptance", () => {
       action: "search",
       query: secondMarker,
       id: launched.id,
+      model: "openai-codex/gpt-5.5",
     });
     expect((activeSearch as { isError?: boolean }).isError).toBeFalsy();
     const searchDetails = activeSearch.details as VigilSearchResult;
@@ -271,7 +273,7 @@ describe("live vigil acceptance", () => {
 
     const completeResult = await harness.execute({
       action: "complete",
-      id: launched.id,
+      id: launched.id
     });
     expect((completeResult as { isError?: boolean }).isError).toBeFalsy();
     const completed = completeResult.details as VigilSnapshot;
@@ -306,6 +308,7 @@ describe("live vigil acceptance", () => {
       action: "send",
       id: launched.id,
       message: "Should fail",
+      model: "openai-codex/gpt-5.5",
     });
     expect((sendAfterComplete as { isError?: boolean }).isError).toBe(true);
 
@@ -313,6 +316,7 @@ describe("live vigil acceptance", () => {
       action: "search",
       query: secondMarker,
       id: launched.id,
+      model: "openai-codex/gpt-5.5",
     });
     expect((excludedSearch as { isError?: boolean }).isError).toBe(true);
 
@@ -321,6 +325,7 @@ describe("live vigil acceptance", () => {
       query: secondMarker,
       id: launched.id,
       includeCompleted: true,
+      model: "openai-codex/gpt-5.5",
     });
     expect((retainedSearch as { isError?: boolean }).isError).toBeFalsy();
     expect((retainedSearch.details as VigilSearchResult).matches.some((match) => match.id === launched.id)).toBe(
@@ -332,6 +337,7 @@ describe("live vigil acceptance", () => {
         action: "read",
         id: launched.id,
         entryId: diagnosticMatch!.entryId,
+        model: "openai-codex/gpt-5.5",
       }),
     ).toMatchObject({ isError: true });
 
@@ -340,6 +346,7 @@ describe("live vigil acceptance", () => {
       id: launched.id,
       entryId: diagnosticMatch!.entryId,
       includeCompleted: true,
+      model: "openai-codex/gpt-5.5",
     });
     expect((readCompleted as { isError?: boolean }).isError).toBeFalsy();
     expect((readCompleted.content[0] as { text?: string }).text).toContain(secondMarker);
@@ -437,7 +444,7 @@ describe("live vigil acceptance", () => {
     const allowedComplete = await harness.execute({
       action: "complete",
       id: launched.id,
-      allowIncompleteSubagents: true,
+      allowIncompleteSubagents: true
     });
     expect((allowedComplete as { isError?: boolean }).isError).toBeFalsy();
     expect((allowedComplete.details as VigilSnapshot).state).toBe("completed");
@@ -488,6 +495,7 @@ describe("live vigil acceptance", () => {
       timeoutMs: getAcceptanceTimeoutMs(),
       initialDelayMs: 250,
       maxDelayMs: 5_000,
+      model: "openai-codex/gpt-5.5",
     });
     expect((waitResult as { isError?: boolean }).isError).toBeFalsy();
     const waitDetails = waitResult.details as VigilWaitResult;
@@ -499,7 +507,7 @@ describe("live vigil acceptance", () => {
     expect(harness.capturedEntries.some((entry) => entry.customType === "vigil-settle")).toBe(true);
     expect(await findChildSessionPath(launched.sessionId, tempCwd, sessionDir)).toBeNull();
 
-    const sendRejected = await harness.execute({ action: "send", id: launched.id, message: "again" });
+    const sendRejected = await harness.execute({ action: "send", id: launched.id, message: "again" , model: "openai-codex/gpt-5.5" });
     expect((sendRejected as { isError?: boolean }).isError).toBe(true);
     const searchRejected = await harness.execute({ action: "search", query: marker, id: launched.id });
     expect((searchRejected as { isError?: boolean }).isError).toBe(true);

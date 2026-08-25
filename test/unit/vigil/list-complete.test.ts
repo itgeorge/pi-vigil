@@ -137,7 +137,7 @@ describe("VigilService.launch name validation", () => {
     const missing = await service.launch({
       name: "",
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expect(isVigilError(missing)).toBe(true);
     if (isVigilError(missing)) {
@@ -147,7 +147,7 @@ describe("VigilService.launch name validation", () => {
     const whitespace = await service.launch({
       name: "   ",
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expect(isVigilError(whitespace)).toBe(true);
   });
@@ -158,7 +158,7 @@ describe("VigilService.launch name validation", () => {
     const snapshot = await service.launch({
       name: "  Refactor auth  ",
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
 
     expectSnapshot(snapshot);
@@ -178,7 +178,7 @@ describe("VigilService.launch name validation", () => {
     await service.launch({
       name: "Auth refactor",
       message: "first turn",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
 
     const launched = await service.poll("vigil-cli-name");
@@ -216,7 +216,7 @@ describe("VigilService.list", () => {
     const activeLaunch = await service.launch({
       name: "Active task",
       message: "work",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expectSnapshot(activeLaunch);
 
@@ -242,7 +242,7 @@ describe("VigilService.list", () => {
     const launched = await service.launch({
       name: "Named task",
       message: "work",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expectSnapshot(launched);
 
@@ -277,7 +277,7 @@ describe("VigilService.complete", () => {
     const launched = await service.launch({
       name: "Ship feature",
       message: "work",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expectSnapshot(launched);
 
@@ -309,7 +309,7 @@ describe("VigilService.complete", () => {
     const launched = await service.launch({
       name: "Running task",
       message: "work",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expectSnapshot(launched);
 
@@ -333,7 +333,7 @@ describe("VigilService.complete", () => {
     const launched = await service.launch({
       name: "Retire me",
       message: "work",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expectSnapshot(launched);
 
@@ -371,7 +371,7 @@ describe("VigilService.complete", () => {
     const launched = await service.launch({
       name: "Missing child",
       message: "work",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expectSnapshot(launched);
 

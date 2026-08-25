@@ -168,6 +168,7 @@ describe("vigil faux acceptance nesting policy", () => {
       action: "search",
       id: launched.id,
       query: NESTED_LAUNCH_DISABLED_ERROR,
+      model: "openai-codex/gpt-5.5",
     });
     expect((searchResult as { isError?: boolean }).isError).toBeFalsy();
     const searchDetails = searchResult.details as VigilSearchResult;

@@ -75,7 +75,7 @@ describe("VigilService nested spawn wiring", () => {
     const result = await service.launch({
       name: "Default deny child",
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
 
     expect(isVigilError(result)).toBe(false);
@@ -99,7 +99,7 @@ describe("VigilService nested spawn wiring", () => {
     const result = await service.launch({
       name: "Allow nested child",
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       allowSubagents: true,
     });
 
@@ -157,7 +157,7 @@ describe("VigilService nested spawn wiring", () => {
     const result = await service.launch({
       name: "Ephemeral deny",
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       ephemeral: true,
     });
 
@@ -172,7 +172,7 @@ describe("VigilService nested spawn wiring", () => {
     const launched = await service.launch({
       name: "Send deny child",
       message: "first turn",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expect(isVigilError(launched)).toBe(false);
     bootstrapObserver.started.length = 0;
@@ -194,7 +194,7 @@ describe("VigilService nested spawn wiring", () => {
     const launched = await service.launch({
       name: "Send allow child",
       message: "first turn",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       allowSubagents: true,
     });
     expect(isVigilError(launched)).toBe(false);
@@ -242,6 +242,7 @@ describe("vigil extension adapter nested spawn wiring", () => {
       action: "launch",
       name: "Adapter allow child",
       message: "hello",
+      model: "openai-codex/gpt-5.5",
       allowSubagents: true,
     });
 

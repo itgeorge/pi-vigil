@@ -166,7 +166,7 @@ export function formatAvailableModelsText(result: VigilAvailableModelsResult): s
   }
 
   lines.push("");
-  lines.push("Use reference values in launch/send model (optional :thinking suffix, e.g. cursor/composer-2.5-fast:high).");
+  lines.push("Use reference values in launch (required) and send (optional) model (optional :thinking suffix, e.g. cursor/composer-2.5-fast:high).");
 
   return lines.join("\n");
 }

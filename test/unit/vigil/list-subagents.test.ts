@@ -80,7 +80,7 @@ function expectList(result: unknown): asserts result is VigilListResult {
 describe("VigilService.list shallow descendant visibility", () => {
   it("hydrates each direct child with a bounded direct-subagent summary in structured output and text", async () => {
     const { service } = createHarness();
-    await service.launch({ name: "Implement feature A", message: "work", parentCwd: "/parent/default" });
+    await service.launch({ name: "Implement feature A", message: "work", model: "openai-codex/gpt-5.5", parentCwd: "/parent/default" });
 
     const result = await service.list({ includeCompleted: false });
     expectList(result);
@@ -107,7 +107,7 @@ describe("VigilService.list shallow descendant visibility", () => {
         error: "Child session ledger unavailable for direct subagent inspection",
       },
     });
-    await service.launch({ name: "Broken ledger child", message: "work", parentCwd: "/parent/default" });
+    await service.launch({ name: "Broken ledger child", message: "work", model: "openai-codex/gpt-5.5", parentCwd: "/parent/default" });
 
     const result = await service.list({ includeCompleted: false });
     expectList(result);

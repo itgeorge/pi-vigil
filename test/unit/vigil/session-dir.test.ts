@@ -42,6 +42,7 @@ describe("vigil session directory configuration", () => {
       action: "launch",
       name: "Live acceptance child",
       message: "Inspect the repository",
+      model: "openai-codex/gpt-5.5",
     });
 
     expect((result as { isError?: boolean }).isError).toBeFalsy();

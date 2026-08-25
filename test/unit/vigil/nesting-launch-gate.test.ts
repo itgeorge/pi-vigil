@@ -84,7 +84,7 @@ describe("VigilService nested launch gate", () => {
     const result = await service.launch({
       name: "Nested child",
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
 
     expect(isVigilError(result)).toBe(true);
@@ -140,7 +140,7 @@ describe("VigilService nested launch gate", () => {
     const result = await service.launch({
       name: "Ephemeral nested",
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       ephemeral: true,
     });
 
@@ -179,6 +179,7 @@ describe("vigil extension adapter nested launch gate", () => {
       action: "launch",
       name: "Denied nested child",
       message: "try nested launch",
+      model: "openai-codex/gpt-5.5",
     });
 
     expect((result as { isError?: boolean }).isError).toBe(true);

@@ -51,7 +51,7 @@ V1 state model is session-only: parent-session custom entries record launches, f
 The extension registers a single tool:
 
 ```ts
-vigil({ action: "launch", name, message, model?, cwd?, ephemeral?: true, allowSubagents?: boolean })
+vigil({ action: "launch", name, message, model, cwd?, ephemeral?: true, allowSubagents?: boolean })
 vigil({ action: "poll", id })
 vigil({ action: "send", id, message, model? })
 vigil({ action: "list", includeCompleted?, maxResults?, skipToId? })
@@ -62,7 +62,7 @@ vigil({ action: "read", id, entryId, before?, after?, includeCompleted? })
 vigil({ action: "models", query?, maxResults? })
 ```
 
-`launch` requires a nonblank human-readable `name`, starts a detached Pi child, appends a parent `vigil-launch` custom entry, and returns a `running` snapshot.
+`launch` requires a nonblank human-readable `name` and a nonblank `model` (use `vigil({ action: "models" })` to list `provider/id[:thinking]` values), starts a detached Pi child, appends a parent `vigil-launch` custom entry, and returns a `running` snapshot.
 
 By default (`ephemeral` absent/false), Vigil launches `pi --mode json -p --session-id <id> --name <name>` and the child retains a normal Pi session JSONL plus a `/resume` entry.
 
@@ -126,7 +126,7 @@ vigil search(query: "failure", id?: child)
 → poll/send/complete as normal
 ```
 
-In the interactive TUI, compact Vigil tool rows show the action, human-readable child name, and a shortened id (for example `vigil launch · Slice 4.5 implementation · model Pi default` or `vigil poll · Slice 4.5 implementation [vigil-bd02f54]`). Names are reconstructed from the current parent session branch; full arguments and results remain expandable. Launch rows always include a model indicator (`model <value>` when supplied, otherwise the honest fallback `model Pi default`). Send rows include a bounded message excerpt and show `model <value>` only when a continuation model was supplied. The launch `name` is the visual task identity; launch prompt text is deliberately not echoed in the compact row.
+In the interactive TUI, compact Vigil tool rows show the action, human-readable child name, and a shortened id (for example `vigil launch · Slice 4.5 implementation · model cursor/composer-2.5-fast` or `vigil poll · Slice 4.5 implementation [vigil-bd02f54]`). Names are reconstructed from the current parent session branch; full arguments and results remain expandable. Launch rows include the supplied `model` indicator (`model <value>`). Send rows include a bounded message excerpt and show `model <value>` only when a continuation model was supplied. The launch `name` is the visual task identity; launch prompt text is deliberately not echoed in the compact row.
 
 Successful `launch`, `send`, and `complete` tool **content** returned to the model is a compact mutation receipt (`id`, `name`, `state`, plus `completedAt` for complete only). It omits `sessionId`, `cwd`, and `latestResponse`. The full structured `VigilSnapshot` remains in result `details` for compatibility. Use `poll` or a settled `wait` when the orchestrator needs the latest child response in model context. In the interactive TUI, successful mutation results render that compact receipt by default; expandable detail is visual only. Expanded `launch` shows the original `message` argument; expanded `send` shows the original `message` argument; expanded `complete` may show `details.latestResponse`. Expandable detail is terminal-safe and capped at 4000 visible characters per block.
 

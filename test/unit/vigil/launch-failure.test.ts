@@ -115,6 +115,7 @@ describe("VigilService.launch failure detection", () => {
     const launchPromise = service.launch({
       name: "Audit fail",
       message: "hello",
+      model: "openai-codex/gpt-5.5",
       parentCwd: "/parent/default",
     });
 
@@ -137,7 +138,7 @@ describe("VigilService.launch failure detection", () => {
     const result = await service.launch({
       name: "Slow start",
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
 
     expect(isVigilError(result)).toBe(false);
@@ -167,7 +168,7 @@ describe("VigilService.launch failure detection", () => {
     const result = await service.launch({
       name: "Spawn fail",
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
 
     expect(result).toEqual({ error: "Failed to launch Pi child: spawn pi ENOENT" });
@@ -224,7 +225,7 @@ describe("VigilService.launch failure detection", () => {
     const result = await service.launch({
       name: "Ephemeral",
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       ephemeral: true,
     });
 

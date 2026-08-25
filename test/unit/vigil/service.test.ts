@@ -11,6 +11,9 @@ import {
 } from "../../../src/vigil/types";
 
 const TEST_VIGIL_NAME = "Test vigil";
+const TEST_VIGIL_MODEL = "openai-codex/gpt-5.5";
+const LAUNCH_REQUIRES_MODEL_ERROR =
+  "launch requires model (use vigil({ action: \"models\" }) to pick provider/id[:thinking])";
 
 function createFakeDeps(options?: {
   pid?: number;
@@ -133,12 +136,12 @@ describe("VigilService.launch", () => {
     const first = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "hello",
-      parentCwd: "/parent/a",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/a",
     });
     const second = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "hello again",
-      parentCwd: "/parent/a",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/a",
     });
 
     expectSnapshot(first);
@@ -156,7 +159,7 @@ describe("VigilService.launch", () => {
     const snapshot = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
 
     expectSnapshot(snapshot);
@@ -170,7 +173,7 @@ describe("VigilService.launch", () => {
     const snapshot = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       cwd: "/child/override",
     });
 
@@ -221,6 +224,37 @@ describe("VigilService.launch", () => {
     });
   });
 
+  it("rejects launch without model", async () => {
+    const { service } = createFakeDeps({ createId: () => "vigil-no-model" });
+
+    const result = await service.launch({
+      name: TEST_VIGIL_NAME,
+      message: "hello",
+      parentCwd: "/parent/default",
+    });
+
+    expect(isVigilError(result)).toBe(true);
+    if (isVigilError(result)) {
+      expect(result.error).toBe(LAUNCH_REQUIRES_MODEL_ERROR);
+    }
+  });
+
+  it("rejects launch with whitespace-only model", async () => {
+    const { service } = createFakeDeps({ createId: () => "vigil-blank-model" });
+
+    const result = await service.launch({
+      name: TEST_VIGIL_NAME,
+      message: "hello",
+      parentCwd: "/parent/default",
+      model: "   ",
+    });
+
+    expect(isVigilError(result)).toBe(true);
+    if (isVigilError(result)) {
+      expect(result.error).toBe(LAUNCH_REQUIRES_MODEL_ERROR);
+    }
+  });
+
   it("returns a clear error when the child process cannot be spawned", async () => {
     const { service } = createFakeDeps({
       spawnError: new Error("spawn pi ENOENT"),
@@ -229,7 +263,7 @@ describe("VigilService.launch", () => {
     const result = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
 
     expect(isVigilError(result)).toBe(true);
@@ -252,7 +286,7 @@ describe("VigilService.poll", () => {
     const launched = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expectSnapshot(launched);
 
@@ -273,7 +307,7 @@ describe("VigilService.poll", () => {
     const launched = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
 
     const polled = await service.poll((launched as VigilSnapshot).id);
@@ -293,7 +327,7 @@ describe("VigilService.poll", () => {
     const launched = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     setAlive(false);
 
@@ -314,7 +348,7 @@ describe("VigilService.poll", () => {
     const launched = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "hello",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
 
     const polled = await service.poll((launched as VigilSnapshot).id);
@@ -379,7 +413,7 @@ describe("VigilService.poll", () => {
     const launched = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "complete quickly",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expectSnapshot(launched);
 
@@ -413,7 +447,7 @@ describe("VigilService.poll", () => {
     const launched = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "first turn",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
 
     const polled = await service.poll((launched as VigilSnapshot).id);
@@ -437,7 +471,7 @@ describe("VigilService.send", () => {
     const launched = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "first turn",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       cwd: "/child/work",
     });
     expectSnapshot(launched);
@@ -470,7 +504,7 @@ describe("VigilService.send", () => {
     const launched = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "first turn",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
       cwd: "/child/work",
     });
     expectSnapshot(launched);
@@ -509,7 +543,7 @@ describe("VigilService.send", () => {
     const launched = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "first turn",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expectSnapshot(launched);
 
@@ -542,7 +576,7 @@ describe("VigilService.send", () => {
     const launched = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "first turn",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expectSnapshot(launched);
 
@@ -597,7 +631,7 @@ describe("VigilService.send", () => {
     const launched = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "first turn",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expectSnapshot(launched);
     setAlive(false);
@@ -626,7 +660,7 @@ describe("VigilService.send", () => {
     const launched = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "first turn",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expectSnapshot(launched);
 
@@ -655,7 +689,7 @@ describe("VigilService.send", () => {
     const launched = await service.launch({
       name: TEST_VIGIL_NAME,
       message: "first turn",
-      parentCwd: "/parent/default",
+      model: "openai-codex/gpt-5.5", parentCwd: "/parent/default",
     });
     expectSnapshot(launched);
 

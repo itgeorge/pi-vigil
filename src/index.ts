@@ -77,11 +77,11 @@ export const vigilTool = defineTool({
   name: "vigil",
   label: "Vigil",
   description:
-    "Launch, poll, continue, list, complete, foreground-wait, search, read, or list available Pi models for child launch/send. Wait observes the current active cohort or one targeted direct child with bounded polling and never changes child state. Pass ephemeral: true on launch for a single-turn child that does not create a Pi session or /resume entry.",
+    "Launch, poll, continue, list, complete, foreground-wait, search, read, or list available Pi models for child launch/send. Launch requires a nonblank model (use action \"models\" to pick provider/id[:thinking]). Wait observes the current active cohort or one targeted direct child with bounded polling and never changes child state. Pass ephemeral: true on launch for a single-turn child that does not create a Pi session or /resume entry.",
   parameters: Type.Object({
     action: StringEnum(["launch", "poll", "send", "list", "complete", "wait", "search", "read", "models"], {
       description:
-        "launch starts a detached child session; poll reads status; send continues a waiting child; list returns the parent working set; complete retires a waiting child; wait boundedly observes the initial active cohort or one targeted direct child; search finds literal matches in child transcripts; read inspects a stable child entry with nearby JSONL context; models lists Pi models available for launch/send in this session",
+        "launch starts a detached child session (requires nonblank model); poll reads status; send continues a waiting child; list returns the parent working set; complete retires a waiting child; wait boundedly observes the initial active cohort or one targeted direct child; search finds literal matches in child transcripts; read inspects a stable child entry with nearby JSONL context; models lists Pi models available for launch/send in this session",
     }),
     name: Type.Optional(
       Type.String({
@@ -95,7 +95,8 @@ export const vigilTool = defineTool({
     ),
     model: Type.Optional(
       Type.String({
-        description: "Optional Pi model syntax such as openai-codex/gpt-5.5:high",
+        description:
+          "Pi model syntax such as openai-codex/gpt-5.5:high (required for launch; optional for send). Use vigil({ action: \"models\" }) to list provider/id[:thinking] values.",
       }),
     ),
     cwd: Type.Optional(
@@ -218,6 +219,21 @@ export const vigilTool = defineTool({
         return {
           content: [{ type: "text" as const, text: "launch requires message" }],
           details: { error: "launch requires message" },
+          isError: true,
+        };
+      }
+
+      if (!params.model?.trim()) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "launch requires model (use vigil({ action: \"models\" }) to pick provider/id[:thinking])",
+            },
+          ],
+          details: {
+            error: "launch requires model (use vigil({ action: \"models\" }) to pick provider/id[:thinking])",
+          },
           isError: true,
         };
       }
