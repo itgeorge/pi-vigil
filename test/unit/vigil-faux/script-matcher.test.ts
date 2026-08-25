@@ -128,4 +128,26 @@ describe("createScriptMatcher", () => {
     expect(getTextContent(matcher.match(context))).toBe("repeatable");
     expect(getTextContent(matcher.match(context))).toBe("repeatable");
   });
+
+  it("delays before emitting a matched step when delayMs is set on the step", () => {
+    const delayMs = 80;
+    const script = parseVigilFauxScript({
+      version: 1,
+      steps: [
+        {
+          when: { userTextIncludes: "delay-marker" },
+          then: { type: "text", text: "delayed reply" },
+          delayMs,
+        },
+      ],
+    });
+    const matcher = createScriptMatcher(script);
+    const start = performance.now();
+
+    const result = matcher.match(contextWithUserText("please delay-marker now"));
+    const elapsed = performance.now() - start;
+
+    expect(getTextContent(result)).toBe("delayed reply");
+    expect(elapsed).toBeGreaterThanOrEqual(delayMs - 15);
+  });
 });
