@@ -1,6 +1,6 @@
 import { accessSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, win32 } from "node:path";
 
 export const DEFAULT_PI_EXECUTABLE = "pi";
 
@@ -10,7 +10,8 @@ export interface PiSpawnCommand {
 }
 
 export function derivePiCliEntrypointFromPackageIndex(indexPath: string): string {
-  return join(dirname(indexPath), "cli.js");
+  // Always win32: this helper exists for Windows spawn path derivation.
+  return win32.join(win32.dirname(indexPath), "cli.js");
 }
 
 function locatePiCodingAgentIndexPath(): string {

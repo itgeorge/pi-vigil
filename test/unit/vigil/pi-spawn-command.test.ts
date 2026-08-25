@@ -54,6 +54,16 @@ describe("derivePiCliEntrypointFromPackageIndex", () => {
       "C:\\Users\\itgeorge\\AppData\\Roaming\\npm\\node_modules\\@earendil-works\\pi-coding-agent\\dist\\cli.js",
     );
   });
+
+  it("derives sibling dist/cli.js from a forward-slash package index path", () => {
+    expect(
+      derivePiCliEntrypointFromPackageIndex(
+        "C:/Users/itgeorge/AppData/Roaming/npm/node_modules/@earendil-works/pi-coding-agent/dist/index.js",
+      ),
+    ).toBe(
+      "C:\\Users\\itgeorge\\AppData\\Roaming\\npm\\node_modules\\@earendil-works\\pi-coding-agent\\dist\\cli.js",
+    );
+  });
 });
 
 describe("buildPiSpawnArgs", () => {
