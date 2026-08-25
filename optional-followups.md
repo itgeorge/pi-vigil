@@ -18,7 +18,7 @@ Relevant milestones:
 
 ## Faux harness (Slice F)
 
-Test-only `vigil-faux` scripted provider for deterministic acceptance without `PI_VIGIL_LIVE`. Run `npm run test:faux`. Reuse this harness for upcoming nesting-policy e2e (Slice N).
+Test-only `vigil-faux` scripted provider for deterministic acceptance without `PI_VIGIL_LIVE`. Run `npm run test:faux`. Slice N nesting-policy deny/allow e2e (`test/faux-acceptance/vigil-nesting-faux.test.ts`) reuses this harness with `loadLocalVigil: true` (`-ne` + dual `-e` for workspace Vigil + faux).
 
 ---
 

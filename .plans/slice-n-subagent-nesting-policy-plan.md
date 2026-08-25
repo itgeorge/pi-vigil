@@ -304,13 +304,32 @@ Grandchild model: same `vigil-faux/scripted` with a trivial text step so it sett
 
 ## Phase 5 — Close-out
 
-- [ ] `npm run typecheck`, `npm test` (modulo known unrelated failures), `npm run pack:verify`, `npm run test:faux`.
-- [ ] Update optional-followups / Slice F follow-up checkboxes for completed nesting e2e items.
-- [ ] Progress log: Slice N complete.
+- [x] `npm run typecheck`, `npm test` (modulo known unrelated failures), `npm run pack:verify`, `npm run test:faux`.
+- [x] Update optional-followups / Slice F follow-up checkboxes for completed nesting e2e items.
+- [x] Progress log: Slice N complete.
 
 ### Progress notes — Phase 5
 
-_(implementer fills)_
+**Command:** `npm run typecheck`
+
+**Result:** clean (`tsc --noEmit`).
+
+**Command:** `npm test`
+
+**Result:** 50 files, **425/425 passed** after updating `service.test.ts` launch-record expectation for default `allowSubagents: false` (Slice N Phase 3 shape). No unrelated pre-existing failures at close-out (prior Slice F note on `pi-spawn-command.test.ts` Windows path was fixed in commit `120a590`).
+
+**Command:** `npm run pack:verify`
+
+**Result:** clean — `package surface ok (25 tarball entries)`.
+
+**Command:** `npm run test:faux`
+
+**Result:** 2 files, **4/4 passed** — `vigil-faux-smoke.test.ts` (2), `vigil-nesting-faux.test.ts` (2 deny + allow).
+
+**Close-out edits:**
+- `optional-followups.md` — Faux harness note updated: nesting e2e complete, points at `vigil-nesting-faux.test.ts` + `loadLocalVigil`.
+- `.plans/slice-f-vigil-faux-harness-plan.md` — Slice N follow-up checkbox marked complete.
+- `test/unit/vigil/service.test.ts` — expect `allowSubagents: false` on default launch record.
 
 ---
 
@@ -325,3 +344,4 @@ _(implementer fills)_
 ## Progress log
 
 - 2026-08-25: Plan drafted after Slice F completion. Binary policy; default deny for Vigil-spawned children via `--vigil-no-subagents` + `vigil-policy` session stamp; absence ⇒ allow; faux e2e for deny/allow. Implementation gated on user approval.
+- 2026-08-25: **Slice N complete (Phases 0–5).** Policy module + launch gate; `--vigil-no-subagents` flag + `session_start` stamp; spawn/`send` wiring + `allowSubagents` schema; faux deny/allow e2e via `-ne` dual `-e` + bootstrap runner env.

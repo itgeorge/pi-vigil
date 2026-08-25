@@ -389,7 +389,7 @@ Keep `npm test` / `npm run check` on unit + typecheck + pack:verify (do not forc
 
 ## Follow-ups (out of scope for Slice F)
 
-- [ ] Slice N: `allowSubagents` / `--vigil-no-subagents` / session `vigil-policy` + two faux e2e cases (default deny nested launch; explicit allow).
+- [x] Slice N: `allowSubagents` / `--vigil-no-subagents` / session `vigil-policy` + two faux e2e cases (default deny nested launch; explicit allow).
 - [ ] Optional: faux script step for multi-turn `send` continuations.
 - [ ] Optional: shared diagnostic spawn that captures child stderr only under test overrides.
 
@@ -399,3 +399,4 @@ Keep `npm test` / `npm run check` on unit + typecheck + pack:verify (do not forc
 
 - 2026-08-25: Plan created after design discussion. Build on pi-ai faux; cross-process via test extension + script file; default deny nesting deferred to Slice N. Implementer model: `cursor/composer-2.5:high`.
 - 2026-08-25: **Slice F complete (Phases 0–5).** Faux harness, unit tests, faux-acceptance smoke, `test:faux` script, docs pointers. Slice N not started.
+- 2026-08-25: **Slice N follow-up complete.** Nesting policy e2e (`vigil-nesting-faux.test.ts`) landed in Slice N; residual risks from Slice F Phase 5 close-out addressed.

@@ -215,6 +215,7 @@ describe("VigilService.launch", () => {
       pid: 9001,
       cwd: "/child/work",
       model: "openai-codex/gpt-5.5",
+      allowSubagents: false,
       sessionDir: "/tmp/vigil-sessions",
       launchedAt: expect.any(String),
     });
