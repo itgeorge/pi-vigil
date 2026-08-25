@@ -256,13 +256,29 @@ Parent must set `PI_VIGIL_FAUX_BOOTSTRAP_RUNNER=1` so when parent Vigil launches
 
 ## Phase 3 — Close-out
 
-- [ ] `npm run typecheck`, `npm test` (modulo known unrelated), `npm run test:faux`, `npm run pack:verify`.
-- [ ] Note in `optional-followups.md` / Slice F residual: mechanistic release smoke via faux parent; live TUI skill still deferred.
-- [ ] Progress log: Slice O complete.
+- [x] `npm run typecheck`, `npm test` (modulo known unrelated), `npm run test:faux`, `npm run pack:verify`.
+- [x] Note in `optional-followups.md` / Slice F residual: mechanistic release smoke via faux parent; live TUI skill still deferred.
+- [x] Progress log: Slice O complete.
 
 ### Progress notes — Phase 3
 
-_(implementer fills)_
+**Command:** `npm run typecheck`
+
+**Result:** clean (`tsc --noEmit`).
+
+**Command:** `npm test`
+
+**Result:** 52 files, 437 passed (437) — all green (no known unrelated failures).
+
+**Command:** `npm run test:faux`
+
+**Result:** 3 files, 5 passed (5) — smoke, nesting, orchestration.
+
+**Command:** `npm run pack:verify`
+
+**Result:** clean — `package surface ok (25 tarball entries)`.
+
+**Docs:** `optional-followups.md` — Slice F/O faux harness note updated; mechanistic release smoke via faux parent documented; live TUI skill deferred.
 
 ---
 
@@ -279,3 +295,4 @@ _(implementer fills)_
 
 - 2026-08-25: Plan drafted after design discussion. Real Pi parent + faux; `$launch[N].id`; step `delayMs`; two unscoped waits; list includeCompleted; parent-ledger asserts only. Implementation gated on user approval.
 - 2026-08-25: Phase 2 complete — real Pi parent orchestration e2e green; `globalThis` runtime-overrides bridge for faux bootstrap in detached parents.
+- 2026-08-25: **Slice O complete (Phase 3 close-out).** Full verification green; mechanistic release smoke documented in `optional-followups.md`; live TUI skill remains deferred.

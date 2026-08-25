@@ -16,9 +16,14 @@ Relevant milestones:
 
 ---
 
-## Faux harness (Slice F)
+## Faux harness (Slice F / O)
 
-Test-only `vigil-faux` scripted provider for deterministic acceptance without `PI_VIGIL_LIVE`. Run `npm run test:faux`. Slice N nesting-policy deny/allow e2e (`test/faux-acceptance/vigil-nesting-faux.test.ts`) reuses this harness with `loadLocalVigil: true` (`-ne` + dual `-e` for workspace Vigil + faux).
+Test-only `vigil-faux` scripted provider for deterministic acceptance without `PI_VIGIL_LIVE`. Run `npm run test:faux`.
+
+- Slice N nesting-policy deny/allow e2e (`test/faux-acceptance/vigil-nesting-faux.test.ts`) reuses this harness with `loadLocalVigil: true` (`-ne` + dual `-e` for workspace Vigil + faux).
+- Slice O mechanistic release smoke (`test/faux-acceptance/vigil-orchestration-faux.test.ts`): real detached Pi parent, staggered faux children, targeted waits, completes, parent-ledger asserts — no LLM auth, no TUI.
+
+**Deferred:** live self-test skill for TUI wait partials (Aug 9-style manual smoke); see Slice O plan follow-ups.
 
 ---
 
