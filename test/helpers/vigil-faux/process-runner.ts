@@ -63,12 +63,15 @@ export function insertVigilFauxExtensionArgs(
   const message = args[args.length - 1]!;
   const head = args.slice(0, -1);
 
+  // Prepend extension args so we never insert tokens between a trailing bare
+  // boolean flag (e.g. --vigil-no-subagents) and the positional prompt. Doing
+  // so previously masked a production argv bug where Pi swallowed the prompt.
   if (options.loadLocalVigil) {
     const vigilPath = options.localVigilExtensionPath ?? getLocalVigilExtensionPath();
-    return [...head, "-ne", "-e", vigilPath, "-e", fauxPath, message];
+    return ["-ne", "-e", vigilPath, "-e", fauxPath, ...head, message];
   }
 
-  return [...head, "--extension", fauxPath, message];
+  return ["--extension", fauxPath, ...head, message];
 }
 
 export type CreateVigilFauxProcessRunnerOptions = {

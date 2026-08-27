@@ -67,22 +67,32 @@ describe("buildPiChildArgs", () => {
   });
 
   it("includes --vigil-no-subagents when noSubagents is requested", () => {
-    expect(
-      buildPiChildArgs({
-        sessionId: "vigil-cli-boundary",
-        message: "No nesting",
-        cwd: "/parent/default",
-        noSubagents: true,
-      }),
-    ).toEqual([
+    const args = buildPiChildArgs({
+      sessionId: "vigil-cli-boundary",
+      message: "No nesting",
+      cwd: "/parent/default",
+      name: "Deny nesting",
+      model: "openai-codex/gpt-5.5",
+      noSubagents: true,
+    });
+
+    expect(args).toEqual([
       "--mode",
       "json",
       "-p",
       "--session-id",
       "vigil-cli-boundary",
       "--vigil-no-subagents",
+      "--name",
+      "Deny nesting",
+      "--model",
+      "openai-codex/gpt-5.5",
       "No nesting",
     ]);
+    // Pi boolean flags consume the next non-flag token; never place the bare
+    // deny flag immediately before the positional prompt.
+    expect(args.at(-1)).toBe("No nesting");
+    expect(args.at(-2)).not.toBe("--vigil-no-subagents");
   });
 
   it("omits --vigil-no-subagents by default", () => {
@@ -105,21 +115,26 @@ describe("buildPiChildArgs", () => {
   });
 
   it("includes --vigil-no-subagents on ephemeral args when requested", () => {
-    expect(
-      buildPiEphemeralChildArgs({
-        message: "No nesting",
-        name: "Ephemeral",
-        noSubagents: true,
-      }),
-    ).toEqual([
+    const args = buildPiEphemeralChildArgs({
+      message: "No nesting",
+      name: "Ephemeral",
+      model: "openai-codex/gpt-5.5",
+      noSubagents: true,
+    });
+
+    expect(args).toEqual([
       "--mode",
       "json",
       "-p",
       "--no-session",
+      "--vigil-no-subagents",
       "--name",
       "Ephemeral",
-      "--vigil-no-subagents",
+      "--model",
+      "openai-codex/gpt-5.5",
       "No nesting",
     ]);
+    expect(args.at(-1)).toBe("No nesting");
+    expect(args.at(-2)).not.toBe("--vigil-no-subagents");
   });
 });

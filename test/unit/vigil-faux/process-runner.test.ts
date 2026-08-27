@@ -11,6 +11,7 @@ import {
   createVigilFauxProcessRunner,
   getLocalVigilExtensionPath,
   getVigilFauxExtensionPath,
+  insertVigilFauxExtensionArgs,
   writeVigilFauxScript,
 } from "../../helpers/vigil-faux/index.js";
 import { parseVigilFauxScript } from "../../helpers/vigil-faux/script.js";
@@ -114,6 +115,8 @@ describe("vigil-faux process runner helpers", () => {
       expect(spawnChild).toHaveBeenCalledOnce();
       const [, spawnArgs] = spawnChild.mock.calls[0]!;
       expect(spawnArgs).toEqual([
+        "--extension",
+        extensionPath,
         "--mode",
         "json",
         "-p",
@@ -123,8 +126,6 @@ describe("vigil-faux process runner helpers", () => {
         "Faux child",
         "--model",
         "vigil-faux/scripted",
-        "--extension",
-        extensionPath,
         "run scripted child",
       ]);
     });
@@ -146,6 +147,11 @@ describe("vigil-faux process runner helpers", () => {
       expect(spawnChild).toHaveBeenCalledOnce();
       const [, spawnArgs] = spawnChild.mock.calls[0]!;
       expect(spawnArgs).toEqual([
+        "-ne",
+        "-e",
+        localVigilExtensionPath,
+        "-e",
+        fauxExtensionPath,
         "--mode",
         "json",
         "-p",
@@ -155,11 +161,6 @@ describe("vigil-faux process runner helpers", () => {
         "Nested child",
         "--model",
         "vigil-faux/scripted",
-        "-ne",
-        "-e",
-        localVigilExtensionPath,
-        "-e",
-        fauxExtensionPath,
         "run nested child",
       ]);
     });
@@ -228,6 +229,21 @@ describe("vigil-faux process runner helpers", () => {
       expect(args).toContain("--model");
       expect(args[args.indexOf("--model") + 1]).toBe("vigil-faux/scripted");
       expect(args).toContain("--vigil-no-subagents");
+      expect(args.at(-1)).toBe("prompt last");
+      expect(args.at(-2)).not.toBe("--vigil-no-subagents");
+    });
+
+    it("does not insert extension args between a trailing bare boolean flag and the prompt", () => {
+      // If production ever regresses to `--vigil-no-subagents <prompt>`, the
+      // faux harness must preserve that adjacency so real Pi still fails the
+      // child turn instead of silently masking the swallowed prompt.
+      const args = insertVigilFauxExtensionArgs(
+        ["--mode", "json", "-p", "--vigil-no-subagents", "PROMPT"],
+        { loadLocalVigil: true },
+      );
+
+      expect(args.at(-1)).toBe("PROMPT");
+      expect(args.at(-2)).toBe("--vigil-no-subagents");
     });
   });
 });

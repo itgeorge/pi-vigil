@@ -263,15 +263,19 @@ export function buildPiEphemeralChildArgs(input: {
   name?: string;
   noSubagents?: boolean;
 }): string[] {
+  // Keep --vigil-no-subagents before dashed flags / away from the trailing
+  // positional prompt. Pi boolean extension flags consume the next non-flag
+  // argv token, so placing the bare flag immediately before `message` swallows
+  // the prompt and the child never starts a turn.
   const args = ["--mode", "json", "-p", "--no-session"];
+  if (input.noSubagents) {
+    args.push("--vigil-no-subagents");
+  }
   if (input.name) {
     args.push("--name", input.name);
   }
   if (input.model) {
     args.push("--model", input.model);
-  }
-  if (input.noSubagents) {
-    args.push("--vigil-no-subagents");
   }
   args.push(input.message);
   return args;
