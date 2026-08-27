@@ -113,7 +113,7 @@ export const vigilTool = defineTool({
     allowSubagents: Type.Optional(
       Type.Boolean({
         description:
-          "For launch only: allow the spawned child to launch its own Vigil subagents. Default false stamps deny policy on the child via --vigil-no-subagents.",
+          "For launch only: allow the spawned child to launch its own Vigil subagents. Default false stamps deny policy on the child via --vigil-no-subagents true.",
       }),
     ),
     id: Type.Optional(

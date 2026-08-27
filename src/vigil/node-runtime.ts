@@ -1418,14 +1418,10 @@ export function createNodeWaitScheduler(): WaitScheduler {
 }
 
 export function buildPiChildArgs(input: SpawnChildInput): string[] {
-  // Keep --vigil-no-subagents before dashed flags / away from the trailing
-  // positional prompt. Pi boolean extension flags consume the next non-flag
-  // argv token, so placing the bare flag immediately before `message` swallows
-  // the prompt and the child never starts a turn.
+  // Pass an explicit boolean value. Pi extension boolean flags consume the next
+  // non-flag argv token; a bare `--vigil-no-subagents` immediately before the
+  // positional prompt swallows the message and the child never starts a turn.
   const args = ["--mode", "json", "-p", "--session-id", input.sessionId];
-  if (input.noSubagents) {
-    args.push("--vigil-no-subagents");
-  }
   if (input.name) {
     args.push("--name", input.name);
   }
@@ -1434,6 +1430,9 @@ export function buildPiChildArgs(input: SpawnChildInput): string[] {
   }
   if (input.sessionDir) {
     args.push("--session-dir", input.sessionDir);
+  }
+  if (input.noSubagents) {
+    args.push("--vigil-no-subagents", "true");
   }
   args.push(input.message);
   return args;

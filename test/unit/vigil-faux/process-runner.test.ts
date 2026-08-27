@@ -229,8 +229,10 @@ describe("vigil-faux process runner helpers", () => {
       expect(args).toContain("--model");
       expect(args[args.indexOf("--model") + 1]).toBe("vigil-faux/scripted");
       expect(args).toContain("--vigil-no-subagents");
+      expect(args[args.indexOf("--vigil-no-subagents") + 1]).toBe("true");
       expect(args.at(-1)).toBe("prompt last");
-      expect(args.at(-2)).not.toBe("--vigil-no-subagents");
+      expect(args.at(-2)).toBe("true");
+      expect(args.at(-3)).toBe("--vigil-no-subagents");
     });
 
     it("does not insert extension args between a trailing bare boolean flag and the prompt", () => {
