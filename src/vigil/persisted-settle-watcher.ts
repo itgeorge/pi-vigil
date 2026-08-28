@@ -167,7 +167,7 @@ export function createPersistedSettleWatcher(deps: PersistedSettleWatcherDeps): 
         return;
       }
 
-      delayMs = Math.min(delayMs * 2, maxDelayMs);
+      delayMs = Math.min(Math.max(delayMs * 2, 1), maxDelayMs);
     }
   };
 

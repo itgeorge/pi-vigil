@@ -13,7 +13,8 @@ import { createPersistedSettleWatcher } from "../../../src/vigil/persisted-settl
 import { isVigilError } from "../../../src/vigil/types";
 
 const TEST_MODEL = "openai-codex/gpt-5.5";
-const SETTLED_TIMESTAMP = "2026-08-28T12:00:00.000Z";
+// Must be >= turnStartedAt from launch/send (real wall clock) or deriveVigilState stays running.
+const SETTLED_TIMESTAMP = "2099-01-01T00:00:00.000Z";
 
 class FakeScheduler implements WaitScheduler {
   time = 0;
@@ -26,6 +27,8 @@ class FakeScheduler implements WaitScheduler {
   async sleep(ms: number, signal?: AbortSignal): Promise<"elapsed" | "cancelled"> {
     this.sleeps.push(ms);
     this.time += ms;
+    // Yield so tests can mutate child state between polls (avoid busy-loop starvation).
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     return signal?.aborted ? "cancelled" : "elapsed";
   }
 }
@@ -34,19 +37,15 @@ function defaultActivity() {
   return {
     steps: 0,
     messages: 0,
-    lastActivity: null as string | null,
-    lastActivityTimestamp: null as string | null,
-    recentMessages: [] as Array<{
-      role: string;
-      excerpt: string;
-      timestamp: string;
-    }>,
+    lastActivity: null,
+    lastActivityTimestamp: null,
+    recentMessages: [] as [],
   };
 }
 
 async function flushAsync(rounds = 8): Promise<void> {
   for (let i = 0; i < rounds; i += 1) {
-    await Promise.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
   }
 }
 
@@ -230,10 +229,7 @@ describe("persisted settle parent notify", () => {
     await flushAsync(32);
     expect(parentNotifier.calls).toHaveLength(1);
 
-    setAlive(true);
-    turnComplete = false;
-    latestResponse = "FIRST";
-
+    // send requires a waiting child — keep settled until send succeeds, then run the new turn
     const sendPromise = service.send({
       vigilId: "vigil-persisted-notify",
       message: "Second turn",
@@ -244,6 +240,9 @@ describe("persisted settle parent notify", () => {
     bootstrapObserver.signalSessionExists("vigil-persisted-notify");
     await sendPromise;
 
+    setAlive(true);
+    turnComplete = false;
+    latestResponse = "FIRST";
     await flushAsync(16);
     expect(parentNotifier.calls).toHaveLength(1);
 
@@ -281,8 +280,6 @@ describe("persisted settle parent notify", () => {
     await flushAsync(32);
     expect(parentNotifier.calls).toHaveLength(1);
 
-    setAlive(true);
-    turnComplete = false;
     const sendPromise = service.send({
       vigilId: "vigil-persisted-notify",
       message: "Silent second turn",
@@ -293,6 +290,10 @@ describe("persisted settle parent notify", () => {
     await Promise.resolve();
     bootstrapObserver.signalSessionExists("vigil-persisted-notify");
     await sendPromise;
+
+    setAlive(true);
+    turnComplete = false;
+    await flushAsync(16);
 
     turnComplete = true;
     await flushAsync(32);
