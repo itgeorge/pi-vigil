@@ -6,6 +6,12 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createVigilServiceForContext, shutdownSharedEphemeralChildObserver, shutdownSharedPersistedBootstrapObserver } from "./vigil/node-runtime";
+import {
+  createExtensionParentNotifier,
+  createNoopParentNotifier,
+  createShutdownAwareParentNotifier,
+  type ParentNotifier,
+} from "./vigil/parent-notifier";
 import { createProcessRunnerPersistedBootstrapObserver } from "./vigil/persisted-bootstrap-observer";
 import { getVigilSessionDir } from "./vigil/config";
 import { appendThinkingLevelToModel } from "./vigil/model";
@@ -42,6 +48,8 @@ let appendEntryForTool: ExtensionAPI["appendEntry"] = () => {
   throw new Error("pi-vigil extension not initialized");
 };
 
+let parentNotifierForTool: ParentNotifier & { shutdown?: () => void } = createNoopParentNotifier();
+
 let getNoSubagentsFlagForTool: (() => boolean) | undefined;
 
 const vigilDisplayNameCache = createVigilDisplayNameCache();
@@ -53,6 +61,7 @@ function refreshVigilDisplayNameCache(ctx: ExtensionContext): void {
 function createService(ctx: ExtensionContext) {
   const overrides = getVigilRuntimeOverrides();
   const processRunner = overrides.processRunner;
+  const parentNotifier = overrides.parentNotifier ?? parentNotifierForTool;
   return createVigilServiceForContext({
     parentCwd: ctx.cwd,
     sessionManager: ctx.sessionManager,
@@ -69,6 +78,7 @@ function createService(ctx: ExtensionContext) {
       (processRunner ? createProcessRunnerPersistedBootstrapObserver(processRunner) : undefined),
     bootstrapFailFastTimeoutMs: overrides.bootstrapFailFastTimeoutMs,
     waitScheduler: overrides.waitScheduler,
+    parentNotifier,
     getNoSubagentsFlag: getNoSubagentsFlagForTool,
   });
 }
@@ -497,6 +507,11 @@ function snapshotResult(snapshot: VigilSnapshot) {
 
 export function registerVigilExtension(pi: ExtensionAPI): ToolDefinition {
   appendEntryForTool = pi.appendEntry.bind(pi);
+  parentNotifierForTool = pi.sendMessage
+    ? createShutdownAwareParentNotifier(
+        createExtensionParentNotifier(pi.sendMessage.bind(pi)),
+      )
+    : createNoopParentNotifier();
   getNoSubagentsFlagForTool = pi.getFlag
     ? () => pi.getFlag("vigil-no-subagents") === true
     : undefined;
@@ -523,6 +538,7 @@ export function registerVigilExtension(pi: ExtensionAPI): ToolDefinition {
   });
 
   pi.on("session_shutdown", async () => {
+    parentNotifierForTool.shutdown?.();
     await shutdownSharedEphemeralChildObserver();
     await shutdownSharedPersistedBootstrapObserver();
   });

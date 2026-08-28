@@ -27,6 +27,7 @@ import {
 import {
   lifecycleStateToListItem,
   reconstructVigilLifecycleFromEntries,
+  shouldNotifyOnSettle,
   sortLifecycleStatesMostRecentFirst,
   deriveDiagnosticChildIdentity,
   isEphemeralLifecycle,
@@ -68,6 +69,10 @@ import {
   type VigilWaitProgress,
   type VigilWaitProgressItem,
 } from "./wait-progress";
+import {
+  createNoopParentNotifier,
+  type ParentNotifier,
+} from "./parent-notifier";
 import { buildPiSpawnArgs, resolvePiSpawnCommand } from "./pi-spawn-command";
 import {
   createVigilId,
@@ -219,7 +224,9 @@ export class VigilService {
   private readonly deps: VigilServiceDeps & {
     ephemeralChildObserver: EphemeralChildObserver;
     persistedBootstrapObserver: PersistedBootstrapObserver;
+    parentNotifier: ParentNotifier;
   };
+  private readonly settleNotifiedKeys = new Set<string>();
 
   constructor(deps: VigilServiceDeps) {
     this.deps = {
@@ -228,6 +235,7 @@ export class VigilService {
       persistedBootstrapObserver:
         deps.persistedBootstrapObserver ??
         createProcessRunnerPersistedBootstrapObserver(deps.processRunner),
+      parentNotifier: deps.parentNotifier ?? createNoopParentNotifier(),
     };
   }
 
@@ -294,6 +302,7 @@ export class VigilService {
               ...(result.error ? { error: result.error } : {}),
             };
             this.deps.parentLedger.appendSettle(settleRecord);
+            this.maybeNotifyParentOnSettle(current, settleRecord);
           },
         }));
       } catch (error) {
@@ -1140,6 +1149,34 @@ export class VigilService {
     return this.deps.parentLedger.getLifecycle(vigilId);
   }
 
+  private maybeNotifyParentOnSettle(
+    lifecycleBeforeSettle: VigilLifecycleState,
+    settleRecord: VigilSettleRecord,
+  ): void {
+    const notifyKey = `${settleRecord.id}:${settleRecord.settledAt}`;
+    if (this.settleNotifiedKeys.has(notifyKey)) {
+      return;
+    }
+
+    const lifecycle = this.deps.parentLedger.getLifecycle(settleRecord.id) ?? {
+      ...lifecycleBeforeSettle,
+      settleRecord,
+    };
+    if (!shouldNotifyOnSettle(lifecycle)) {
+      return;
+    }
+
+    this.settleNotifiedKeys.add(notifyKey);
+    const state = settleRecord.error ? "failed" : "waiting";
+    this.deps.parentNotifier.notifySettled({
+      id: settleRecord.id,
+      name: lifecycle.launchName,
+      state,
+      latestResponse: settleRecord.latestResponse,
+      ...(settleRecord.error ? { error: settleRecord.error } : {}),
+    });
+  }
+
   private rejectIfCurrentSessionTarget(
     lifecycle: VigilLifecycleState,
     action: CurrentSessionLifecycleAction,
@@ -1725,6 +1762,7 @@ export function createVigilServiceForContext(options: {
   bootstrapFailFastTimeoutMs?: number;
   reapTimeoutMs?: number;
   waitScheduler?: WaitScheduler;
+  parentNotifier?: ParentNotifier;
   getNoSubagentsFlag?: () => boolean;
 }): VigilService {
   const processRunner = options.processRunner ?? createNodeProcessRunner();
@@ -1756,5 +1794,6 @@ export function createVigilServiceForContext(options: {
     currentParentSessionId: options.sessionManager.getSessionId(),
     getSessionEntries: () => options.sessionManager.getEntries(),
     getNoSubagentsFlag: options.getNoSubagentsFlag,
+    parentNotifier: options.parentNotifier,
   });
 }

@@ -101,15 +101,15 @@ Exact wording/bounds can be tightened in implementation, but must stay short, pr
   - `launch({ dontNotify: true })` stamps opt-out on `vigil-launch`.
   - `send({ dontNotify: true })` stamps opt-out on that `vigil-turn`.
   - `send` omitting `dontNotify` after a prior opt-out re-enables notify for the new turn.
-- [ ] Add failing notifier tests (fake `ParentNotifier`):
-  - ephemeral settle with default notify → exactly one `sendMessage`-shaped notify;
-  - ephemeral settle with `dontNotify: true` → no notify;
-  - persisted child running→waiting → one notify;
-  - persisted opt-out → no notify;
-  - failed settle/failure path notifies unless opted out (same channel, distinct content/state in details);
-  - duplicate settle callbacks do not double-notify;
-  - after `send` without opt-out, the next settle notifies again;
-  - shutdown prevents further notifies.
+- [x] Add failing notifier tests (fake `ParentNotifier`):
+  - [x] ephemeral settle with default notify → exactly one `sendMessage`-shaped notify;
+  - [x] ephemeral settle with `dontNotify: true` → no notify;
+  - [ ] persisted child running→waiting → one notify (deferred to Phase 4);
+  - [ ] persisted opt-out → no notify (deferred to Phase 4);
+  - [x] failed settle/failure path notifies unless opted out (same channel, distinct content/state in details);
+  - [x] duplicate settle callbacks do not double-notify;
+  - [ ] after `send` without opt-out, the next settle notifies again (deferred to Phase 4 — ephemeral has no send);
+  - [x] shutdown prevents further notifies.
 
 ## Agent notes / assumptions
 
@@ -117,7 +117,7 @@ Exact wording/bounds can be tightened in implementation, but must stay short, pr
 - Keep notification body bounded (recommend ≤ ~500 visible chars total, with a short excerpt of `latestResponse` or error). Exact cap chosen in Phase 2 and documented in README.
 - **Red evidence (2026-08-28):** `npm test -- test/unit/vigil/dont-notify-adapter.test.ts test/unit/vigil/dont-notify-ledger.test.ts` → 7 failed (schema rejection missing, ledger stamps absent, `shouldNotifyOnSettle` undefined).
 - **Green evidence (2026-08-28):** same command → 7 passed; full `npm test` → 450 passed; `npm run typecheck` clean.
-- Notifier tests deferred to Phase 2+ per session scope.
+- Ephemeral notifier tests added in Phase 2/3 (`test/unit/vigil/ephemeral-notify.test.ts`, `test/unit/vigil/parent-notifier.test.ts`). Persisted notifier cases deferred to Phase 4.
 
 ---
 
@@ -144,7 +144,7 @@ Exact wording/bounds can be tightened in implementation, but must stay short, pr
 
 ## Todos
 
-- [ ] Introduce a narrow port, e.g.:
+- [x] Introduce a narrow port, e.g.:
 
   ```ts
   interface ParentNotifier {
@@ -158,21 +158,24 @@ Exact wording/bounds can be tightened in implementation, but must stay short, pr
   }
   ```
 
-- [ ] Implement a Node/extension adapter that calls `pi.sendMessage` with:
+- [x] Implement a Node/extension adapter that calls `pi.sendMessage` with:
   - `customType: "vigil-notify"`
   - short prefixed `content`
   - `display: true`
   - structured `details`
   - `{ deliverAs: "steer", triggerTurn: true }`
-- [ ] Wire the adapter from `registerVigilExtension` (capture `pi.sendMessage` alongside `appendEntry`).
-- [ ] Inject the port through `createVigilServiceForContext` / runtime overrides for tests.
-- [ ] Unit-test the adapter’s content formatting/bounds with a recording fake (no live Pi).
+- [x] Wire the adapter from `registerVigilExtension` (capture `pi.sendMessage` alongside `appendEntry`).
+- [x] Inject the port through `createVigilServiceForContext` / runtime overrides for tests.
+- [x] Unit-test the adapter’s content formatting/bounds with a recording fake (no live Pi).
 
 ## Agent notes / assumptions
 
 - When the parent is streaming, Pi’s `sendCustomMessage` uses steer/followUp queues; `triggerTurn` applies when idle. Passing both `deliverAs: "steer"` and `triggerTurn: true` matches the agreed always-on policy.
 - Do not use `ctx.ui.notify` as the orchestration signal (TUI-only).
 - Prefer not to call `sendUserMessage` for the default path.
+- Content cap: `MAX_VIGIL_NOTIFY_CONTENT_CHARS = 500` in `src/vigil/parent-notifier.ts` (prefix + bounded excerpt/error).
+- **Red evidence (2026-08-28):** `npm test -- test/unit/vigil/parent-notifier.test.ts test/unit/vigil/ephemeral-notify.test.ts` → 9 failed (port/adapter/wiring absent).
+- **Green evidence (2026-08-28):** same command → 9 passed; full `npm test` → 459 passed; `npm run typecheck` clean.
 
 ---
 
@@ -180,14 +183,15 @@ Exact wording/bounds can be tightened in implementation, but must stay short, pr
 
 ## Todos
 
-- [ ] In the ephemeral `onSettled` path (where `vigil-settle` is appended), if `shouldNotifyOnSettle` and not already notified for this settle, call `ParentNotifier`.
-- [ ] Ensure activate/launch ordering still appends `vigil-launch` before settle can fire (preserve Slice ephemeral durability invariants).
-- [ ] Cover success and `settleRecord.error` / failed ephemeral outcomes.
-- [ ] Green ephemeral notify tests; confirm opt-out skips notifier.
+- [x] In the ephemeral `onSettled` path (where `vigil-settle` is appended), if `shouldNotifyOnSettle` and not already notified for this settle, call `ParentNotifier`.
+- [x] Ensure activate/launch ordering still appends `vigil-launch` before settle can fire (preserve Slice ephemeral durability invariants).
+- [x] Cover success and `settleRecord.error` / failed ephemeral outcomes.
+- [x] Green ephemeral notify tests; confirm opt-out skips notifier.
 
 ## Agent notes / assumptions
 
-- Reuse existing settle dedupe guards (`settleRecord` already present ⇒ no re-append); extend with a notify-once guard if notifier could run without a new settle append.
+- Reuse existing settle dedupe guards (`settleRecord` already present ⇒ no re-append); `settleNotifiedKeys` + `createShutdownAwareParentNotifier` guard duplicate notify and post-shutdown delivery.
+- **Green evidence (2026-08-28):** `test/unit/vigil/ephemeral-notify.test.ts` → 5 passed.
 
 ---
 
@@ -246,7 +250,7 @@ Exact wording/bounds can be tightened in implementation, but must stay short, pr
 
 ## Implementation status
 
-Phase 0 (schema + adapter/ledger red tests) and Phase 1 (ledger preference + `shouldNotifyOnSettle`) complete. ParentNotifier delivery, ephemeral/persisted notify wiring, and docs deferred to Phases 2–5.
+Phase 0–1 (schema + ledger + `shouldNotifyOnSettle`) and Phase 2–3 (ParentNotifier delivery + ephemeral settle notify) complete. Persisted watcher notify and docs deferred to Phases 4–5.
 
 ## Open decisions (resolved in planning)
 

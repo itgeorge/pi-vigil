@@ -26,6 +26,7 @@ export interface VigilTestHarness {
   tool: ToolDefinition;
   sessionManager: SessionManager;
   capturedEntries: CapturedEntry[];
+  sentMessages: Array<{ message: unknown; options: unknown }>;
   registeredFlags: RegisteredFlag[];
   ctx: ExtensionContext;
   emitExtensionEvent: (event: "session_start" | "session_tree") => Promise<void>;
@@ -46,6 +47,7 @@ export async function createVigilTestHarness(options?: {
   const cwd = options?.cwd ?? process.cwd();
   const sessionManager = SessionManager.inMemory(cwd);
   const capturedEntries: CapturedEntry[] = [];
+  const sentMessages: Array<{ message: unknown; options: unknown }> = [];
   const registeredFlags: RegisteredFlag[] = [];
   const flagValues = new Map<string, boolean | string>();
   const eventHandlers = new Map<string, Array<(event: ExtensionEvent, ctx: ExtensionContext) => void | Promise<void>>>();
@@ -53,6 +55,10 @@ export async function createVigilTestHarness(options?: {
   const appendEntry: ExtensionAPI["appendEntry"] = (customType, data) => {
     capturedEntries.push({ customType, data });
     sessionManager.appendCustomEntry(customType, data);
+  };
+
+  const sendMessage: ExtensionAPI["sendMessage"] = async (message, options) => {
+    sentMessages.push({ message, options });
   };
 
   const registerFlag: ExtensionAPI["registerFlag"] = (name, flagOptions) => {
@@ -67,6 +73,7 @@ export async function createVigilTestHarness(options?: {
   let registeredTool: ToolDefinition | undefined;
   const api = {
     appendEntry,
+    sendMessage,
     registerFlag,
     getFlag,
     registerTool: (tool: ToolDefinition) => {
@@ -114,6 +121,7 @@ export async function createVigilTestHarness(options?: {
     tool: registeredTool,
     sessionManager,
     capturedEntries,
+    sentMessages,
     registeredFlags,
     ctx,
     emitExtensionEvent,
