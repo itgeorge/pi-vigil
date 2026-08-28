@@ -103,6 +103,11 @@ function matchesCanonicalIdentity(
   return existing.sessionId === data.sessionId && existing.cwd === data.cwd;
 }
 
+export function shouldNotifyOnSettle(lifecycle: VigilLifecycleState): boolean {
+  const record = lifecycle.runtimeRecord;
+  return record.dontNotify !== true;
+}
+
 export function isEphemeralLifecycle(state: VigilLifecycleState): boolean {
   const record = state.runtimeRecord;
   return "launchedAt" in record && record.ephemeral === true;

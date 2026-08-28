@@ -33,6 +33,7 @@ export interface VigilCallArgs {
   allowIncompleteSubagents?: boolean;
   allowSubagents?: boolean;
   ephemeral?: boolean;
+  dontNotify?: boolean;
 }
 
 export interface VigilLifecycleDisplayEntry {
@@ -220,6 +221,9 @@ export function formatVigilCallSummary(
       if (args.allowSubagents) {
         segments.push("allow subagents");
       }
+      if (args.dontNotify) {
+        segments.push("no notify");
+      }
       segments.push(formatModelIndicator(args.model));
       break;
     }
@@ -244,6 +248,9 @@ export function formatVigilCallSummary(
       const model = formatModelIndicator(resolveSendModel(args, lookup));
       if (model) {
         summary += ` · ${model}`;
+      }
+      if (args.dontNotify) {
+        summary += " · no notify";
       }
       return summary;
     }
@@ -353,6 +360,9 @@ export function renderVigilCallText(
       if (args.allowSubagents) {
         parts.push(theme.fg("dim", " · allow subagents"));
       }
+      if (args.dontNotify) {
+        parts.push(theme.fg("dim", " · no notify"));
+      }
       if (model) {
         parts.push(theme.fg("dim", ` · ${model}`));
       }
@@ -366,6 +376,9 @@ export function renderVigilCallText(
       const model = formatModelIndicator(resolveSendModel(args, lookup));
       if (model) {
         parts.push(theme.fg("dim", ` · ${model}`));
+      }
+      if (args.dontNotify) {
+        parts.push(theme.fg("dim", " · no notify"));
       }
     } else if (
       summary.startsWith("poll") ||

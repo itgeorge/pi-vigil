@@ -32,6 +32,7 @@ export interface VigilLaunchRecord {
   launchedAt: string;
   ephemeral?: true;
   allowSubagents?: false;
+  dontNotify?: true;
 }
 
 export interface VigilSettleRecord {
@@ -51,6 +52,7 @@ export interface VigilTurnRecord {
   model?: string;
   sessionDir?: string;
   sentAt: string;
+  dontNotify?: true;
 }
 
 export interface VigilCompletionRecord {
@@ -163,6 +165,7 @@ export interface LaunchInput {
   parentCwd: string;
   ephemeral?: boolean;
   allowSubagents?: boolean;
+  dontNotify?: boolean;
 }
 
 export interface SendInput {
@@ -170,6 +173,7 @@ export interface SendInput {
   message: string;
   model?: string;
   parentCwd: string;
+  dontNotify?: boolean;
 }
 
 export interface CompleteInput {

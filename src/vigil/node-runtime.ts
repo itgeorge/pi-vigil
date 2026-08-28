@@ -207,6 +207,14 @@ function buildLaunchRecordPolicy(allowSubagents?: boolean): Pick<VigilLaunchReco
   return allowSubagents === true ? {} : { allowSubagents: false };
 }
 
+function buildLaunchRecordNotifyPolicy(dontNotify?: boolean): Pick<VigilLaunchRecord, "dontNotify"> {
+  return dontNotify === true ? { dontNotify: true } : {};
+}
+
+function buildTurnRecordNotifyPolicy(dontNotify?: boolean): Pick<VigilTurnRecord, "dontNotify"> {
+  return dontNotify === true ? { dontNotify: true } : {};
+}
+
 export class VigilService {
   private readonly deps: VigilServiceDeps & {
     ephemeralChildObserver: EphemeralChildObserver;
@@ -303,6 +311,7 @@ export class VigilService {
         launchedAt: turnStartedAt,
         ephemeral: true,
         ...buildLaunchRecordPolicy(input.allowSubagents),
+        ...buildLaunchRecordNotifyPolicy(input.dontNotify),
       };
 
       this.deps.parentLedger.appendLaunch(record);
@@ -359,6 +368,7 @@ export class VigilService {
       sessionDir: this.deps.sessionDir,
       launchedAt: turnStartedAt,
       ...buildLaunchRecordPolicy(input.allowSubagents),
+      ...buildLaunchRecordNotifyPolicy(input.dontNotify),
     };
 
     this.deps.parentLedger.appendLaunch(record);
@@ -490,6 +500,7 @@ export class VigilService {
       model: input.model,
       sessionDir: record.sessionDir ?? this.deps.sessionDir,
       sentAt: turnStartedAt,
+      ...buildTurnRecordNotifyPolicy(input.dontNotify),
     };
 
     this.deps.parentLedger.appendTurn(turnRecord);

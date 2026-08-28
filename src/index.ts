@@ -116,6 +116,12 @@ export const vigilTool = defineTool({
           "For launch only: allow the spawned child to launch its own Vigil subagents. Default false stamps deny policy on the child via --vigil-no-subagents true.",
       }),
     ),
+    dontNotify: Type.Optional(
+      Type.Boolean({
+        description:
+          "For launch and send only: opt out of parent settle notification for this turn. Omitted defaults to notify on settle.",
+      }),
+    ),
     id: Type.Optional(
       Type.String({
         description:
@@ -204,6 +210,14 @@ export const vigilTool = defineTool({
       };
     }
 
+    if (params.dontNotify === true && params.action !== "launch" && params.action !== "send") {
+      return {
+        content: [{ type: "text" as const, text: "dontNotify is only valid for launch and send" }],
+        details: { error: "dontNotify is only valid for launch and send" },
+        isError: true,
+      };
+    }
+
     const service = createService(ctx);
 
     if (params.action === "launch") {
@@ -246,6 +260,7 @@ export const vigilTool = defineTool({
         parentCwd: ctx.cwd,
         ephemeral: params.ephemeral,
         allowSubagents: params.allowSubagents,
+        dontNotify: params.dontNotify,
       });
 
       if (isVigilError(result)) {
@@ -356,6 +371,7 @@ export const vigilTool = defineTool({
         message: params.message,
         model: appendThinkingLevelToModel(params.model, ctx.thinkingLevel),
         parentCwd: ctx.cwd,
+        dontNotify: params.dontNotify,
       });
 
       if (isVigilError(result)) {
