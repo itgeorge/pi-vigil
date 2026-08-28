@@ -1051,6 +1051,7 @@ export class VigilService {
       lastActivityTimestamp: progressActivity.lastActivityTimestamp,
       recentMessages: progressActivity.recentMessages,
       ...(directSubagents ? { directSubagents } : {}),
+      ...(snapshot.ephemeral ? { ephemeral: true as const } : {}),
     };
   }
 

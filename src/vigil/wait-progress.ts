@@ -9,6 +9,9 @@ export const MAX_WAIT_PROGRESS_INTERVAL_MS = 60_000;
 export const MAX_WAIT_PROGRESS_ITEMS = 20;
 const MAX_PROGRESS_FIELD_CHARS = 120;
 
+/** Bounded wait-progress label for ephemeral children (no live activity stream). */
+export const EPHEMERAL_WAIT_PROGRESS_STATUS = "ephemeral: no live activity until settle";
+
 export interface VigilWaitProgressItem {
   id: string;
   name: string;
@@ -19,6 +22,7 @@ export interface VigilWaitProgressItem {
   lastActivityTimestamp: string | null;
   recentMessages: VigilMessagePreview[];
   directSubagents?: VigilDirectSubagentInspection;
+  ephemeral?: true;
 }
 
 export interface VigilWaitProgress {
@@ -37,6 +41,7 @@ export interface VigilWaitProgressFingerprintItem {
   lastActivityTimestamp: string | null;
   recentMessages: VigilMessagePreview[];
   directSubagents?: VigilDirectSubagentInspection;
+  ephemeral?: true;
 }
 
 function sanitizeSingleLine(value: string): string {
@@ -122,7 +127,11 @@ export function formatWaitProgressItemLines(
   referenceMs: number,
   directSubagents?: VigilDirectSubagentInspection,
 ): string[] {
-  const lines = [formatWaitProgressItemLine(item, referenceMs), ...formatRecentMessagePreviewLines(item.recentMessages)];
+  const lines = [formatWaitProgressItemLine(item, referenceMs)];
+  if (item.ephemeral) {
+    lines.push(`  ${EPHEMERAL_WAIT_PROGRESS_STATUS}`);
+  }
+  lines.push(...formatRecentMessagePreviewLines(item.recentMessages));
   if (directSubagents) {
     lines.push(...formatDirectSubagentsSummaryText(directSubagents));
   }
@@ -166,7 +175,7 @@ export function fingerprintWaitProgress(items: VigilWaitProgressFingerprintItem[
     .sort((left, right) => left.id.localeCompare(right.id))
     .map(
       (item) =>
-        `${item.id}|${item.state}|${item.steps}|${item.messages}|${item.lastActivity ?? ""}|${item.lastActivityTimestamp ?? ""}|${fingerprintRecentMessages(item.recentMessages)}|${fingerprintDirectSubagents(item.directSubagents)}`,
+        `${item.id}|${item.state}|${item.steps}|${item.messages}|${item.lastActivity ?? ""}|${item.lastActivityTimestamp ?? ""}|${fingerprintRecentMessages(item.recentMessages)}|${fingerprintDirectSubagents(item.directSubagents)}|${item.ephemeral ? "ephemeral" : ""}`,
     )
     .join("\n");
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   boundWaitProgressItems,
   computeNextPollInMs,
+  EPHEMERAL_WAIT_PROGRESS_STATUS,
   fingerprintWaitProgress,
   formatWaitProgressText,
   MAX_WAIT_PROGRESS_ITEMS,
@@ -136,6 +137,55 @@ describe("wait progress formatting", () => {
 
     const text = formatWaitProgressText(progress, Date.now());
     expect(text).not.toContain("recent:");
+  });
+
+  it("labels ephemeral children with an empty-activity status note", () => {
+    const progress = {
+      waitedMs: 8_000,
+      nextPollInMs: 3_000,
+      items: [
+        {
+          id: "vigil-ephemeral",
+          name: "Plan review",
+          state: "running" as const,
+          steps: 0,
+          messages: 0,
+          lastActivity: null,
+          lastActivityTimestamp: null,
+          recentMessages: [],
+          ephemeral: true as const,
+        },
+      ],
+      omittedItemCount: 0,
+    };
+
+    const text = formatWaitProgressText(progress, Date.now());
+    expect(text).toContain("Plan review [vigil-ephemeral] — running");
+    expect(text).toContain(`  ${EPHEMERAL_WAIT_PROGRESS_STATUS}`);
+    expect(text).not.toContain("recent:");
+  });
+
+  it("does not label non-ephemeral children with the empty-activity status note", () => {
+    const progress = {
+      waitedMs: 0,
+      nextPollInMs: 500,
+      items: [
+        {
+          id: "vigil-persisted",
+          name: "Persisted child",
+          state: "running" as const,
+          steps: 0,
+          messages: 0,
+          lastActivity: null,
+          lastActivityTimestamp: null,
+          recentMessages: [],
+        },
+      ],
+      omittedItemCount: 0,
+    };
+
+    const text = formatWaitProgressText(progress, Date.now());
+    expect(text).not.toContain(EPHEMERAL_WAIT_PROGRESS_STATUS);
   });
 });
 

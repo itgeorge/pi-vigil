@@ -17,6 +17,11 @@ import {
   type VigilSnapshot,
   type VigilWaitResult,
 } from "../../../src/vigil/types";
+import {
+  EPHEMERAL_WAIT_PROGRESS_STATUS,
+  formatWaitProgressText,
+  type VigilWaitProgress,
+} from "../../../src/vigil/wait-progress";
 
 function createMockChildProcess(pid = 12_345): ChildProcess {
   const child = new EventEmitter() as ChildProcess;
@@ -307,12 +312,18 @@ describe("VigilService ephemeral actions", () => {
     if (!isVigilError(waitResult) && waitResult.outcome === "settled") {
       expect(waitResult.settled[0]?.latestResponse).toBe("WAIT_DONE");
     }
+    expect(progressUpdates.length).toBeGreaterThan(0);
     for (const update of progressUpdates) {
-      const items = (update as { items?: Array<{ recentMessages?: unknown[]; steps?: number }> }).items ?? [];
+      const items =
+        (update as { items?: Array<{ recentMessages?: unknown[]; steps?: number; ephemeral?: true }> }).items ?? [];
       for (const item of items) {
         expect(item.recentMessages).toEqual([]);
         expect(item.steps).toBe(0);
+        expect(item.ephemeral).toBe(true);
       }
+      expect(formatWaitProgressText(update as VigilWaitProgress, Date.now())).toContain(
+        EPHEMERAL_WAIT_PROGRESS_STATUS,
+      );
     }
   });
 

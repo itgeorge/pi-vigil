@@ -4,7 +4,7 @@ This is a parking lot for deliberately deferred Vigil work. Items here are **not
 
 ## Current baseline
 
-The current workflow supports detached direct children; `poll`; resumable `send`; bounded `wait`, including one exact direct-child target; bounded cursor-paginated `list`; retained sessions; guarded parent completion; shallow direct-subagent visibility; and bounded literal `search`/entry `read` diagnostics.
+The current workflow supports detached direct children; `poll`; resumable `send`; bounded `wait`, including one exact direct-child target; bounded cursor-paginated `list`; retained sessions; guarded parent completion; shallow direct-subagent visibility; and bounded literal `search`/entry `read` diagnostics. Ephemeral wait progress labels empty activity with `ephemeral: no live activity until settle` (no stdout streaming).
 
 Relevant milestones:
 
