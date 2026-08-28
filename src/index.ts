@@ -5,7 +5,7 @@ import {
   type ExtensionContext,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { createVigilServiceForContext, shutdownSharedEphemeralChildObserver, shutdownSharedPersistedBootstrapObserver } from "./vigil/node-runtime";
+import { createVigilServiceForContext, shutdownSharedEphemeralChildObserver, shutdownSharedPersistedBootstrapObserver, shutdownSharedPersistedSettleWatchers } from "./vigil/node-runtime";
 import {
   createExtensionParentNotifier,
   createNoopParentNotifier,
@@ -76,6 +76,7 @@ function createService(ctx: ExtensionContext) {
     persistedBootstrapObserver:
       overrides.persistedBootstrapObserver ??
       (processRunner ? createProcessRunnerPersistedBootstrapObserver(processRunner) : undefined),
+    persistedSettleWatcher: overrides.persistedSettleWatcher,
     bootstrapFailFastTimeoutMs: overrides.bootstrapFailFastTimeoutMs,
     waitScheduler: overrides.waitScheduler,
     parentNotifier,
@@ -539,6 +540,7 @@ export function registerVigilExtension(pi: ExtensionAPI): ToolDefinition {
 
   pi.on("session_shutdown", async () => {
     parentNotifierForTool.shutdown?.();
+    shutdownSharedPersistedSettleWatchers();
     await shutdownSharedEphemeralChildObserver();
     await shutdownSharedPersistedBootstrapObserver();
   });

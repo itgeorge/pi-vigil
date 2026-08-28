@@ -25,6 +25,12 @@ import {
   type PersistedBootstrapObserver,
 } from "./persisted-bootstrap-observer";
 import {
+  buildPersistedSettleNotifyKey,
+  createNoopPersistedSettleWatcher,
+  createPersistedSettleWatcher,
+  type PersistedSettleWatcher,
+} from "./persisted-settle-watcher";
+import {
   lifecycleStateToListItem,
   reconstructVigilLifecycleFromEntries,
   shouldNotifyOnSettle,
@@ -130,6 +136,7 @@ const EMPTY_EPHEMERAL_ACTIVITY: VigilSessionActivity = {
 
 let sharedEphemeralChildObserver: EphemeralChildObserver | undefined;
 let sharedPersistedBootstrapObserver: PersistedBootstrapObserver | undefined;
+const sharedPersistedSettleWatchers = new Set<PersistedSettleWatcher>();
 
 export function getSharedEphemeralChildObserver(
   processRunner: ProcessRunner,
@@ -189,6 +196,21 @@ export async function shutdownSharedEphemeralChildObserver(
   sharedEphemeralChildObserver = undefined;
 }
 
+function registerSharedPersistedSettleWatcher(watcher: PersistedSettleWatcher): void {
+  sharedPersistedSettleWatchers.add(watcher);
+}
+
+export function shutdownSharedPersistedSettleWatchers(): void {
+  for (const watcher of sharedPersistedSettleWatchers) {
+    watcher.shutdown();
+  }
+  sharedPersistedSettleWatchers.clear();
+}
+
+export function resetSharedPersistedSettleWatchersForTests(): void {
+  shutdownSharedPersistedSettleWatchers();
+}
+
 export { buildPiEphemeralChildArgs } from "./ephemeral-observer";
 
 type WaitCohortScan = {
@@ -224,19 +246,28 @@ export class VigilService {
   private readonly deps: VigilServiceDeps & {
     ephemeralChildObserver: EphemeralChildObserver;
     persistedBootstrapObserver: PersistedBootstrapObserver;
+    persistedSettleWatcher: PersistedSettleWatcher;
     parentNotifier: ParentNotifier;
   };
-  private readonly settleNotifiedKeys = new Set<string>();
+  private readonly settleNotifiedKeys: Set<string>;
 
   constructor(deps: VigilServiceDeps) {
+    const parentNotifier = deps.parentNotifier ?? createNoopParentNotifier();
+    const persistedSettleWatcher = deps.persistedSettleWatcher ?? createNoopPersistedSettleWatcher();
+    this.settleNotifiedKeys = deps.settleNotifyKeys ?? new Set<string>();
     this.deps = {
       ...deps,
       ephemeralChildObserver: deps.ephemeralChildObserver ?? createNoopEphemeralChildObserver(),
       persistedBootstrapObserver:
         deps.persistedBootstrapObserver ??
         createProcessRunnerPersistedBootstrapObserver(deps.processRunner),
-      parentNotifier: deps.parentNotifier ?? createNoopParentNotifier(),
+      persistedSettleWatcher,
+      parentNotifier,
     };
+  }
+
+  shutdownSettleWatchers(): void {
+    this.deps.persistedSettleWatcher.shutdown();
   }
 
   async launch(input: LaunchInput): Promise<VigilResult> {
@@ -391,6 +422,8 @@ export class VigilService {
       return { error: formatVigilChildFailedError(id, outcome.error) };
     }
 
+    this.armPersistedSettleWatcher(id);
+
     return {
       id,
       sessionId,
@@ -522,6 +555,8 @@ export class VigilService {
     if (outcome.status === "failed") {
       return { error: formatVigilChildFailedError(record.id, outcome.error) };
     }
+
+    this.armPersistedSettleWatcher(record.id);
 
     return {
       id: record.id,
@@ -934,6 +969,10 @@ export class VigilService {
       source: "bootstrap",
       ...(failure.stderrExcerpt ? { stderrExcerpt: failure.stderrExcerpt } : {}),
     });
+    const updated = this.deps.parentLedger.getLifecycle(vigilId);
+    if (updated) {
+      this.maybeNotifyParentOnBootstrapFail(updated);
+    }
   }
 
   private resolveLifecycleFailure(lifecycle: VigilLifecycleState): { error: string } | null {
@@ -1147,6 +1186,51 @@ export class VigilService {
 
   private getLifecycleState(vigilId: string): VigilLifecycleState | null {
     return this.deps.parentLedger.getLifecycle(vigilId);
+  }
+
+  private armPersistedSettleWatcher(vigilId: string): void {
+    const lifecycle = this.deps.parentLedger.getLifecycle(vigilId);
+    if (!lifecycle || lifecycle.completionRecord || lifecycle.failRecord) {
+      return;
+    }
+    if (isEphemeralLifecycle(lifecycle)) {
+      return;
+    }
+    if (!shouldNotifyOnSettle(lifecycle)) {
+      return;
+    }
+    const turnStartedAt = getTurnStartedAt(lifecycle.runtimeRecord);
+    if (!turnStartedAt) {
+      return;
+    }
+    this.deps.persistedSettleWatcher.arm({ vigilId, turnStartedAt });
+  }
+
+  private maybeNotifyParentOnBootstrapFail(lifecycle: VigilLifecycleState): void {
+    if (!lifecycle.failRecord) {
+      return;
+    }
+    if (!shouldNotifyOnSettle(lifecycle)) {
+      return;
+    }
+    const turnStartedAt = getTurnStartedAt(lifecycle.runtimeRecord);
+    const notifyKey = buildPersistedSettleNotifyKey({
+      vigilId: lifecycle.id,
+      turnStartedAt,
+      pid: lifecycle.runtimeRecord.pid,
+    });
+    if (this.settleNotifiedKeys.has(notifyKey)) {
+      return;
+    }
+    this.settleNotifiedKeys.add(notifyKey);
+    this.deps.persistedSettleWatcher.disarm(lifecycle.id);
+    this.deps.parentNotifier.notifySettled({
+      id: lifecycle.id,
+      name: lifecycle.launchName,
+      state: "failed",
+      latestResponse: null,
+      error: lifecycle.failRecord.error,
+    });
   }
 
   private maybeNotifyParentOnSettle(
@@ -1759,6 +1843,7 @@ export function createVigilServiceForContext(options: {
   descendantInspector?: import("./descendant-inspector").ChildSessionDescendantInspector;
   ephemeralChildObserver?: EphemeralChildObserver;
   persistedBootstrapObserver?: PersistedBootstrapObserver;
+  persistedSettleWatcher?: PersistedSettleWatcher;
   bootstrapFailFastTimeoutMs?: number;
   reapTimeoutMs?: number;
   waitScheduler?: WaitScheduler;
@@ -1775,6 +1860,31 @@ export function createVigilServiceForContext(options: {
     getSharedPersistedBootstrapObserver(processRunner, {
       reapTimeoutMs: options.reapTimeoutMs,
     });
+  const parentNotifier = options.parentNotifier ?? createNoopParentNotifier();
+  // Only arm a live timer watcher when explicitly provided, or when using the
+  // default Node process runner (extension/production path). Test harnesses that
+  // inject processRunner keep the VigilService noop watcher unless they override.
+  const settleNotifyKeys = new Set<string>();
+  const persistedSettleWatcher =
+    options.persistedSettleWatcher ??
+    (options.processRunner
+      ? undefined
+      : (() => {
+          const watcher = createPersistedSettleWatcher({
+            parentLedger,
+            childSessionReader,
+            processRunner,
+            parentNotifier,
+            sessionDir: options.sessionDir,
+            scheduler: options.waitScheduler,
+            wasNotified: (key) => settleNotifyKeys.has(key),
+            markNotified: (key) => {
+              settleNotifyKeys.add(key);
+            },
+          });
+          registerSharedPersistedSettleWatcher(watcher);
+          return watcher;
+        })());
   return new VigilService({
     processRunner,
     childSessionReader,
@@ -1787,6 +1897,7 @@ export function createVigilServiceForContext(options: {
     parentLedger,
     ephemeralChildObserver,
     persistedBootstrapObserver,
+    persistedSettleWatcher,
     bootstrapFailFastTimeoutMs: options.bootstrapFailFastTimeoutMs,
     sessionDir: options.sessionDir,
     reapTimeoutMs: options.reapTimeoutMs,
@@ -1794,6 +1905,7 @@ export function createVigilServiceForContext(options: {
     currentParentSessionId: options.sessionManager.getSessionId(),
     getSessionEntries: () => options.sessionManager.getEntries(),
     getNoSubagentsFlag: options.getNoSubagentsFlag,
-    parentNotifier: options.parentNotifier,
+    parentNotifier,
+    settleNotifyKeys,
   });
 }

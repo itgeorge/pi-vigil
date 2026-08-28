@@ -6,6 +6,7 @@ import type { VigilSessionActivity } from "./session-text";
 import type { EphemeralChildObserver } from "./ephemeral-observer";
 import type { ParentNotifier } from "./parent-notifier";
 import type { PersistedBootstrapObserver } from "./persisted-bootstrap-observer";
+import type { PersistedSettleWatcher } from "./persisted-settle-watcher";
 import type {
   VigilCompletionRecord,
   VigilFailRecord,
@@ -91,7 +92,9 @@ export interface VigilServiceDeps {
   descendantInspector: ChildSessionDescendantInspector;
   ephemeralChildObserver?: EphemeralChildObserver;
   persistedBootstrapObserver?: PersistedBootstrapObserver;
+  persistedSettleWatcher?: PersistedSettleWatcher;
   parentNotifier?: ParentNotifier;
+  settleNotifyKeys?: Set<string>;
   bootstrapFailFastTimeoutMs?: number;
   createId?: () => string;
   sessionDir?: string;

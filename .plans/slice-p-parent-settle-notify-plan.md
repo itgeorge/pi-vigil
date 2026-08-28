@@ -104,11 +104,11 @@ Exact wording/bounds can be tightened in implementation, but must stay short, pr
 - [x] Add failing notifier tests (fake `ParentNotifier`):
   - [x] ephemeral settle with default notify → exactly one `sendMessage`-shaped notify;
   - [x] ephemeral settle with `dontNotify: true` → no notify;
-  - [ ] persisted child running→waiting → one notify (deferred to Phase 4);
-  - [ ] persisted opt-out → no notify (deferred to Phase 4);
+  - [x] persisted child running→waiting → one notify (Phase 4: `persisted-notify.test.ts`);
+  - [x] persisted opt-out → no notify (Phase 4);
   - [x] failed settle/failure path notifies unless opted out (same channel, distinct content/state in details);
   - [x] duplicate settle callbacks do not double-notify;
-  - [ ] after `send` without opt-out, the next settle notifies again (deferred to Phase 4 — ephemeral has no send);
+  - [x] after `send` without opt-out, the next settle notifies again (Phase 4);
   - [x] shutdown prevents further notifies.
 
 ## Agent notes / assumptions
@@ -117,7 +117,7 @@ Exact wording/bounds can be tightened in implementation, but must stay short, pr
 - Keep notification body bounded (recommend ≤ ~500 visible chars total, with a short excerpt of `latestResponse` or error). Exact cap chosen in Phase 2 and documented in README.
 - **Red evidence (2026-08-28):** `npm test -- test/unit/vigil/dont-notify-adapter.test.ts test/unit/vigil/dont-notify-ledger.test.ts` → 7 failed (schema rejection missing, ledger stamps absent, `shouldNotifyOnSettle` undefined).
 - **Green evidence (2026-08-28):** same command → 7 passed; full `npm test` → 450 passed; `npm run typecheck` clean.
-- Ephemeral notifier tests added in Phase 2/3 (`test/unit/vigil/ephemeral-notify.test.ts`, `test/unit/vigil/parent-notifier.test.ts`). Persisted notifier cases deferred to Phase 4.
+- Ephemeral notifier tests in Phase 2/3 (`test/unit/vigil/ephemeral-notify.test.ts`, `test/unit/vigil/parent-notifier.test.ts`). Persisted notifier tests in Phase 4 (`test/unit/vigil/persisted-notify.test.ts`).
 
 ---
 
@@ -199,14 +199,14 @@ Exact wording/bounds can be tightened in implementation, but must stay short, pr
 
 ## Todos
 
-- [ ] Add a parent-owned persisted settle observer/watcher that arms on successful `launch` / `send` for notify-enabled children.
-- [ ] Detect `running → waiting` or failure using existing child-session + PID / fail-record signals (same truth as `poll`, not a second divergent state machine).
-- [ ] On first settle/fail for that turn: notify once (if enabled), then disarm for that turn.
-- [ ] Do not notify for children that are already settled when the watcher first observes them after arming races — define and test the arming rule clearly (prefer: arm while `running` after launch/send success; first observed terminal state triggers notify).
-- [ ] Honor `dontNotify` from the latest turn record at notify time.
-- [ ] Stop watchers on `session_shutdown` and when the parent session id changes / service tears down (match existing shared-observer patterns).
-- [ ] Deterministic tests with fake clock/reader/process ports — no real sleeps in unit tests.
-- [ ] Green persisted notify tests including opt-out on launch and on last `send`.
+- [x] Add a parent-owned persisted settle observer/watcher that arms on successful `launch` / `send` for notify-enabled children.
+- [x] Detect `running → waiting` or failure using existing child-session + PID / fail-record signals (same truth as `poll`, not a second divergent state machine).
+- [x] On first settle/fail for that turn: notify once (if enabled), then disarm for that turn.
+- [x] Do not notify for children that are already settled when the watcher first observes them after arming races — define and test the arming rule clearly (prefer: arm while `running` after launch/send success; first observed terminal state triggers notify).
+- [x] Honor `dontNotify` from the latest turn record at notify time.
+- [x] Stop watchers on `session_shutdown` and when the parent session id changes / service tears down (match existing shared-observer patterns).
+- [x] Deterministic tests with fake clock/reader/process ports — no real sleeps in unit tests.
+- [x] Green persisted notify tests including opt-out on launch and on last `send`.
 
 ## Agent notes / assumptions
 
@@ -214,6 +214,10 @@ Exact wording/bounds can be tightened in implementation, but must stay short, pr
 - Polling cadence may reuse wait-style capped backoff, but must not mutate ledger/processes.
 - fs.watch is optional; timer+poll against `ChildSessionReader` is enough for v1 if simpler and testable.
 - Bootstrap fail-fast / `vigil-fail` should notify as `failed` unless opted out (parent idle wake on bad launch is valuable).
+- **`VigilService` ctor defaults `persistedSettleWatcher` to noop** (like ephemeral observer); real watcher is created only in `createVigilServiceForContext`.
+- Dedupe key: `${vigilId}:${turnStartedAt}:${pid}` — launch+send in the same millisecond stay distinct.
+- Phase gate: `npm run check` (typecheck + unit + faux-acceptance + pack:verify).
+- **Green evidence (2026-08-29):** `test/unit/vigil/persisted-notify.test.ts` → 7 passed; `npm run check` clean. Faux orchestration script opts `dontNotify` on launch so settle steer does not disrupt scripted wait/complete flow.
 
 ---
 
@@ -250,7 +254,7 @@ Exact wording/bounds can be tightened in implementation, but must stay short, pr
 
 ## Implementation status
 
-Phase 0–1 (schema + ledger + `shouldNotifyOnSettle`) and Phase 2–3 (ParentNotifier delivery + ephemeral settle notify) complete. Persisted watcher notify and docs deferred to Phases 4–5.
+Phase 0–1 (schema + ledger + `shouldNotifyOnSettle`) and Phase 2–3 (ParentNotifier delivery + ephemeral settle notify) and Phase 4 (persisted settle watcher notify) complete. Docs deferred to Phase 5.
 
 ## Open decisions (resolved in planning)
 
