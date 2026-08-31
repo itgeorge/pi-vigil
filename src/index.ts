@@ -77,6 +77,7 @@ function createService(ctx: ExtensionContext) {
       overrides.persistedBootstrapObserver ??
       (processRunner ? createProcessRunnerPersistedBootstrapObserver(processRunner) : undefined),
     persistedSettleWatcher: overrides.persistedSettleWatcher,
+    enablePersistedSettleNotifyWatcher: overrides.enablePersistedSettleNotifyWatcher,
     bootstrapFailFastTimeoutMs: overrides.bootstrapFailFastTimeoutMs,
     waitScheduler: overrides.waitScheduler,
     parentNotifier,
@@ -88,7 +89,7 @@ export const vigilTool = defineTool({
   name: "vigil",
   label: "Vigil",
   description:
-    "Launch, poll, continue, list, complete, foreground-wait, search, read, or list available Pi models for child launch/send. Launch requires a nonblank model (use action \"models\" to pick provider/id[:thinking]). Wait observes the current active cohort or one targeted direct child with bounded polling and never changes child state. Pass ephemeral: true on launch for a single-turn child that does not create a Pi session or /resume entry.",
+    "Launch, poll, continue, list, complete, foreground-wait, search, read, or list available Pi models for child launch/send. Launch requires a nonblank model (use action \"models\" to pick provider/id[:thinking]). Wait observes the current active cohort or one targeted direct child with bounded polling and never changes child state. Pass ephemeral: true on launch for a single-turn child that does not create a Pi session or /resume entry. By default, parent settle notify is on for ephemeral and persisted children; pass dontNotify: true on launch or send to opt out for that turn.",
   parameters: Type.Object({
     action: StringEnum(["launch", "poll", "send", "list", "complete", "wait", "search", "read", "models"], {
       description:

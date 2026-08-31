@@ -32,8 +32,10 @@ export {
 } from "./process-runner.js";
 export {
   readVigilLedgerFromSessionFile,
+  readVigilNotifyEntriesFromSessionFile,
   spawnVigilFauxParentPi,
   type SpawnVigilFauxParentPiInput,
   type SpawnVigilFauxParentPiResult,
   type VigilLedgerEntries,
+  type VigilNotifySessionEntry,
 } from "./parent-spawn.js";

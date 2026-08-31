@@ -20,15 +20,21 @@ describe("vigil runtime overrides global bridge", () => {
       terminateAndWait: async () => {},
     } satisfies ProcessRunner;
 
-    setVigilRuntimeOverrides({ processRunner, sessionDir: "/tmp/shared-vigil" });
+    setVigilRuntimeOverrides({
+      processRunner,
+      sessionDir: "/tmp/shared-vigil",
+      enablePersistedSettleNotifyWatcher: true,
+    });
 
     const globalStore = (globalThis as Record<symbol, ReturnType<typeof getVigilRuntimeOverrides>>)[
       RUNTIME_OVERRIDES_GLOBAL_KEY
     ];
     expect(globalStore?.processRunner).toBe(processRunner);
     expect(globalStore?.sessionDir).toBe("/tmp/shared-vigil");
+    expect(globalStore?.enablePersistedSettleNotifyWatcher).toBe(true);
     expect(getVigilRuntimeOverrides().processRunner).toBe(processRunner);
     expect(getVigilRuntimeOverrides().sessionDir).toBe("/tmp/shared-vigil");
+    expect(getVigilRuntimeOverrides().enablePersistedSettleNotifyWatcher).toBe(true);
   });
 
   it("reset clears the global bridge store", () => {

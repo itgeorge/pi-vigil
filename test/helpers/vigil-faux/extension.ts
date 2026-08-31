@@ -22,6 +22,7 @@ export default function vigilFauxExtension(pi: ExtensionAPI): void {
   if (process.env.PI_VIGIL_FAUX_BOOTSTRAP_RUNNER === "1") {
     setVigilRuntimeOverrides({
       processRunner: createVigilFauxProcessRunner({ loadLocalVigil: true }),
+      enablePersistedSettleNotifyWatcher: true,
     });
   }
 

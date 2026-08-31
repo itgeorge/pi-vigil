@@ -39,6 +39,13 @@ export interface VigilLedgerEntries {
   completions: VigilCompletionRecord[];
 }
 
+export interface VigilNotifySessionEntry {
+  id: string;
+  customType: string;
+  content: string;
+  details?: unknown;
+}
+
 function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -151,4 +158,37 @@ export function readVigilLedgerFromSessionFile(sessionPath: string): VigilLedger
   }
 
   return { launches, completions };
+}
+
+export function readVigilNotifyEntriesFromSessionFile(sessionPath: string): VigilNotifySessionEntry[] {
+  const content = readFileSync(sessionPath, "utf8");
+  const entries = parseSessionEntries(content).filter(
+    (entry) => entry.type !== "session",
+  ) as SessionEntry[];
+
+  const notifications: VigilNotifySessionEntry[] = [];
+
+  for (const entry of entries) {
+    if (entry.type !== "custom_message" || entry.customType !== "vigil-notify") {
+      continue;
+    }
+
+    const contentText =
+      typeof entry.content === "string"
+        ? entry.content
+        : Array.isArray(entry.content)
+          ? entry.content
+              .map((block) => (block.type === "text" ? block.text : ""))
+              .join("")
+          : "";
+
+    notifications.push({
+      id: entry.id,
+      customType: entry.customType,
+      content: contentText,
+      details: entry.details,
+    });
+  }
+
+  return notifications;
 }

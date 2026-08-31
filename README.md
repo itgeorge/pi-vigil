@@ -51,9 +51,9 @@ V1 state model is session-only: parent-session custom entries record launches, f
 The extension registers a single tool:
 
 ```ts
-vigil({ action: "launch", name, message, model, cwd?, ephemeral?: true, allowSubagents?: boolean })
+vigil({ action: "launch", name, message, model, cwd?, ephemeral?: true, allowSubagents?: boolean, dontNotify?: true })
 vigil({ action: "poll", id })
-vigil({ action: "send", id, message, model? })
+vigil({ action: "send", id, message, model?, dontNotify?: true })
 vigil({ action: "list", includeCompleted?, maxResults?, skipToId? })
 vigil({ action: "complete", id, allowIncompleteSubagents? })
 vigil({ action: "wait", id?, timeoutMs? })
@@ -72,6 +72,23 @@ With `ephemeral: true`, Vigil launches `pi --mode json -p --no-session --name <n
 
 `send` continues the same child Pi session with a new prompt. It is allowed only while the current turn is `waiting`. If the settled one-shot Pi process is still alive, Vigil terminates and waits for that tracked PID before spawning the next turn. Each successful `send` appends one durable parent `vigil-turn` entry with the new tracked PID and optional model. `send` does not pass `--name`, so a child session renamed during work keeps its current Pi display name.
 
+### Parent settle notify
+
+When a direct Vigil child settles (ephemeral or persisted), Vigil injects a short `vigil-notify` custom message into the parent session via `pi.sendMessage`. **Default: notify on.** Pass `dontNotify: true` on `launch` or `send` to opt out for that turn only; omitting `dontNotify` on a later `send` re-enables notify for the new turn.
+
+- While the parent is busy (including blocked in `wait`), delivery uses **`deliverAs: "steer"`** — appended after the current tool batch, without aborting in-flight tools.
+- While the parent is idle, **`triggerTurn: true`** wakes the parent for a new turn (for example when the orchestrator forgot to `wait`).
+- **`wait` overlap** is expected and safe: a redundant short steer line may appear alongside a settled `wait` result; there is no mutual exclusion.
+- Full child responses remain available via `poll` or settled `wait`; notify content is bounded (≤500 visible characters).
+
+LLM-visible `content` is prefixed and attributable, for example:
+
+```text
+[vigil:<name> <id>] settled
+<bounded excerpt>
+```
+
+Structured `details` (`id`, `name`, `state`, optional `error`) are not sent to the LLM. Failed bootstrap / `vigil-fail` uses the same channel with `state: "failed"`.
 `poll` returns:
 
 - `running` while the child process is alive **and** the latest relevant conversation message is still incomplete (for example a newer user message after a prior assistant reply, or an assistant `toolUse` / `pending` stop reason)
@@ -94,7 +111,7 @@ Polling uses capped exponential backoff with Vigil-internal defaults (`initialDe
 
 `timeoutMs` defaults to `60000` and must be a positive safe integer no greater than `300000`. Final sleeps are clamped to the remaining timeout. Tool cancellation is passed to an abortable sleep: cancellation promptly returns the normal `cancelled` result, clears its timer/listener, and leaves children untouched. `wait` has no background watcher behavior after it returns, and children launched after the initial scan are not added to its cohort.
 
-A typical orchestration loop is `list` → `wait` (use TUI partial progress while it runs) → inspect the settled snapshot or `poll` → `send` or `complete` → repeat. A `waiting` child is settled for orchestration but is not retired; only explicit `complete` retires it.
+A typical orchestration loop is `list` → `wait` (use TUI partial progress while it runs) → inspect the settled snapshot or `poll` → `send` or `complete` → repeat. A `waiting` child is settled for orchestration but is not retired; only explicit `complete` retires it. Parent settle notify is complementary to `wait`: use `wait` when you want a blocking snapshot in tool output; rely on notify when you want an idle parent woken or a steer hint while another tool batch is running.
 
 `complete` retires a waiting Vigil child without deleting its child session JSONL. Before any reaping, rename, or parent `vigil-complete` append, Vigil inspects the requested direct child's **one-level** Vigil ledger. Default completion rejects when incomplete direct subagents remain:
 

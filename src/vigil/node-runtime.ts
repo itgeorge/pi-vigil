@@ -1844,6 +1844,8 @@ export function createVigilServiceForContext(options: {
   ephemeralChildObserver?: EphemeralChildObserver;
   persistedBootstrapObserver?: PersistedBootstrapObserver;
   persistedSettleWatcher?: PersistedSettleWatcher;
+  /** Opt in injected process runners to the live persisted settle notify watcher (test/faux support). */
+  enablePersistedSettleNotifyWatcher?: boolean;
   bootstrapFailFastTimeoutMs?: number;
   reapTimeoutMs?: number;
   waitScheduler?: WaitScheduler;
@@ -1861,15 +1863,17 @@ export function createVigilServiceForContext(options: {
       reapTimeoutMs: options.reapTimeoutMs,
     });
   const parentNotifier = options.parentNotifier ?? createNoopParentNotifier();
-  // Only arm a live timer watcher when explicitly provided, or when using the
-  // default Node process runner (extension/production path). Test harnesses that
-  // inject processRunner keep the VigilService noop watcher unless they override.
+  // Arm a live timer watcher when explicitly provided, on the default Node runner path,
+  // or when an injected processRunner opts in via enablePersistedSettleNotifyWatcher (faux e2e).
+  // Test harnesses that inject processRunner without that flag keep the noop watcher.
   const settleNotifyKeys = new Set<string>();
+  const shouldCreatePersistedSettleWatcher =
+    options.persistedSettleWatcher === undefined &&
+    (!options.processRunner || options.enablePersistedSettleNotifyWatcher === true);
   const persistedSettleWatcher =
     options.persistedSettleWatcher ??
-    (options.processRunner
-      ? undefined
-      : (() => {
+    (shouldCreatePersistedSettleWatcher
+      ? (() => {
           const watcher = createPersistedSettleWatcher({
             parentLedger,
             childSessionReader,
@@ -1884,7 +1888,8 @@ export function createVigilServiceForContext(options: {
           });
           registerSharedPersistedSettleWatcher(watcher);
           return watcher;
-        })());
+        })()
+      : undefined);
   return new VigilService({
     processRunner,
     childSessionReader,

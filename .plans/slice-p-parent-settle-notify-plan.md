@@ -225,15 +225,19 @@ Exact wording/bounds can be tightened in implementation, but must stay short, pr
 
 ## Todos
 
-- [ ] Update README: `dontNotify` on launch/send; default notify-on; steer + idle `triggerTurn` behavior; ephemeral + persisted; short message contract; relationship to `wait`.
+- [x] Update README: `dontNotify` on launch/send; default notify-on; steer + idle `triggerTurn` behavior; ephemeral + persisted; short message contract; relationship to `wait`.
 - [ ] Optionally register a `vigil-notify` message renderer for TUI distinction.
-- [ ] Update tool description strings so models know notify is default and how to opt out.
-- [ ] Add or extend faux-acceptance coverage if cheap (scripted settle → parent notifier invoked). Live acceptance only if it can assert notify without flaky LLM coupling — prefer recording the extension notifier seam in faux/parent harness over full LLM wake tests.
-- [ ] Run `npm run check`. Record results. If live acceptance is extended, run with `PI_VIGIL_LIVE=1`.
+- [x] Update tool description strings so models know notify is default and how to opt out.
+- [x] Add or extend faux-acceptance coverage if cheap (scripted settle → parent notifier invoked). Live acceptance only if it can assert notify without flaky LLM coupling — prefer recording the extension notifier seam in faux/parent harness over full LLM wake tests.
+- [x] Run `npm run check`. Record results. If live acceptance is extended, run with `PI_VIGIL_LIVE=1`.
 
 ## Agent notes / assumptions
 
-- Consider a one-line mention in `optional-followups.md` only if deferring renderer polish or live wake e2e; do not park the core feature there.
+- The optional `vigil-notify` renderer remains deferred; the custom message transport and default TUI display are sufficient for this slice.
+- Faux acceptance records real parent-session `vigil-notify` entries for persisted default-on, persisted launch opt-out, and ephemeral transport. The ephemeral faux child can exit nonzero after producing output, so that test accepts `waiting` or `failed`; changing the faux process behavior solely to force a clean exit was not sufficiently low-risk for this infrastructure test.
+- Faux acceptance intentionally exercises the busy/steer route through `wait`; idle wake is covered by the notifier unit assertion for `{ deliverAs: "steer", triggerTurn: true }`, and a real-Pi idle e2e is deferred.
+- The internal `enablePersistedSettleNotifyWatcher` override is explicitly documented and unit-asserted; it opts injected faux runners into the live watcher while ordinary injected unit harnesses retain the noop watcher.
+- **Green evidence (2026-08-29):** `npm run check` passed: typecheck clean, **465 unit tests**, **8 faux-acceptance tests**, package surface OK (**27 entries**). Focused `npm run test:faux -- --reporter=verbose test/faux-acceptance/vigil-notify-faux.test.ts` passed: **3 tests**.
 
 ---
 
@@ -254,7 +258,38 @@ Exact wording/bounds can be tightened in implementation, but must stay short, pr
 
 ## Implementation status
 
-Phase 0–1 (schema + ledger + `shouldNotifyOnSettle`) and Phase 2–3 (ParentNotifier delivery + ephemeral settle notify) and Phase 4 (persisted settle watcher notify) complete. Docs deferred to Phase 5.
+Phase 0–1 (schema + `shouldNotifyOnSettle`), Phase 2–3 (ParentNotifier delivery + ephemeral settle notify), Phase 4 (persisted settle watcher notify), and Phase 5 (docs, tool guidance, and faux acceptance hooks) are complete. Phase 6 review remains.
+
+## Context-compaction recovery checkpoint (2026-08-29)
+
+### Safe committed baseline
+
+- `c3cf954` — Phase 0–1: `dontNotify` schema, ledger preference, and lifecycle helper.
+- `fba3330` — Phase 2–3: `ParentNotifier`, Pi steer/idle-wake delivery, and ephemeral notify.
+- `1a00b6c` — Phase 4 persisted settle watcher.
+- `faa6e6b` — Phase 4 timer-loop and send re-notify test fixes.
+- Keep `stash@{0}` (`slice-p-phase4-wip-before-hang-bisect`) only as a temporary recovery artifact; it was not applied to the clean Phase 4 implementation.
+
+### Phase 5 checkpoint contents
+
+- README + Vigil tool description document default notify-on, `dontNotify`, steer delivery, idle `triggerTurn`, and `wait` overlap.
+- New real-Pi faux acceptance test records parent-session `vigil-notify` custom-message entries for persisted default-on, verifies persisted opt-out suppression, and verifies ephemeral notification transport.
+- Faux runtime explicitly opts an injected faux `processRunner` into the persisted watcher through the internal `enablePersistedSettleNotifyWatcher` runtime override. Normal unit harnesses with injected runners remain on the noop watcher and do not leak timer loops.
+- Current phase gate is green: `npm run check` → typecheck clean, **465 unit tests**, **8 faux-acceptance tests**, package surface OK (**27 entries**).
+- The Phase 5 Composer process died after its focused faux tests became green, before plan updates, full-gate recording, and commit. Its OS process is dead; do not resume it.
+
+### Review caveats
+
+- Persisted default-on and `dontNotify: true` are covered end-to-end with a real Pi parent and detached faux child.
+- Ephemeral e2e proves notification injection but permits `state: waiting | failed`, because the faux ephemeral process can exit code 1 after producing output. Transport coverage is sufficient for this slice; forcing a clean faux exit would add infrastructure risk for no additional notification-path confidence.
+- Faux tests exercise the busy/steer route by having the parent call `wait`. Idle wake remains structurally covered by the notifier unit assertion for `{ deliverAs: "steer", triggerTurn: true }`, not by a real-Pi idle e2e.
+- The internal `enablePersistedSettleNotifyWatcher` override has a clarifying comment and a small runtime-overrides unit assertion; no broader production rewrite was needed.
+
+### Next steps after compaction
+
+1. Parent reviews this Phase 5 checkpoint and completes Phase 6; rerun `npm run check` as the final gate.
+2. Retire stale Vigil sessions after review. Remove `stash@{0}` only after final acceptance.
+3. Every `bash` tool call must include an explicit timeout. Every implementation-phase gate is `npm run check`.
 
 ## Open decisions (resolved in planning)
 

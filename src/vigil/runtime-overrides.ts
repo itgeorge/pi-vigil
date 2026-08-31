@@ -20,6 +20,8 @@ export interface VigilRuntimeOverrides {
   ephemeralChildObserver?: EphemeralChildObserver;
   persistedBootstrapObserver?: PersistedBootstrapObserver;
   persistedSettleWatcher?: PersistedSettleWatcher;
+  /** Opt in injected process runners to the live persisted settle notify watcher (test/faux support). */
+  enablePersistedSettleNotifyWatcher?: boolean;
   parentNotifier?: ParentNotifier;
   bootstrapFailFastTimeoutMs?: number;
   waitScheduler?: WaitScheduler;
