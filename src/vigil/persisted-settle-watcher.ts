@@ -59,7 +59,13 @@ export function createPersistedSettleWatcher(deps: PersistedSettleWatcherDeps): 
   const watches = new Map<string, ActiveWatch>();
   let shutdownRequested = false;
 
+  const isCurrentWatch = (vigilId: string, watch: ActiveWatch): boolean =>
+    !shutdownRequested && watches.get(vigilId) === watch;
+
   const notifyFailed = (vigilId: string, watch: ActiveWatch): "stop" => {
+    if (!isCurrentWatch(vigilId, watch)) {
+      return "stop";
+    }
     const lifecycle = deps.parentLedger.getLifecycle(vigilId);
     if (!lifecycle?.failRecord) {
       return "stop";
@@ -110,6 +116,10 @@ export function createPersistedSettleWatcher(deps: PersistedSettleWatcherDeps): 
       sessionDir: record.sessionDir ?? deps.sessionDir,
     });
 
+    if (!isCurrentWatch(vigilId, watch)) {
+      return "stop";
+    }
+
     const refreshed = deps.parentLedger.getLifecycle(vigilId);
     if (!refreshed || refreshed.completionRecord) {
       return "stop";
@@ -129,6 +139,10 @@ export function createPersistedSettleWatcher(deps: PersistedSettleWatcherDeps): 
     if (state === "running") {
       watch.armedWhileRunning = true;
       return "continue";
+    }
+
+    if (!isCurrentWatch(vigilId, watch)) {
+      return "stop";
     }
 
     if (!watch.armedWhileRunning || deps.wasNotified(notifyKey) || !shouldNotifyOnSettle(refreshed)) {
@@ -154,7 +168,7 @@ export function createPersistedSettleWatcher(deps: PersistedSettleWatcherDeps): 
       }
 
       const sleepResult = await scheduler.sleep(delayMs);
-      if (shutdownRequested || !watches.has(vigilId)) {
+      if (!isCurrentWatch(vigilId, watch)) {
         return;
       }
       if (sleepResult === "cancelled") {
@@ -163,7 +177,9 @@ export function createPersistedSettleWatcher(deps: PersistedSettleWatcherDeps): 
 
       const outcome = await pollOnce(vigilId, watch);
       if (outcome === "stop") {
-        watches.delete(vigilId);
+        if (isCurrentWatch(vigilId, watch)) {
+          watches.delete(vigilId);
+        }
         return;
       }
 

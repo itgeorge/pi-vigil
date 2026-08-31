@@ -49,6 +49,41 @@ async function flushAsync(rounds = 8): Promise<void> {
   }
 }
 
+function createStandaloneWatcher(options: {
+  reader: ChildSessionReader;
+  notifier: ReturnType<typeof createRecordingParentNotifier>;
+  scheduler: FakeScheduler;
+}) {
+  const sessionManager = SessionManager.inMemory("/parent/default");
+  sessionManager.appendCustomEntry("vigil-launch", {
+    id: "vigil-race",
+    sessionId: "child-session",
+    name: "Race child",
+    pid: 4242,
+    cwd: "/parent/default",
+    launchedAt: "2026-01-01T00:00:00.000Z",
+  });
+  const parentLedger = createSessionParentLedger(sessionManager, (customType, data) => {
+    sessionManager.appendCustomEntry(customType, data);
+  });
+  const notified = new Set<string>();
+  return createPersistedSettleWatcher({
+    parentLedger,
+    childSessionReader: options.reader,
+    processRunner: {
+      async spawnDetached() { return { pid: 4242 }; },
+      isAlive: () => false,
+      async terminateAndWait() {},
+    },
+    parentNotifier: options.notifier,
+    scheduler: options.scheduler,
+    wasNotified: (key) => notified.has(key),
+    markNotified: (key) => notified.add(key),
+    initialDelayMs: 0,
+    maxDelayMs: 10,
+  });
+}
+
 function createPersistedNotifyHarness(options?: {
   parentNotifier?: ReturnType<typeof createRecordingParentNotifier>;
   scheduler?: FakeScheduler;
@@ -318,6 +353,80 @@ describe("persisted settle parent notify", () => {
     await flushAsync(8);
     expect(parentNotifier.calls).toHaveLength(1);
     expect(parentNotifier.calls[0]?.state).toBe("failed");
+  });
+
+  it("does not let stale old-turn work delete or notify the newly armed turn", async () => {
+    const notifier = createRecordingParentNotifier();
+    const scheduler = new FakeScheduler();
+    let readCount = 0;
+    let releaseFirstRead!: () => void;
+    let firstReadStarted!: () => void;
+    const firstReadReleased = new Promise<void>((resolve) => { releaseFirstRead = resolve; });
+    const firstReadStartedPromise = new Promise<void>((resolve) => { firstReadStarted = resolve; });
+    const reader: ChildSessionReader = {
+      async readChildSessionState() {
+        readCount += 1;
+        if (readCount === 1) {
+          firstReadStarted();
+          await firstReadReleased;
+          return {
+            latestResponse: "OLD",
+            turnComplete: true,
+            lastConversationTimestamp: "2026-01-02T00:00:00.000Z",
+            activity: defaultActivity(),
+          };
+        }
+        return {
+          latestResponse: "NEW",
+          turnComplete: true,
+          lastConversationTimestamp: "2026-01-03T00:00:00.000Z",
+          activity: defaultActivity(),
+        };
+      },
+    };
+    const watcher = createStandaloneWatcher({ reader, notifier, scheduler });
+
+    watcher.arm({ vigilId: "vigil-race", turnStartedAt: "2026-01-01T00:00:00.000Z" });
+    await firstReadStartedPromise;
+    watcher.arm({ vigilId: "vigil-race", turnStartedAt: "2026-01-02T00:00:00.000Z" });
+    releaseFirstRead();
+    await flushAsync(16);
+
+    expect(notifier.calls).toHaveLength(1);
+    expect(notifier.calls[0]?.latestResponse).toBe("NEW");
+  });
+
+  it("does not notify when shutdown races an in-flight child-session read", async () => {
+    const notifier = createRecordingParentNotifier();
+    const scheduler = new FakeScheduler();
+    let releaseRead!: () => void;
+    let readStarted!: () => void;
+    const readReleased = new Promise<void>((resolve) => { releaseRead = resolve; });
+    const readStartedPromise = new Promise<void>((resolve) => { readStarted = resolve; });
+    const watcher = createStandaloneWatcher({
+      notifier,
+      scheduler,
+      reader: {
+        async readChildSessionState() {
+          readStarted();
+          await readReleased;
+          return {
+            latestResponse: "LATE",
+            turnComplete: true,
+            lastConversationTimestamp: "2026-01-02T00:00:00.000Z",
+            activity: defaultActivity(),
+          };
+        },
+      },
+    });
+
+    watcher.arm({ vigilId: "vigil-race", turnStartedAt: "2026-01-01T00:00:00.000Z" });
+    await readStartedPromise;
+    watcher.shutdown();
+    releaseRead();
+    await flushAsync(8);
+
+    expect(notifier.calls).toHaveLength(0);
   });
 
   it("does not notify after persisted settle watcher shutdown", async () => {

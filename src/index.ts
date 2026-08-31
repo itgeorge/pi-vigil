@@ -525,6 +525,16 @@ export function registerVigilExtension(pi: ExtensionAPI): ToolDefinition {
   });
 
   pi.on("session_start", (_event, ctx) => {
+    // Pi emits session_shutdown before session_start for /new and /resume. Shut
+    // down the old wrapper before replacing it so callbacks from the old session
+    // can never deliver into the new one.
+    parentNotifierForTool.shutdown?.();
+    parentNotifierForTool = pi.sendMessage
+      ? createShutdownAwareParentNotifier(
+          createExtensionParentNotifier(pi.sendMessage.bind(pi)),
+        )
+      : createNoopParentNotifier();
+
     refreshVigilDisplayNameCache(ctx);
 
     if (pi.getFlag("vigil-no-subagents") === true) {

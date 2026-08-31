@@ -47,6 +47,44 @@ describe("vigil extension adapter", () => {
     return value.replace(/\u001b\[[0-9;]*m/g, "");
   }
 
+  it("resets the production notifier across session shutdown and start", async () => {
+    const harness = await createVigilTestHarness();
+    const settledCallbacks: Array<(result: { latestResponse: string | null; settledAt: string }) => void> = [];
+    setVigilRuntimeOverrides({
+      processRunner: {
+        spawnDetached: async () => ({ pid: 5151 }),
+        isAlive: () => false,
+        terminateAndWait: async () => undefined,
+      },
+      ephemeralChildObserver: {
+        async start(input) {
+          settledCallbacks.push(input.onSettled);
+          return {
+            pid: 5151,
+            activate() {
+              input.onSettled({ latestResponse: "DONE", settledAt: "2026-01-01T00:00:00.000Z" });
+            },
+          };
+        },
+        async waitForOutcome() { return { status: "started" as const }; },
+        getLiveState: () => null,
+        isObserving: () => false,
+        async shutdown() {},
+      },
+    });
+
+    await harness.execute({ action: "launch", name: "Before switch", message: "go", model: "openai-codex/gpt-5.5", ephemeral: true });
+    expect(harness.sentMessages).toHaveLength(1);
+
+    await harness.emitExtensionEvent("session_shutdown");
+    settledCallbacks[0]?.({ latestResponse: "OLD CALLBACK", settledAt: "2026-01-02T00:00:00.000Z" });
+    expect(harness.sentMessages).toHaveLength(1);
+
+    await harness.emitExtensionEvent("session_start");
+    await harness.execute({ action: "launch", name: "After switch", message: "go", model: "openai-codex/gpt-5.5", ephemeral: true });
+    expect(harness.sentMessages).toHaveLength(2);
+  });
+
   it("launch rejects missing model before spawn", async () => {
     const harness = await createVigilTestHarness();
     let spawned = false;

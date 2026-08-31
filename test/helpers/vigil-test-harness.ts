@@ -29,7 +29,7 @@ export interface VigilTestHarness {
   sentMessages: Array<{ message: unknown; options: unknown }>;
   registeredFlags: RegisteredFlag[];
   ctx: ExtensionContext;
-  emitExtensionEvent: (event: "session_start" | "session_tree") => Promise<void>;
+  emitExtensionEvent: (event: "session_start" | "session_shutdown" | "session_tree") => Promise<void>;
   setFlag: (name: string, value: boolean | string | undefined) => void;
   execute: (
     params: Record<string, unknown>,
@@ -106,7 +106,7 @@ export async function createVigilTestHarness(options?: {
     setFlag("vigil-no-subagents", true);
   }
 
-  async function emitExtensionEvent(event: "session_start" | "session_tree"): Promise<void> {
+  async function emitExtensionEvent(event: "session_start" | "session_shutdown" | "session_tree"): Promise<void> {
     const payload = { type: event } as ExtensionEvent;
     for (const handler of eventHandlers.get(event) ?? []) {
       await handler(payload, ctx);
