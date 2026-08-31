@@ -245,20 +245,28 @@ Exact wording/bounds can be tightened in implementation, but must stay short, pr
 
 ## Todos
 
-- [ ] Confirm default omit `dontNotify` ⇒ notify for both modes.
-- [ ] Confirm `dontNotify: true` on launch silences; on last `send` silences subsequent settle; omitted `send` re-enables.
-- [ ] Confirm busy path uses steer (no tool abort); idle path triggers a turn.
-- [ ] Confirm one notify per settle; no notify after shutdown; no historical notify on parent resume.
-- [ ] Confirm wait overlap is redundant-but-safe; no mutual exclusion required.
-- [ ] Confirm content stays bounded; full response still via poll/wait.
-- [ ] Confirm no Pi core dependency beyond ExtensionAPI `sendMessage`.
-- [ ] Independent review of race: launch/send append vs watcher arm vs fast settle (especially ephemeral + fast persisted fail).
+- [x] Confirm default omit `dontNotify` ⇒ notify for both modes.
+- [x] Confirm `dontNotify: true` on launch silences; on last `send` silences subsequent settle; omitted `send` re-enables.
+- [x] Confirm busy path uses steer (no tool abort); idle path triggers a turn.
+- [x] Confirm one notify per settle; no notify after shutdown; no historical notify on parent resume.
+- [x] Confirm wait overlap is redundant-but-safe; no mutual exclusion required.
+- [x] Confirm content stays bounded; full response still via poll/wait.
+- [x] Confirm no Pi core dependency beyond ExtensionAPI `sendMessage`.
+- [x] Independent review of race: launch/send append vs watcher arm vs fast settle (especially ephemeral + fast persisted fail).
+
+## Review evidence
+
+- Independent Luna review found a persisted watcher re-arm generation race and an in-flight shutdown race. Commit `e64a2d6` adds object-identity generation checks before/after async polling, prevents stale loops from deleting newer watches, and makes watcher shutdown suppress in-flight delivery.
+- Pi lifecycle documentation confirms `/new` and `/resume` emit `session_shutdown` before `session_start`; shared watchers/observers are shut down on the former. Commit `e64a2d6` recreates the shutdown-aware production notifier on the latter, so old callbacks stay muted while notifications work in the new session.
+- Append-before-activate ordering protects fast ephemeral/persisted callbacks; bootstrap failure uses immediate notifier delivery with the same per-turn policy and dedupe set.
+- Visible `vigil-notify` content is capped at 500 characters; full child output remains available through `poll`/`wait`. Production delivery depends only on `ExtensionAPI["sendMessage"]` and uses `{ deliverAs: "steer", triggerTurn: true }`.
+- Final parent gate (2026-08-31): `npm run check` passed with **468 unit tests**, **8 faux-acceptance tests**, and package surface OK (**27 entries**).
 
 ---
 
 ## Implementation status
 
-Phase 0–1 (schema + `shouldNotifyOnSettle`), Phase 2–3 (ParentNotifier delivery + ephemeral settle notify), Phase 4 (persisted settle watcher notify), and Phase 5 (docs, tool guidance, and faux acceptance hooks) are complete. Phase 6 review remains.
+Slice P Phases 0–6 are complete through `e64a2d6` plus this review checkpoint. Parent settle notifications are implemented, documented, faux-accepted, race-reviewed, and green under the final phase gate.
 
 ## Context-compaction recovery checkpoint (2026-08-29)
 
