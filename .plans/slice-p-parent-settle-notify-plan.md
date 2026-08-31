@@ -311,6 +311,18 @@ Slice P Phases 0–6 are complete through `e64a2d6` plus this review checkpoint.
 | Mechanism | Parent-side detect + `pi.sendMessage` (`customType: "vigil-notify"`) |
 | Wait overlap | Allow short redundant steer; no special suppression |
 
+## Phase 7 — Notification sequencing follow-up
+
+- [x] Document that parent notifications are eventual turn-boundary messages, deferred behind an in-flight tool batch, with no chronology or global FIFO guarantee across user/extension queues.
+- [x] Add deterministic real-Pi faux coverage proving a persisted child settlement during a longer parent `bash` call is recorded only after the blocking bash tool result, exactly once, and attributable to the launched child.
+- [x] Run the focused sequencing faux test, `git diff --check`, and exactly `npm run check`; record green evidence here.
+
+**Rationale:** Validate Pi's busy-tool steer/delivery boundary without changing notification delivery, Pi queue ordering, or Vigil's pull orchestration. Settlement, polling observation/enqueue, and Pi delivery remain distinct timestamps.
+
+**Deliberate non-goals:** No mixed interactive user-message ordering test, queue reordering, global FIFO promise, or notification redesign. Mixed ordering remains Pi queue behavior rather than a Vigil guarantee.
+
+**Green evidence (2026-08-31):** Focused `npm run test:faux -- --reporter=verbose test/faux-acceptance/vigil-notify-faux.test.ts -t "defers persisted settle notify"` passed (1 test, 3 skipped). `git diff --check` passed. Exactly one `npm run check` passed: typecheck clean, **468 unit tests**, **9 faux-acceptance tests**, package surface OK (**27 entries**).
+
 ## Remaining implementation choices (resolve in Phase 0–2, document here)
 
 - Exact notify content template and excerpt/error bounds.

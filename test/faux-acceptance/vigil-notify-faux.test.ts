@@ -1,6 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { parseSessionEntries } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
 import { formatVigilNotifyPrefix } from "../../src/vigil/parent-notifier";
 import {
@@ -79,6 +80,52 @@ function buildPersistedNotifyScript(markers: {
   };
 }
 
+function buildBusyNotifyScript(markers: {
+  parentMark: string;
+  childMark: string;
+  blockingMark: string;
+}): VigilFauxScript {
+  const fauxModel = getVigilFauxModelId();
+
+  return {
+    version: 1,
+    steps: [
+      {
+        when: { userTextIncludes: markers.parentMark },
+        then: {
+          type: "toolCall",
+          name: "vigil",
+          arguments: {
+            action: "launch",
+            name: "Notify Busy",
+            message: `Settle during blocking bash with marker ${markers.childMark}`,
+            model: fauxModel,
+          },
+        },
+      },
+      {
+        when: { userTextIncludes: markers.parentMark },
+        then: {
+          type: "toolCall",
+          name: "bash",
+          arguments: {
+            command: `sleep 3; printf '%s' '${markers.blockingMark}'`,
+            timeout: 10_000,
+          },
+        },
+      },
+      {
+        when: { userTextIncludes: markers.parentMark },
+        then: { type: "text", text: "busy notify done" },
+      },
+      {
+        when: { userTextIncludes: markers.childMark },
+        then: { type: "text", text: `child-ok ${markers.childMark}` },
+      },
+    ],
+  };
+}
+
 function buildEphemeralNotifyScript(markers: {
   parentMark: string;
   childMark: string;
@@ -147,6 +194,72 @@ describe("vigil faux acceptance parent settle notify", () => {
       rmSync(scriptDir, { recursive: true, force: true });
       scriptDir = "";
     }
+  });
+
+  it("defers persisted settle notify until a blocking bash tool result is recorded", async () => {
+    const parentMark = `VIGIL_NOTIFY_BUSY_${crypto.randomUUID()}`;
+    const childMark = `VIGIL_NOTIFY_BUSY_CHILD_${crypto.randomUUID()}`;
+    const blockingMark = `VIGIL_NOTIFY_BLOCKING_${crypto.randomUUID()}`;
+    const parentSessionId = `vigil-notify-busy-parent-${crypto.randomUUID()}`;
+
+    tempCwd = mkdtempSync(path.join(os.tmpdir(), "pi-vigil-faux-notify-busy-cwd-"));
+    sessionDir = mkdtempSync(path.join(os.tmpdir(), "pi-vigil-faux-notify-busy-sessions-"));
+    scriptDir = mkdtempSync(path.join(os.tmpdir(), "pi-vigil-faux-notify-busy-script-"));
+
+    const scriptPath = writeVigilFauxScript(
+      scriptDir,
+      buildBusyNotifyScript({ parentMark, childMark, blockingMark }),
+    );
+
+    const parentResult = await spawnVigilFauxParentPi({
+      sessionId: parentSessionId,
+      cwd: tempCwd,
+      sessionDir,
+      scriptPath,
+      name: "Faux busy notify parent",
+      prompt: `Run busy notify smoke with marker ${parentMark}`,
+      timeoutMs: 30_000,
+    });
+
+    if (parentResult.pid > 0) {
+      trackedPids.push(parentResult.pid);
+    }
+
+    expect(parentResult.timedOut, "parent Pi process timed out").toBe(false);
+    expect(parentResult.exitCode, "parent Pi process exit code").toBe(0);
+    expect(parentResult.sessionPath, "parent session JSONL path").toBeTruthy();
+
+    const ledger = readVigilLedgerFromSessionFile(parentResult.sessionPath!);
+    expect(ledger.launches).toHaveLength(1);
+    const launch = ledger.launches[0]!;
+    if (launch.pid) {
+      trackedPids.push(launch.pid);
+    }
+
+    const entries = parseSessionEntries(readFileSync(parentResult.sessionPath!, "utf8")).filter(
+      (entry) => entry.type !== "session",
+    );
+    const blockingBashResultIndex = entries.findIndex(
+      (entry) =>
+        entry.type === "message" &&
+        entry.message.role === "toolResult" &&
+        entry.message.toolName === "bash" &&
+        entry.message.content.some(
+          (block) => block.type === "text" && block.text.includes(blockingMark),
+        ),
+    );
+    const notificationIndex = entries.findIndex(
+      (entry) => entry.type === "custom_message" && entry.customType === "vigil-notify",
+    );
+
+    expect(blockingBashResultIndex).toBeGreaterThanOrEqual(0);
+    expect(notificationIndex).toBeGreaterThan(blockingBashResultIndex);
+
+    const notifications = readVigilNotifyEntriesFromSessionFile(parentResult.sessionPath!);
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]?.details).toEqual(
+      expect.objectContaining({ id: launch.id, name: "Notify Busy" }),
+    );
   });
 
   it("records vigil-notify custom_message in the parent session when default notify is on (persisted)", async () => {

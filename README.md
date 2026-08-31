@@ -74,10 +74,12 @@ With `ephemeral: true`, Vigil launches `pi --mode json -p --no-session --name <n
 
 ### Parent settle notify
 
-When a direct Vigil child settles (ephemeral or persisted), Vigil injects a short `vigil-notify` custom message into the parent session via `pi.sendMessage`. **Default: notify on.** Pass `dontNotify: true` on `launch` or `send` to opt out for that turn only; omitting `dontNotify` on a later `send` re-enables notify for the new turn.
+When a direct Vigil child settles (ephemeral or persisted), Vigil injects a short `vigil-notify` custom message into the parent session via `pi.sendMessage`. These are **eventual, turn-boundary messages, not real-time interrupts**. **Default: notify on.** Pass `dontNotify: true` on `launch` or `send` to opt out for that turn only; omitting `dontNotify` on a later `send` re-enables notify for the new turn.
 
-- While the parent is busy (including blocked in `wait`), delivery uses **`deliverAs: "steer"`** — appended after the current tool batch, without aborting in-flight tools.
+- While the parent is busy or in an in-flight tool call (including blocked in `wait`), notify is queued and is not surfaced until the current tool batch reaches Pi's delivery boundary. Delivery uses **`deliverAs: "steer"`** and does not abort in-flight tools.
 - While the parent is idle, **`triggerTurn: true`** wakes the parent for a new turn (for example when the orchestrator forgot to `wait`).
+- Mixed user and Vigil notification presentation/transcript order is not guaranteed to represent child settlement order. Actual settlement, Vigil's polling observation/enqueue, and Pi delivery are distinct times; use `poll`, `wait`, or child-session timestamps when chronology matters.
+- Vigil uses Pi's steer semantics and does not reorder mixed user/extension queues. Do not rely on global FIFO across interactive user and extension messages.
 - **`wait` overlap** is expected and safe: a redundant short steer line may appear alongside a settled `wait` result; there is no mutual exclusion.
 - Full child responses remain available via `poll` or settled `wait`; notify content is bounded (≤500 visible characters).
 
